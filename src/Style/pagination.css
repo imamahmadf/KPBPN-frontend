@@ -1,0 +1,199 @@
+.item {
+  align-items: center;
+  color: #4a5568;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  background-color: #ffffff;
+}
+
+.item:hover:not(.disabled-page):not(.active) {
+  background-color: #f7fafc;
+  border-color: #cbd5e0;
+  color: #2d3748;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.disabled-page {
+  color: #cbd5e0;
+  background-color: #f7fafc;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.disabled-page:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.active {
+  background-color: #4a5568;
+  color: white;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.active:hover {
+  background-color: #2d3748;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.break-me {
+  color: #718096;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-weight: 600;
+}
+
+.next {
+  color: white;
+  background-color: #4a5568;
+  font-size: 18px;
+  height: 40px;
+  position: relative;
+  width: 40px;
+  margin: 5px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.next:hover:not(.disabled-page) {
+  background-color: #2d3748;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.next:active:not(.disabled-page) {
+  transform: translateY(0);
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  height: 60px;
+  justify-content: center;
+  list-style-type: none;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  gap: 4px;
+}
+
+.pagination-page {
+  font-weight: 700;
+}
+
+.pagination-page > a,
+.next > a,
+.previous > a {
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.previous {
+  color: white;
+  background-color: #4a5568;
+  font-size: 18px;
+  height: 40px;
+  position: relative;
+  width: 40px;
+  border-radius: 8px;
+  margin: 5px;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.previous:hover:not(.disabled-page) {
+  background-color: #2d3748;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.previous:active:not(.disabled-page) {
+  transform: translateY(0);
+}
+
+/* Dark mode — Chakra colorMode */
+[data-theme="dark"] .item:not(.active):not(.previous):not(.next) {
+  color: #e2e8f0;
+  background-color: #2d3748;
+  border-color: #4a5568;
+}
+
+[data-theme="dark"] .item:not(.active):not(.previous):not(.next):hover:not(.disabled-page) {
+  background-color: #374151;
+  border-color: #718096;
+}
+
+[data-theme="dark"] .disabled-page {
+  color: #718096;
+  background-color: #2d3748;
+  border-color: #4a5568;
+}
+
+[data-theme="dark"] .break-me {
+  color: #a0aec0;
+}
+
+/* Daftar Pengeluaran — layout pagination responsif */
+.pengeluaran-pagination .pagination {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 44px;
+  width: auto;
+  max-width: 100%;
+  gap: 6px;
+}
+
+.pengeluaran-pagination .previous,
+.pengeluaran-pagination .next {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.pengeluaran-pagination .item {
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .pengeluaran-pagination .item,
+  .pengeluaran-pagination .previous,
+  .pengeluaran-pagination .next,
+  .pengeluaran-pagination .break-me {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .pengeluaran-pagination .previous,
+  .pengeluaran-pagination .next {
+    font-size: 16px;
+  }
+}
