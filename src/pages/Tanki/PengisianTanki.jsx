@@ -125,7 +125,6 @@ const PengisianTanki = () => {
   const [loadingCetakBA, setLoadingCetakBA] = useState({});
   const [modalPengisianData, setModalPengisianData] = useState([]);
   const [isLoadingModal, setIsLoadingModal] = useState(false);
-  const [selectedTangkiId, setSelectedTangkiId] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
   const [baTanggal, setBaTanggal] = useState(getTodayInputDate());
   const [baUkuranCairan, setBaUkuranCairan] = useState("");
@@ -184,7 +183,6 @@ const PengisianTanki = () => {
   };
 
   const resetModalBA = () => {
-    setSelectedTangkiId("");
     setSelectedIds([]);
     setBaTanggal(getTodayInputDate());
     setBaUkuranCairan("");
@@ -212,11 +210,6 @@ const PengisianTanki = () => {
         isClosable: true,
       });
     }
-  };
-
-  const handleSelectTangki = (tangkiId) => {
-    setSelectedTangkiId(String(tangkiId));
-    setSelectedIds([]);
   };
 
   const canModifyPengisian = (item) => !item.BAPenerimaanId && !item.nomorSurat;
@@ -439,23 +432,13 @@ const PengisianTanki = () => {
   };
 
   const tangkiGroups = groupPengisianByTangki(modalPengisianData);
-  const selectedTangkiGroup = tangkiGroups.find(
-    (group) => String(group.tangkiId) === String(selectedTangkiId),
-  );
-  const pengisianTangkiTerpilih = selectedTangkiGroup?.items || [];
+  const selectedTangkiCount = new Set(
+    modalPengisianData
+      .filter((item) => selectedIds.includes(item.id))
+      .map((item) => getTangkiId(item)),
+  ).size;
 
   const handleSubmitBAPenerimaan = async () => {
-    if (!selectedTangkiId) {
-      toast({
-        title: "Pilih tanki",
-        description: "Pilih tanki terlebih dahulu",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
     if (!selectedIds.length) {
       toast({
         title: "Pilih data",
@@ -862,9 +845,15 @@ const PengisianTanki = () => {
           <ModalBody>
             <VStack spacing={5} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Pilih satu tanki, lalu centang pengisian yang akan dimasukkan ke
-                BA Penerimaan.
+                Centang pengisian dari satu atau lebih tanki. Setiap tanki akan
+                menjadi satu baris terpisah dalam dokumen BA Bongkar.
               </Text>
+              {selectedIds.length > 0 && (
+                <Text fontSize="sm" color="kpbpn" fontWeight="medium">
+                  Terpilih: {selectedIds.length} pengisian dari{" "}
+                  {selectedTangkiCount} tanki
+                </Text>
+              )}
 
               {isLoadingModal ? (
                 <Center py={8}>
@@ -878,99 +867,87 @@ const PengisianTanki = () => {
                 </Center>
               ) : (
                 <>
-                  <FormControl isRequired>
-                    <FormLabel>Pilih Tanki</FormLabel>
-                    <Select
-                      placeholder="Pilih tanki"
-                      value={selectedTangkiId}
-                      onChange={(e) => handleSelectTangki(e.target.value)}
-                    >
-                      {tangkiGroups.map((group) => (
-                        <option
+                  <VStack spacing={4} align="stretch" maxH="420px" overflowY="auto">
+                    {tangkiGroups.map((group) => {
+                      const selectedInGroup = group.items.filter((item) =>
+                        selectedIds.includes(item.id),
+                      ).length;
+
+                      return (
+                        <Box
                           key={group.tangkiId}
-                          value={String(group.tangkiId)}
+                          borderWidth="1px"
+                          borderRadius="md"
+                          p={3}
                         >
-                          {group.kode} ({group.items.length} pengisian)
-                        </option>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  {selectedTangkiId && (
-                    <Box>
-                      <HStack justify="space-between" mb={2}>
-                        <Text fontWeight="semibold" fontSize="sm">
-                          Data Pengisian Tanki {selectedTangkiGroup?.kode}
-                        </Text>
-                        <Text fontSize="sm" color="kpbpn">
-                          Terpilih: {selectedIds.length}
-                        </Text>
-                      </HStack>
-                      <Box
-                        overflowX="auto"
-                        borderWidth="1px"
-                        borderRadius="md"
-                        maxH="280px"
-                        overflowY="auto"
-                      >
-                        <Table size="sm">
-                          <Thead
-                            bg="gray.50"
-                            position="sticky"
-                            top={0}
-                            zIndex={1}
-                          >
-                            <Tr>
-                              <Th w="40px" />
-                              <Th>Tanggal</Th>
-                              <Th>Flow Meter</Th>
-                              <Th>Gross</Th>
-                              <Th>Net</Th>
-                              <Th>Nomor Surat BAST</Th>
-                            </Tr>
-                          </Thead>
-                          <Tbody>
-                            {pengisianTangkiTerpilih.map((item) => {
-                              const isSelected = selectedIds.includes(item.id);
-
-                              return (
-                                <Tr
-                                  key={item.id}
-                                  bg={isSelected ? "orange.50" : undefined}
-                                >
-                                  <Td>
-                                    <Checkbox
-                                      isChecked={isSelected}
-                                      onChange={() =>
-                                        toggleSelectModalItem(item)
-                                      }
-                                    />
-                                  </Td>
-                                  <Td>
-                                    {formatDate(item.tanggal || item.createdAt)}
-                                  </Td>
-                                  <Td>{item.flowMeter ?? "-"}</Td>
-                                  <Td>
-                                    {formatVolumeLabel(
-                                      item.gross,
-                                      item.satuanVolume?.satuan,
-                                    )}
-                                  </Td>
-                                  <Td>
-                                    {formatVolumeLabel(
-                                      item.net,
-                                      item.satuanVolume?.satuan,
-                                    )}
-                                  </Td>
-                                  <Td>{item.nomorSurat || "-"}</Td>
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="semibold" fontSize="sm">
+                              Tanki {group.kode}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500">
+                              {selectedInGroup}/{group.items.length} terpilih
+                            </Text>
+                          </HStack>
+                          <Box overflowX="auto">
+                            <Table size="sm">
+                              <Thead bg="gray.50">
+                                <Tr>
+                                  <Th w="40px" />
+                                  <Th>Tanggal</Th>
+                                  <Th>Flow Meter</Th>
+                                  <Th>Gross</Th>
+                                  <Th>Net</Th>
+                                  <Th>Nomor Surat BAST</Th>
                                 </Tr>
-                              );
-                            })}
-                          </Tbody>
-                        </Table>
-                      </Box>
-                    </Box>
-                  )}
+                              </Thead>
+                              <Tbody>
+                                {group.items.map((item) => {
+                                  const isSelected = selectedIds.includes(
+                                    item.id,
+                                  );
+
+                                  return (
+                                    <Tr
+                                      key={item.id}
+                                      bg={isSelected ? "orange.50" : undefined}
+                                    >
+                                      <Td>
+                                        <Checkbox
+                                          isChecked={isSelected}
+                                          onChange={() =>
+                                            toggleSelectModalItem(item)
+                                          }
+                                        />
+                                      </Td>
+                                      <Td>
+                                        {formatDate(
+                                          item.tanggal || item.createdAt,
+                                        )}
+                                      </Td>
+                                      <Td>{item.flowMeter ?? "-"}</Td>
+                                      <Td>
+                                        {formatVolumeLabel(
+                                          item.gross,
+                                          item.satuanVolume?.satuan,
+                                        )}
+                                      </Td>
+                                      <Td>
+                                        {formatVolumeLabel(
+                                          item.net,
+                                          item.satuanVolume?.satuan,
+                                        )}
+                                      </Td>
+                                      <Td>{item.nomorSurat || "-"}</Td>
+                                    </Tr>
+                                  );
+                                })}
+                              </Tbody>
+                            </Table>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </VStack>
                 </>
               )}
 
