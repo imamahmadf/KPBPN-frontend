@@ -24,7 +24,7 @@ function Layout({ children, seoProps, noPaddingTop = false }) {
       name: "Jasirah",
       url: window.location.origin,
       logo: "/src/assets/Logo Pena.png",
-      description: "PT. Jasirah Diza Berjaya",
+      description: "Koperasi Produsen Batanghari Patra Nusantara",
       address: {
         streetAddress: "Jl. Contoh No. 123",
         addressLocality: "Kota",

@@ -75,6 +75,7 @@ import { FaBell } from "react-icons/fa";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
 import { BsStack, BsFileEarmarkText } from "react-icons/bs";
+import { GiOilPump } from "react-icons/gi";
 
 const ROLE_KPBPN = {
   SUPER_ADMIN: 1,
@@ -205,16 +206,29 @@ const menuData = [
     items: [{ label: "Surat Jalan", path: "/pengiriman-mitra/surat-jalan" }],
   },
   {
-    title: "Tanki",
+    title: "Operasional",
     icon: BsStack,
     group: "Operasional",
     pathPrefix: "/tanki-kpbpn",
     allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
     items: [
       { label: "BAST", path: "/tanki-kpbpn/pengisian" },
+      { label: "Uji Lab K3S", path: "/tanki-kpbpn/uji-lab" },
       { label: "BA Bongkar", path: "/tanki-kpbpn/ba-bongkar" },
+      { label: "Stok Opname", path: "/tanki-kpbpn/stok-opname" },
       // { label: "Tambah Pengisian", path: "/tanki-kpbpn/tambah-pengisian" },
-      { label: "Daftar Tanki", path: "/tanki-kpbpn/daftar-tanki" },
+     
+    ],
+  },
+  {
+    title: "Sumur",
+    icon: GiOilPump,
+    group: "Operasional",
+    pathPrefix: "/sumur",
+    allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
+    items: [
+      { label: "Sumur Minyak", path: "/sumur/sumur-minyak" },
+      { label: "Peta Sumur", path: "/sumur/peta-sumur" },
     ],
   },
 
@@ -227,6 +241,8 @@ const menuData = [
     items: [
       { label: "Tambah Pengguna", path: "/admin/tambah-user" },
       { label: "Daftar Pengguna", path: "/admin/daftar-user" },
+      { label: "Daftar Tanki", path: "/admin/daftar-tanki" },
+      { label: "Stasiun Pengumpul Minyak", path: "/admin/stasiun-pengumpul-minyak" },
       { label: "Dashboard", path: "/admin/dashboard" },
       { label: "Mitra", path: "/admin/mitra" },
       { label: "Kelola Template", path: "/admin/template-kpbpn" },

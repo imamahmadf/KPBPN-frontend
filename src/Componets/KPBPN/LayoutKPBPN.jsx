@@ -9,20 +9,20 @@ import {
 } from "../../Redux/Reducers/auth";
 import { useSelector } from "react-redux";
 
-function LayoutAset({ children }) {
+function LayoutAset({ children, hideFooter = false }) {
   const isAuthenticated =
     useSelector(selectIsAuthenticated) || localStorage.getItem("token");
   return (
     <Box>
       <Box
         bgColor={"secondary"}
-        minH={"75vh"}
+        minH={hideFooter ? "100vh" : "75vh"}
         // ms={isAuthenticated ? "250px" : "0"}
         pt={isAuthenticated ? "80px" : "0"}
       >
         <NavbarKPBPN />
         {children}
-        <FooterKPBPN />
+        {!hideFooter && <FooterKPBPN />}
       </Box>
     </Box>
   );

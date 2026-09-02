@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useHistory } from "react-router-dom";
+import ReactPaginate from "react-paginate";
 import {
   Box,
   Button,
@@ -37,8 +38,15 @@ import {
   SimpleGrid,
   CheckboxGroup,
   Stack,
+  Collapse,
+  Skeleton,
+  Image,
+  FormHelperText,
+  Flex,
 } from "@chakra-ui/react";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
+import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -82,6 +90,75 @@ const getTangkiId = (item) => item.tangkiId ?? item.tanki?.id;
 
 const getTangkiKode = (item) => item.tanki?.kode || "-";
 
+const getMitraNamesFromPengisian = (item) => {
+  const names = new Set();
+  (item.konfirmasiPenerimaans || []).forEach((kp) => {
+    const nama = kp.suratJalan?.mitra?.nama;
+    if (nama) names.add(nama);
+  });
+  return Array.from(names);
+};
+
+const getPengisianSatuan = (item) => {
+  if (item?.satuanVolume?.satuan) return item.satuanVolume.satuan;
+
+  for (const kp of item?.konfirmasiPenerimaans || []) {
+    const satuan = kp.suratJalan?.satuanVolume?.satuan;
+    if (satuan) return satuan;
+  }
+
+  return "";
+};
+
+const getPengisianSatuanOrDefault = (item) =>
+  getPengisianSatuan(item) || "Barrel";
+
+const getLinkedTankiKode = (kp) =>
+  Array.from(
+    new Set(
+      (kp.pengisianTankis || [])
+        .map((item) => item.tanki?.kode)
+        .filter(Boolean),
+    ),
+  );
+
+const getUkuranForPengisian = (item) => {
+  const tangkiId = getTangkiId(item);
+  const details = item.BABongkar?.BABongkarTankis || [];
+  const match = details.find((detail) => detail.tangkiId === tangkiId);
+
+  return {
+    ukuranCairan: match?.ukuranCairan ?? item.BABongkar?.ukuranCairan,
+    ukuranAir: match?.ukuranAir ?? item.BABongkar?.ukuranAir,
+  };
+};
+
+const emptyBaUkuran = () => ({ ukuranCairan: "", ukuranAir: "" });
+
+const emptyUjiLabForm = () => ({
+  tanggal: getTodayInputDate(),
+  api: "",
+  BSNW: "",
+  suhu: "",
+  sg: "",
+  kualitas: "",
+  pic: null,
+  picPreview: null,
+});
+
+const getLatestUjiLab = (ujiLabs, tangkiId) =>
+  (ujiLabs || []).find((item) => item.tangkiId === tangkiId) || null;
+
+const isUjiLabSiapBA = (uji) =>
+  Boolean(uji && uji.kualitas === "ONSPEC" && !uji.BABongkarId);
+
+const PENGISIAN_TANKI_COL_COUNT = 14;
+
+const baSectionBorder = {
+  borderLeftWidth: "2px",
+  borderLeftColor: "gray.300",
+};
+
 const groupPengisianByTangki = (items) => {
   const map = new Map();
 
@@ -108,6 +185,7 @@ const groupPengisianByTangki = (items) => {
 const PengisianTanki = () => {
   const history = useHistory();
   const toast = useToast();
+  const dataListRef = useRef(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const {
     isOpen: isEditOpen,
@@ -119,6 +197,11 @@ const PengisianTanki = () => {
     onOpen: onDeleteOpen,
     onClose: onDeleteClose,
   } = useDisclosure();
+  const {
+    isOpen: isUjiLabOpen,
+    onOpen: onUjiLabOpen,
+    onClose: onUjiLabClose,
+  } = useDisclosure();
   const [dataPengisian, setDataPengisian] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingCetak, setLoadingCetak] = useState({});
@@ -127,10 +210,14 @@ const PengisianTanki = () => {
   const [isLoadingModal, setIsLoadingModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [baTanggal, setBaTanggal] = useState(getTodayInputDate());
-  const [baUkuranCairan, setBaUkuranCairan] = useState("");
-  const [baUkuranAir, setBaUkuranAir] = useState("");
+  const [baUkuranByTangki, setBaUkuranByTangki] = useState({});
+  const [ujiLabList, setUjiLabList] = useState([]);
+  const [ujiLabTarget, setUjiLabTarget] = useState(null);
+  const [ujiLabForm, setUjiLabForm] = useState(emptyUjiLabForm());
+  const [isSubmittingUjiLab, setIsSubmittingUjiLab] = useState(false);
   const [isSubmittingBA, setIsSubmittingBA] = useState(false);
   const [page, setPage] = useState(0);
+  const [pages, setPages] = useState(0);
   const [totalRows, setTotalRows] = useState(0);
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState(emptyEditForm());
@@ -141,7 +228,18 @@ const PengisianTanki = () => {
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [expandedProduksiId, setExpandedProduksiId] = useState(null);
+  const [produksiPanel, setProduksiPanel] = useState({
+    loading: false,
+    groups: [],
+  });
   const limit = 50;
+
+  const changePage = ({ selected }) => {
+    setPage(selected);
+    setExpandedProduksiId(null);
+    dataListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const fetchDataPengisianTanki = async () => {
     setIsLoading(true);
@@ -151,6 +249,7 @@ const PengisianTanki = () => {
       );
       setDataPengisian(res.data.result || []);
       setTotalRows(res.data.totalRows || 0);
+      setPages(res.data.totalPage || 0);
     } catch (err) {
       console.error(err);
     } finally {
@@ -161,11 +260,15 @@ const PengisianTanki = () => {
   const fetchEligiblePengisianForBA = async () => {
     setIsLoadingModal(true);
     try {
-      const res = await axios.get(`${API_BASE}/tanki/get?page=0&limit=1000`);
-      const eligible = (res.data.result || []).filter(
-        (item) => !item.BAPenerimaanId,
+      const [pengisianRes, ujiRes] = await Promise.all([
+        axios.get(`${API_BASE}/tanki/get?page=0&limit=1000`),
+        axios.get(`${API_BASE}/tanki/get/uji-lab`),
+      ]);
+      const eligible = (pengisianRes.data.result || []).filter(
+        (item) => !item.BABongkarId,
       );
       setModalPengisianData(eligible);
+      setUjiLabList(ujiRes.data.result || []);
       return eligible;
     } catch (err) {
       console.error(err);
@@ -185,12 +288,15 @@ const PengisianTanki = () => {
   const resetModalBA = () => {
     setSelectedIds([]);
     setBaTanggal(getTodayInputDate());
-    setBaUkuranCairan("");
-    setBaUkuranAir("");
+    setBaUkuranByTangki({});
     setModalPengisianData([]);
+    setUjiLabList([]);
   };
 
   const handleCloseModalBA = () => {
+    onUjiLabClose();
+    setUjiLabTarget(null);
+    setUjiLabForm(emptyUjiLabForm());
     onClose();
     resetModalBA();
   };
@@ -204,7 +310,7 @@ const PengisianTanki = () => {
       toast({
         title: "Tidak ada data",
         description:
-          "Semua pengisian tanki sudah memiliki BA Penerimaan atau belum ada data",
+          "Semua pengisian tanki sudah memiliki BA Bongkar atau belum ada data",
         status: "info",
         duration: 4000,
         isClosable: true,
@@ -212,7 +318,7 @@ const PengisianTanki = () => {
     }
   };
 
-  const canModifyPengisian = (item) => !item.BAPenerimaanId && !item.nomorSurat;
+  const canModifyPengisian = (item) => !item.BABongkarId && !item.nomorSurat;
 
   const fetchEditFormData = async (item) => {
     setIsLoadingEditForm(true);
@@ -253,7 +359,7 @@ const PengisianTanki = () => {
       toast({
         title: "Tidak dapat diubah",
         description:
-          "Data yang sudah memiliki BA Penerimaan atau nomor surat BAST tidak dapat diubah",
+          "Data yang sudah memiliki BA Bongkar atau nomor surat BAST tidak dapat diubah",
         status: "warning",
         duration: 4000,
         isClosable: true,
@@ -293,7 +399,16 @@ const PengisianTanki = () => {
 
   const handleEditFieldChange = (e) => {
     const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
+    setEditForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "tangkiId") {
+        const selected = dataTanki.find((t) => String(t.id) === String(value));
+        if (selected?.satuanVolumeId) {
+          next.satuanVolumeId = String(selected.satuanVolumeId);
+        }
+      }
+      return next;
+    });
   };
 
   const handleSubmitEdit = async () => {
@@ -374,7 +489,7 @@ const PengisianTanki = () => {
       toast({
         title: "Tidak dapat dihapus",
         description:
-          "Data yang sudah memiliki BA Penerimaan atau nomor surat BAST tidak dapat dihapus",
+          "Data yang sudah memiliki BA Bongkar atau nomor surat BAST tidak dapat dihapus",
         status: "warning",
         duration: 4000,
         isClosable: true,
@@ -424,11 +539,147 @@ const PengisianTanki = () => {
   };
 
   const toggleSelectModalItem = (item) => {
+    const latest = getLatestUjiLab(ujiLabList, getTangkiId(item));
+    if (!isUjiLabSiapBA(latest) && !selectedIds.includes(item.id)) {
+      toast({
+        title: "Uji lab belum ONSPEC",
+        description:
+          "Lakukan uji lab K3S sampai hasil terakhir ONSPEC sebelum memilih tanki ini",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setSelectedIds((prev) =>
       prev.includes(item.id)
         ? prev.filter((id) => id !== item.id)
         : [...prev, item.id],
     );
+  };
+
+  const toggleSelectTangkiGroup = (group, checked) => {
+    const latest = getLatestUjiLab(ujiLabList, group.tangkiId);
+    if (checked && !isUjiLabSiapBA(latest)) {
+      toast({
+        title: "Uji lab belum ONSPEC",
+        description: `Tanki ${group.kode} belum siap BA Bongkar`,
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const groupIds = group.items.map((item) => item.id);
+    setSelectedIds((prev) =>
+      checked
+        ? [...new Set([...prev, ...groupIds])]
+        : prev.filter((id) => !groupIds.includes(id)),
+    );
+  };
+
+  const getBaUkuran = (tangkiId) =>
+    baUkuranByTangki[tangkiId] || emptyBaUkuran();
+
+  const handleBaUkuranChange = (tangkiId, field, value) => {
+    setBaUkuranByTangki((prev) => ({
+      ...prev,
+      [tangkiId]: {
+        ...emptyBaUkuran(),
+        ...prev[tangkiId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCloseUjiLab = () => {
+    if (ujiLabForm.picPreview) {
+      URL.revokeObjectURL(ujiLabForm.picPreview);
+    }
+    setUjiLabTarget(null);
+    setUjiLabForm(emptyUjiLabForm());
+    onUjiLabClose();
+  };
+
+  const handleUjiLabFieldChange = (field, value) => {
+    setUjiLabForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleUjiLabFotoChange = (file) => {
+    setUjiLabForm((prev) => {
+      if (prev.picPreview) URL.revokeObjectURL(prev.picPreview);
+      return {
+        ...prev,
+        pic: file,
+        picPreview: file ? URL.createObjectURL(file) : null,
+      };
+    });
+  };
+
+  const handleSubmitUjiLab = async () => {
+    if (!ujiLabTarget?.tangkiId) return;
+
+    if (
+      !ujiLabForm.tanggal ||
+      ujiLabForm.api === "" ||
+      ujiLabForm.BSNW === "" ||
+      ujiLabForm.suhu === "" ||
+      ujiLabForm.sg === "" ||
+      !["ONSPEC", "OFFSPEC"].includes(ujiLabForm.kualitas)
+    ) {
+      toast({
+        title: "Data belum lengkap",
+        description: "API, BSNW, suhu, SG, dan kualitas wajib diisi",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSubmittingUjiLab(true);
+    try {
+      const formData = new FormData();
+      formData.append("tangkiId", ujiLabTarget.tangkiId);
+      formData.append("tanggal", ujiLabForm.tanggal);
+      formData.append("api", ujiLabForm.api);
+      formData.append("BSNW", ujiLabForm.BSNW);
+      formData.append("suhu", ujiLabForm.suhu);
+      formData.append("sg", ujiLabForm.sg);
+      formData.append("kualitas", ujiLabForm.kualitas);
+      if (ujiLabForm.pic) formData.append("pic", ujiLabForm.pic);
+
+      await axios.post(`${API_BASE}/tanki/post/uji-lab`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const ujiRes = await axios.get(`${API_BASE}/tanki/get/uji-lab`);
+      setUjiLabList(ujiRes.data.result || []);
+
+      toast({
+        title: "Berhasil",
+        description:
+          ujiLabForm.kualitas === "ONSPEC"
+            ? `Tanki ${ujiLabTarget.kode} ONSPEC dan siap untuk BA Bongkar`
+            : `Tanki ${ujiLabTarget.kode} OFFSPEC. Lakukan pencampuran bahan kimia, lalu uji ulang`,
+        status: ujiLabForm.kualitas === "ONSPEC" ? "success" : "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      handleCloseUjiLab();
+    } catch (err) {
+      toast({
+        title: "Gagal menyimpan uji lab",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmittingUjiLab(false);
+    }
   };
 
   const tangkiGroups = groupPengisianByTangki(modalPengisianData);
@@ -438,13 +689,34 @@ const PengisianTanki = () => {
       .map((item) => getTangkiId(item)),
   ).size;
 
-  const handleSubmitBAPenerimaan = async () => {
+  const handleSubmitBABongkar = async () => {
     if (!selectedIds.length) {
       toast({
         title: "Pilih data",
         description: "Pilih minimal satu pengisian tanki",
         status: "warning",
         duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const tankiBelumSiap = tangkiGroups.filter((group) => {
+      const hasSelected = group.items.some((item) =>
+        selectedIds.includes(item.id),
+      );
+      if (!hasSelected) return false;
+      return !isUjiLabSiapBA(getLatestUjiLab(ujiLabList, group.tangkiId));
+    });
+
+    if (tankiBelumSiap.length) {
+      toast({
+        title: "Uji lab belum lengkap",
+        description: `Tanki ${tankiBelumSiap
+          .map((group) => group.kode)
+          .join(", ")} belum ONSPEC`,
+        status: "warning",
+        duration: 4000,
         isClosable: true,
       });
       return;
@@ -462,13 +734,30 @@ const PengisianTanki = () => {
 
     setIsSubmittingBA(true);
     try {
+      const tankiPayload = tangkiGroups
+        .map((group) => {
+          const ids = group.items
+            .filter((item) => selectedIds.includes(item.id))
+            .map((item) => item.id);
+          if (!ids.length) return null;
+
+          const ukuran = getBaUkuran(group.tangkiId);
+          return {
+            tangkiId: group.tangkiId,
+            ukuranCairan:
+              ukuran.ukuranCairan !== "" ? Number(ukuran.ukuranCairan) : null,
+            ukuranAir:
+              ukuran.ukuranAir !== "" ? Number(ukuran.ukuranAir) : null,
+            ids,
+          };
+        })
+        .filter(Boolean);
+
       const res = await axios.post(
-        `${API_BASE}/tanki/post/ba-penerimaan`,
+        `${API_BASE}/tanki/post/ba-bongkar`,
         {
           tanggal: baTanggal,
-          ukuranCairan: baUkuranCairan !== "" ? Number(baUkuranCairan) : null,
-          ukuranAir: baUkuranAir !== "" ? Number(baUkuranAir) : null,
-          ids: selectedIds,
+          tanki: tankiPayload,
         },
         { responseType: "blob" },
       );
@@ -478,7 +767,7 @@ const PengisianTanki = () => {
       link.href = url;
       link.setAttribute(
         "download",
-        `BA_Penerimaan_${baTanggal}_${Date.now()}.docx`,
+        `BA_Bongkar_${baTanggal}_${Date.now()}.docx`,
       );
       document.body.appendChild(link);
       link.click();
@@ -487,7 +776,7 @@ const PengisianTanki = () => {
 
       toast({
         title: "Berhasil",
-        description: "BA Penerimaan berhasil dibuat dan diunduh",
+        description: "BA Bongkar berhasil dibuat dan diunduh",
         status: "success",
         duration: 4000,
         isClosable: true,
@@ -497,17 +786,17 @@ const PengisianTanki = () => {
       fetchDataPengisianTanki();
     } catch (err) {
       console.error(err);
-      let message = "Gagal membuat BA Penerimaan";
+      let message = "Gagal membuat BA Bongkar";
       if (err.response?.data instanceof Blob) {
         try {
           const text = await err.response.data.text();
           const parsed = JSON.parse(text);
-          message = parsed.message || message;
+          message = parsed.message || parsed.error || message;
         } catch {
           // gunakan pesan default
         }
-      } else if (err.response?.data?.message) {
-        message = err.response.data.message;
+      } else if (err.response?.data?.message || err.response?.data?.error) {
+        message = err.response.data.message || err.response.data.error;
       }
 
       toast({
@@ -522,23 +811,23 @@ const PengisianTanki = () => {
     }
   };
 
-  const cetakUlangBAPenerimaan = async (item) => {
-    const baId = item.BAPenerimaanId;
+  const cetakUlangBABongkar = async (item) => {
+    const baId = item.BABongkarId;
     if (!baId) return;
 
     setLoadingCetakBA((prev) => ({ ...prev, [baId]: true }));
 
     try {
       const res = await axios.post(
-        `${API_BASE}/tanki/cetak/ba-penerimaan`,
-        { BAPenerimaanId: baId },
+        `${API_BASE}/tanki/cetak/ba-bongkar`,
+        { BABongkarId: baId },
         { responseType: "blob" },
       );
 
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `BA_Penerimaan_${baId}_${Date.now()}.docx`);
+      link.setAttribute("download", `BA_Bongkar_${baId}_${Date.now()}.docx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -546,14 +835,14 @@ const PengisianTanki = () => {
 
       toast({
         title: "Berhasil",
-        description: "Dokumen BA Penerimaan berhasil diunduh",
+        description: "Dokumen BA Bongkar berhasil diunduh",
         status: "success",
         duration: 3000,
         isClosable: true,
       });
     } catch (err) {
       console.error(err);
-      let message = "Gagal mencetak ulang BA Penerimaan";
+      let message = "Gagal mencetak ulang BA Bongkar";
       if (err.response?.data instanceof Blob) {
         try {
           const text = await err.response.data.text();
@@ -636,11 +925,201 @@ const PengisianTanki = () => {
     }
   };
 
+  const fetchProduksiForPengisian = async (item) => {
+    setProduksiPanel({ loading: true, groups: [] });
+
+    const suratJalanMap = new Map();
+    (item.konfirmasiPenerimaans || []).forEach((kp) => {
+      if (kp.suratJalan?.id && !suratJalanMap.has(kp.suratJalan.id)) {
+        suratJalanMap.set(kp.suratJalan.id, kp.suratJalan);
+      }
+    });
+
+    if (suratJalanMap.size === 0) {
+      setProduksiPanel({ loading: false, groups: [] });
+      return;
+    }
+
+    try {
+      const groups = await Promise.all(
+        Array.from(suratJalanMap.entries()).map(async ([id, sj]) => {
+          const res = await axios.get(
+            `${API_BASE}/pengiriman/get/produksi-sumur/${id}`,
+          );
+          const sumurList = res.data.resultSumurMinyak || [];
+          const existingProduksi = res.data.resultProduksi || [];
+
+          const rows = sumurList.map((sumur) => {
+            const existing = existingProduksi.find(
+              (p) => p.sumurMinyakId === sumur.id,
+            );
+            return {
+              ...sumur,
+              produksi: existing?.produksi ?? null,
+            };
+          });
+
+          const totalProduksi = rows.reduce(
+            (sum, row) => sum + (row.produksi || 0),
+            0,
+          );
+
+          return {
+            suratJalan: res.data.suratJalan || sj,
+            rows,
+            totalProduksi,
+          };
+        }),
+      );
+
+      setProduksiPanel({ loading: false, groups });
+    } catch (err) {
+      console.error(err);
+      setExpandedProduksiId(null);
+      setProduksiPanel({ loading: false, groups: [] });
+      toast({
+        title: "Gagal memuat produksi sumur",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const toggleProduksiPanel = async (item) => {
+    if (expandedProduksiId === item.id) {
+      setExpandedProduksiId(null);
+      return;
+    }
+
+    setExpandedProduksiId(item.id);
+    await fetchProduksiForPengisian(item);
+  };
+
+  const hasLinkedSuratJalan = (item) =>
+    (item.konfirmasiPenerimaans || []).some((kp) => kp.suratJalan?.id);
+
+  const renderProduksiPanelContent = (item) => {
+    if (!hasLinkedSuratJalan(item)) {
+      return (
+        <Text fontSize="sm" color="gray.500">
+          Tidak ada surat jalan terkait pada pengisian ini
+        </Text>
+      );
+    }
+
+    if (produksiPanel.loading) {
+      return (
+        <Stack spacing={2}>
+          <Skeleton height="20px" />
+          <Skeleton height="20px" />
+          <Skeleton height="20px" />
+        </Stack>
+      );
+    }
+
+    if (produksiPanel.groups.length === 0) {
+      return (
+        <Text fontSize="sm" color="gray.500">
+          Tidak ada data produksi sumur
+        </Text>
+      );
+    }
+
+    return (
+      <Stack spacing={6}>
+        {produksiPanel.groups.map((group) => {
+          const sj = group.suratJalan;
+          const volume = sj?.volume;
+          const satuan = sj?.satuanVolume?.satuan;
+
+          return (
+            <Box
+              key={sj?.id}
+              p={4}
+              borderRadius="md"
+              border="1px solid"
+              borderColor="gray.200"
+              bg="white"
+            >
+              <HStack
+                justify="space-between"
+                align="start"
+                mb={3}
+                flexWrap="wrap"
+                gap={2}
+              >
+                <Box>
+                  <Text fontSize="sm" fontWeight="bold" color="kpbpn">
+                    Surat Jalan: {sj?.nomor || "-"}
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    {sj?.mitra?.nama || "-"} · {formatDate(sj?.tanggal)}
+                  </Text>
+                  <HStack spacing={1} align="start" mt={0.5}>
+                    <Text fontSize="xs" color="gray.500">
+                      Volume:
+                    </Text>
+                    <VolumeMultiSatuan
+                      volume={volume}
+                      satuan={satuan}
+                      fontSize="xs"
+                    />
+                  </HStack>
+                </Box>
+                <Badge
+                  colorScheme={
+                    group.totalProduksi === volume ? "green" : "orange"
+                  }
+                  variant="subtle"
+                >
+                  Total Produksi: {group.totalProduksi}
+                </Badge>
+              </HStack>
+
+              {group.rows.length === 0 ? (
+                <Text fontSize="sm" color="gray.500">
+                  Tidak ada data sumur minyak untuk mitra ini
+                </Text>
+              ) : (
+                <Box overflowX="auto">
+                  <Table size="sm" variant="simple">
+                    <Thead bg="gray.100">
+                      <Tr>
+                        <Th>No</Th>
+                        <Th>Nomor Sumur</Th>
+                        <Th>Nama Sumur</Th>
+                        <Th isNumeric>Produksi</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {group.rows.map((sumur, idx) => (
+                        <Tr key={sumur.id}>
+                          <Td>{idx + 1}</Td>
+                          <Td>{sumur.nomor || "-"}</Td>
+                          <Td>{sumur.nama || "-"}</Td>
+                          <Td isNumeric fontWeight="medium">
+                            {sumur.produksi != null ? sumur.produksi : "-"}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </Box>
+              )}
+            </Box>
+          );
+        })}
+      </Stack>
+    );
+  };
+
   useEffect(() => {
     fetchDataPengisianTanki();
   }, [page]);
 
-  const colSpan = 18;
+  const colSpan = PENGISIAN_TANKI_COL_COUNT + 3 + 1;
 
   return (
     <LayoutKPBPN>
@@ -652,6 +1131,12 @@ const PengisianTanki = () => {
               <Text fontSize="sm" color="gray.500">
                 Total: {totalRows} data
               </Text>
+              <Button
+                variant="outline"
+                onClick={() => history.push("/tanki-kpbpn/uji-lab")}
+              >
+                Uji Lab K3S
+              </Button>
               <Button
                 variant="outline"
                 colorScheme="orange"
@@ -668,6 +1153,7 @@ const PengisianTanki = () => {
             </HStack>
           </HStack>
 
+          <Box ref={dataListRef} scrollMarginTop={{ base: "72px", md: "88px" }}>
           {isLoading ? (
             <Center py={10}>
               <Spinner size="lg" color="kpbpn" />
@@ -677,24 +1163,58 @@ const PengisianTanki = () => {
               <Table size="sm">
                 <Thead bg="gray.50">
                   <Tr>
+                    <Th
+                      colSpan={PENGISIAN_TANKI_COL_COUNT}
+                      textAlign="center"
+                      borderBottomWidth="1px"
+                      bg="gray.100"
+                      fontSize="xs"
+                      textTransform="uppercase"
+                      letterSpacing="wider"
+                      color="gray.600"
+                    >
+                      Pengisian tanki
+                    </Th>
+                    <Th
+                      colSpan={3}
+                      textAlign="center"
+                      borderBottomWidth="1px"
+                      bg="orange.50"
+                      fontSize="xs"
+                      textTransform="uppercase"
+                      letterSpacing="wider"
+                      color="orange.700"
+                      {...baSectionBorder}
+                    >
+                      BA Bongkar
+                    </Th>
+                    <Th
+                      rowSpan={2}
+                      verticalAlign="middle"
+                      borderBottomWidth="1px"
+                      {...baSectionBorder}
+                    >
+                      Aksi
+                    </Th>
+                  </Tr>
+                  <Tr>
                     <Th>No</Th>
                     <Th>Tanggal</Th>
                     <Th>Tangki</Th>
-                    <Th>Flow Meter</Th>
+                    <Th>Mitra</Th>
                     <Th>Gross</Th>
                     <Th>Net</Th>
                     <Th>Penampilan Visual</Th>
                     <Th>Warna</Th>
                     <Th>Kandungan Air</Th>
                     <Th>BSW</Th>
-                    <Th>Ukuran Cairan</Th>
-                    <Th>Ukuran Air</Th>
                     <Th>Catatan</Th>
                     <Th>Saksi</Th>
                     <Th>No. Plat Kendaraan</Th>
                     <Th>Nomor Surat BAST</Th>
+                    <Th {...baSectionBorder}>Ukuran Cairan</Th>
+                    <Th>Ukuran Air</Th>
                     <Th>BA Bongkar</Th>
-                    <Th>Aksi</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -706,122 +1226,168 @@ const PengisianTanki = () => {
                     </Tr>
                   ) : (
                     dataPengisian.map((item, index) => {
-                      const sudahAdaBA = Boolean(item.BAPenerimaanId);
+                      const sudahAdaBA = Boolean(item.BABongkarId);
+                      const mitraNames = getMitraNamesFromPengisian(item);
+                      const isProduksiExpanded = expandedProduksiId === item.id;
+                      const ukuranBA = getUkuranForPengisian(item);
 
                       return (
-                        <Tr
-                          key={item.id}
-                          bg={sudahAdaBA ? "gray.50" : undefined}
-                        >
-                          <Td>{page * limit + index + 1}</Td>
-                          <Td>{formatDate(item.tanggal || item.createdAt)}</Td>
-                          <Td>{item.tanki?.kode || "-"}</Td>
-                          <Td>{item.flowMeter ?? "-"}</Td>
-                          <Td>
-                            {formatVolumeLabel(
-                              item.gross,
-                              item.satuanVolume?.satuan,
-                            )}
-                          </Td>
-                          <Td>
-                            {formatVolumeLabel(
-                              item.net,
-                              item.satuanVolume?.satuan,
-                            )}
-                          </Td>
-                          <Td>{item.penampilanVisual || "-"}</Td>
-                          <Td>{item.warna || "-"}</Td>
-                          <Td>{item.kandunganAir ?? "-"}</Td>
-                          <Td>{item.BSW ?? "-"}</Td>
-                          <Td>{item.BAPenerimaan?.ukuranCairan ?? "-"}</Td>
-                          <Td>{item.BAPenerimaan?.ukuranAir ?? "-"}</Td>
-                          <Td>{item.catatan || "-"}</Td>
-                          <Td>{item.saksi || "-"}</Td>
-                          <Td>
-                            {(item.konfirmasiPenerimaans || []).length === 0 ? (
-                              "-"
-                            ) : (
-                              <Box>
-                                {item.konfirmasiPenerimaans.map((kp) => (
-                                  <Badge
-                                    key={kp.id}
-                                    colorScheme="orange"
-                                    mr={1}
-                                    mb={1}
-                                  >
-                                    {kp.nomor ||
-                                      kp.suratJalan?.transportir?.plat ||
-                                      `ID ${kp.id}`}
-                                  </Badge>
-                                ))}
-                              </Box>
-                            )}
-                          </Td>
-                          <Td>
-                            {item.nomorSurat ? (
-                              <Text fontSize="xs" whiteSpace="nowrap">
-                                {item.nomorSurat}
-                              </Text>
-                            ) : (
-                              <Badge colorScheme="gray">Belum ada</Badge>
-                            )}
-                          </Td>
-                          <Td>
-                            {sudahAdaBA ? (
-                              <Badge colorScheme="green">
-                                BA #{item.BAPenerimaanId}
-                              </Badge>
-                            ) : (
-                              <Badge colorScheme="gray">Belum</Badge>
-                            )}
-                          </Td>
-                          <Td>
-                            <VStack align="stretch" spacing={2}>
-                              {canModifyPengisian(item) && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorScheme="blue"
-                                    onClick={() => handleOpenEdit(item)}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorScheme="red"
-                                    onClick={() => handleOpenDelete(item)}
-                                  >
-                                    Hapus
-                                  </Button>
-                                </>
+                        <React.Fragment key={item.id}>
+                          <Tr bg={sudahAdaBA ? "gray.50" : undefined}>
+                            <Td>{page * limit + index + 1}</Td>
+                            <Td>{formatDate(item.tanggal || item.createdAt)}</Td>
+                            <Td>{item.tanki?.kode || "-"}</Td>
+                            <Td>
+                              {mitraNames.length === 0 ? (
+                                "-"
+                              ) : (
+                                <Box>
+                                  {mitraNames.map((nama) => (
+                                    <Text key={nama} fontSize="xs">
+                                      {nama}
+                                    </Text>
+                                  ))}
+                                </Box>
                               )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                colorScheme="teal"
-                                isLoading={loadingCetak[item.id]}
-                                onClick={() => cetakBAST(item)}
-                              >
-                                Cetak BAST
-                              </Button>
-                              {sudahAdaBA && (
+                            </Td>
+                            <Td>
+                              <VolumeMultiSatuan
+                                volume={item.gross}
+                                satuan={getPengisianSatuanOrDefault(item)}
+                              />
+                            </Td>
+                            <Td>
+                              <VolumeMultiSatuan
+                                volume={item.net}
+                                satuan={getPengisianSatuanOrDefault(item)}
+                              />
+                            </Td>
+                            <Td>{item.penampilanVisual || "-"}</Td>
+                            <Td>{item.warna || "-"}</Td>
+                            <Td>
+                              <VolumeMultiSatuan
+                                volume={item.kandunganAir}
+                                satuan={getPengisianSatuanOrDefault(item)}
+                              />
+                            </Td>
+                            <Td>{item.BSW ?? "-"}</Td>
+                            <Td>{item.catatan || "-"}</Td>
+                            <Td>{item.saksi || "-"}</Td>
+                            <Td>
+                              {(item.konfirmasiPenerimaans || []).length === 0 ? (
+                                "-"
+                              ) : (
+                                <Box>
+                                  {item.konfirmasiPenerimaans.map((kp) => (
+                                    <Badge
+                                      key={kp.id}
+                                      colorScheme="orange"
+                                      mr={1}
+                                      mb={1}
+                                    >
+                                      {kp.nomor ||
+                                        kp.suratJalan?.transportir?.plat ||
+                                        `ID ${kp.id}`}
+                                    </Badge>
+                                  ))}
+                                </Box>
+                              )}
+                            </Td>
+                            <Td>
+                              {item.nomorSurat ? (
+                                <Text fontSize="xs" whiteSpace="nowrap">
+                                  {item.nomorSurat}
+                                </Text>
+                              ) : (
+                                <Badge colorScheme="gray">Belum ada</Badge>
+                              )}
+                            </Td>
+                            <Td {...baSectionBorder}>
+                              {ukuranBA.ukuranCairan ?? "-"}
+                            </Td>
+                            <Td>{ukuranBA.ukuranAir ?? "-"}</Td>
+                            <Td>
+                              {sudahAdaBA ? (
+                                <Badge colorScheme="green">
+                                  BA #{item.BABongkarId}
+                                </Badge>
+                              ) : (
+                                <Badge colorScheme="gray">Belum</Badge>
+                              )}
+                            </Td>
+                            <Td {...baSectionBorder}>
+                              <VStack align="stretch" spacing={2}>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    isProduksiExpanded ? "solid" : "outline"
+                                  }
+                                  colorScheme="orange"
+                                  onClick={() => toggleProduksiPanel(item)}
+                                >
+                                  Produksi
+                                </Button>
+                                {canModifyPengisian(item) && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      colorScheme="blue"
+                                      onClick={() => handleOpenEdit(item)}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      colorScheme="red"
+                                      onClick={() => handleOpenDelete(item)}
+                                    >
+                                      Hapus
+                                    </Button>
+                                  </>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  colorScheme="orange"
-                                  isLoading={
-                                    loadingCetakBA[item.BAPenerimaanId]
-                                  }
-                                  onClick={() => cetakUlangBAPenerimaan(item)}
+                                  colorScheme="teal"
+                                  isLoading={loadingCetak[item.id]}
+                                  onClick={() => cetakBAST(item)}
                                 >
-                                  Cetak Ulang BA
+                                  Cetak BAST
                                 </Button>
-                              )}
-                            </VStack>
-                          </Td>
-                        </Tr>
+                                {sudahAdaBA && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorScheme="orange"
+                                    isLoading={loadingCetakBA[item.BABongkarId]}
+                                    onClick={() => cetakUlangBABongkar(item)}
+                                  >
+                                    Cetak Ulang BA
+                                  </Button>
+                                )}
+                              </VStack>
+                            </Td>
+                          </Tr>
+                          <Tr>
+                            <Td colSpan={colSpan} p={0} borderBottom="none">
+                              <Collapse in={isProduksiExpanded} animateOpacity>
+                                <Box
+                                  p={4}
+                                  bg="orange.50"
+                                  borderTopWidth="1px"
+                                  borderColor="gray.200"
+                                >
+                                  <Heading size="sm" mb={3} color="kpbpn">
+                                    Produksi Sumur Minyak
+                                  </Heading>
+                                  {renderProduksiPanelContent(item)}
+                                </Box>
+                              </Collapse>
+                            </Td>
+                          </Tr>
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -829,6 +1395,61 @@ const PengisianTanki = () => {
               </Table>
             </Box>
           )}
+
+          {totalRows > 0 && (
+            <Flex
+              className="pengeluaran-pagination"
+              mt={6}
+              pt={4}
+              borderTop="1px solid"
+              borderColor="gray.200"
+              justify="space-between"
+              align={{ base: "stretch", md: "center" }}
+              direction={{ base: "column", md: "row" }}
+              gap={4}
+            >
+              <Text
+                fontSize="sm"
+                color="gray.600"
+                textAlign={{ base: "center", md: "left" }}
+              >
+                Menampilkan {page * limit + 1}–
+                {Math.min((page + 1) * limit, totalRows)} dari {totalRows} data
+                {pages > 1 && (
+                  <>
+                    {" "}
+                    · Halaman {page + 1} dari {pages}
+                  </>
+                )}
+              </Text>
+              <Box
+                overflowX="auto"
+                py={1}
+                w={{ base: "full", md: "auto" }}
+                display="flex"
+                justifyContent={{ base: "center", md: "flex-end" }}
+              >
+                <ReactPaginate
+                  previousLabel="←"
+                  nextLabel="→"
+                  pageCount={Math.max(pages, 1)}
+                  onPageChange={changePage}
+                  forcePage={page}
+                  activeClassName="item active"
+                  breakClassName="item break-me"
+                  breakLabel="..."
+                  containerClassName="pagination"
+                  disabledClassName="disabled-page"
+                  marginPagesDisplayed={1}
+                  nextClassName="item next"
+                  pageClassName="item pagination-page"
+                  pageRangeDisplayed={2}
+                  previousClassName="item previous"
+                />
+              </Box>
+            </Flex>
+          )}
+          </Box>
         </Container>
       </Box>
 
@@ -840,13 +1461,15 @@ const PengisianTanki = () => {
       >
         <ModalOverlay />
         <ModalContent maxW="1100px">
-          <ModalHeader>Buat BA Penerimaan</ModalHeader>
+          <ModalHeader>Buat BA Bongkar</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={5} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Centang pengisian dari satu atau lebih tanki. Setiap tanki akan
-                menjadi satu baris terpisah dalam dokumen BA Bongkar.
+                Uji lab K3S wajib ONSPEC per tanki sebelum BA Bongkar dibuat.
+                Jika OFFSPEC, lakukan pencampuran bahan kimia lalu uji ulang.
+                Setiap tanki menjadi satu baris terpisah dalam dokumen BA
+                Bongkar.
               </Text>
               {selectedIds.length > 0 && (
                 <Text fontSize="sm" color="kpbpn" fontWeight="medium">
@@ -862,7 +1485,7 @@ const PengisianTanki = () => {
               ) : tangkiGroups.length === 0 ? (
                 <Center py={8}>
                   <Text color="gray.500">
-                    Tidak ada pengisian tanki yang belum memiliki BA Penerimaan
+                    Tidak ada pengisian tanki yang belum memiliki BA Bongkar
                   </Text>
                 </Center>
               ) : (
@@ -872,6 +1495,17 @@ const PengisianTanki = () => {
                       const selectedInGroup = group.items.filter((item) =>
                         selectedIds.includes(item.id),
                       ).length;
+                      const allSelected =
+                        group.items.length > 0 &&
+                        selectedInGroup === group.items.length;
+                      const someSelected =
+                        selectedInGroup > 0 && !allSelected;
+                      const ukuran = getBaUkuran(group.tangkiId);
+                      const latestUji = getLatestUjiLab(
+                        ujiLabList,
+                        group.tangkiId,
+                      );
+                      const siapBA = isUjiLabSiapBA(latestUji);
 
                       return (
                         <Box
@@ -880,21 +1514,116 @@ const PengisianTanki = () => {
                           borderRadius="md"
                           p={3}
                         >
-                          <HStack justify="space-between" mb={2}>
-                            <Text fontWeight="semibold" fontSize="sm">
-                              Tanki {group.kode}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500">
-                              {selectedInGroup}/{group.items.length} terpilih
-                            </Text>
+                          <HStack justify="space-between" mb={3} align="start">
+                            <Checkbox
+                              isChecked={allSelected}
+                              isIndeterminate={someSelected}
+                              isDisabled={!siapBA}
+                              onChange={(e) =>
+                                toggleSelectTangkiGroup(
+                                  group,
+                                  e.target.checked,
+                                )
+                              }
+                            >
+                              <Text fontWeight="semibold" fontSize="sm">
+                                Tanki {group.kode}
+                              </Text>
+                            </Checkbox>
+                            <HStack spacing={2}>
+                              {latestUji ? (
+                                <Badge
+                                  colorScheme={
+                                    latestUji.kualitas === "ONSPEC"
+                                      ? "green"
+                                      : "red"
+                                  }
+                                >
+                                  {latestUji.kualitas}
+                                </Badge>
+                              ) : (
+                                <Badge colorScheme="gray">Belum uji lab</Badge>
+                              )}
+                              <Text fontSize="xs" color="gray.500">
+                                {selectedInGroup}/{group.items.length} terpilih
+                              </Text>
+                            </HStack>
                           </HStack>
+                          {latestUji && (
+                            <Text fontSize="xs" color="gray.600" mb={2}>
+                              {formatDate(latestUji.tanggal || latestUji.createdAt)}{" "}
+                              · API {latestUji.api} · BSNW {latestUji.BSNW} ·
+                              Suhu {latestUji.suhu} · SG {latestUji.sg}
+                            </Text>
+                          )}
+                          {!siapBA && (
+                            <Text fontSize="sm" color="red.500" mb={3}>
+                              {latestUji?.kualitas === "OFFSPEC"
+                                ? "Hasil OFFSPEC. Lakukan pencampuran bahan kimia, lalu uji ulang."
+                                : latestUji?.BABongkarId
+                                  ? "Uji lab terakhir sudah dipakai BA Bongkar. Lakukan uji lab baru."
+                                  : "Belum ada uji lab K3S untuk tanki ini."}
+                            </Text>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            colorScheme="orange"
+                            mb={3}
+                            onClick={() => {
+                              setUjiLabTarget(group);
+                              setUjiLabForm(emptyUjiLabForm());
+                              onUjiLabOpen();
+                            }}
+                          >
+                            Tambah Uji Lab
+                          </Button>
+                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mb={3}>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                Ukuran Cairan (cm)
+                              </FormLabel>
+                              <Input
+                                type="number"
+                                min={0}
+                                size="sm"
+                                value={ukuran.ukuranCairan}
+                                onChange={(e) =>
+                                  handleBaUkuranChange(
+                                    group.tangkiId,
+                                    "ukuranCairan",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Ukuran cairan tanki ini"
+                              />
+                            </FormControl>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                Ukuran Air (cm)
+                              </FormLabel>
+                              <Input
+                                type="number"
+                                min={0}
+                                size="sm"
+                                value={ukuran.ukuranAir}
+                                onChange={(e) =>
+                                  handleBaUkuranChange(
+                                    group.tangkiId,
+                                    "ukuranAir",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Ukuran air tanki ini"
+                              />
+                            </FormControl>
+                          </SimpleGrid>
                           <Box overflowX="auto">
                             <Table size="sm">
                               <Thead bg="gray.50">
                                 <Tr>
                                   <Th w="40px" />
                                   <Th>Tanggal</Th>
-                                  <Th>Flow Meter</Th>
                                   <Th>Gross</Th>
                                   <Th>Net</Th>
                                   <Th>Nomor Surat BAST</Th>
@@ -914,6 +1643,7 @@ const PengisianTanki = () => {
                                       <Td>
                                         <Checkbox
                                           isChecked={isSelected}
+                                          isDisabled={!siapBA}
                                           onChange={() =>
                                             toggleSelectModalItem(item)
                                           }
@@ -924,18 +1654,21 @@ const PengisianTanki = () => {
                                           item.tanggal || item.createdAt,
                                         )}
                                       </Td>
-                                      <Td>{item.flowMeter ?? "-"}</Td>
                                       <Td>
-                                        {formatVolumeLabel(
-                                          item.gross,
-                                          item.satuanVolume?.satuan,
-                                        )}
+                                        <VolumeMultiSatuan
+                                          volume={item.gross}
+                                          satuan={getPengisianSatuanOrDefault(
+                                            item,
+                                          )}
+                                        />
                                       </Td>
                                       <Td>
-                                        {formatVolumeLabel(
-                                          item.net,
-                                          item.satuanVolume?.satuan,
-                                        )}
+                                        <VolumeMultiSatuan
+                                          volume={item.net}
+                                          satuan={getPengisianSatuanOrDefault(
+                                            item,
+                                          )}
+                                        />
                                       </Td>
                                       <Td>{item.nomorSurat || "-"}</Td>
                                     </Tr>
@@ -954,31 +1687,11 @@ const PengisianTanki = () => {
               <Divider />
 
               <FormControl isRequired>
-                <FormLabel>Tanggal BA Penerimaan</FormLabel>
+                <FormLabel>Tanggal BA Bongkar</FormLabel>
                 <Input
                   type="date"
                   value={baTanggal}
                   onChange={(e) => setBaTanggal(e.target.value)}
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel>Ukuran Cairan</FormLabel>
-                <Input
-                  type="number"
-                  min={0}
-                  value={baUkuranCairan}
-                  onChange={(e) => setBaUkuranCairan(e.target.value)}
-                  placeholder="Masukkan ukuran cairan"
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel>Ukuran Air</FormLabel>
-                <Input
-                  type="number"
-                  min={0}
-                  value={baUkuranAir}
-                  onChange={(e) => setBaUkuranAir(e.target.value)}
-                  placeholder="Masukkan ukuran air"
                 />
               </FormControl>
             </VStack>
@@ -989,11 +1702,142 @@ const PengisianTanki = () => {
             </Button>
             <Button
               colorScheme="orange"
-              onClick={handleSubmitBAPenerimaan}
+              onClick={handleSubmitBABongkar}
               isLoading={isSubmittingBA}
               isDisabled={isLoadingModal || !tangkiGroups.length}
             >
               Simpan
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isUjiLabOpen}
+        onClose={handleCloseUjiLab}
+        size="lg"
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Tambah Uji Lab K3S
+            {ujiLabTarget?.kode ? ` — Tanki ${ujiLabTarget.kode}` : ""}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4} align="stretch">
+              <FormControl isRequired>
+                <FormLabel>Tanggal Uji</FormLabel>
+                <Input
+                  type="date"
+                  value={ujiLabForm.tanggal}
+                  onChange={(e) =>
+                    handleUjiLabFieldChange("tanggal", e.target.value)
+                  }
+                />
+              </FormControl>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                <FormControl isRequired>
+                  <FormLabel>API</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.api}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("api", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>BSNW</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.BSNW}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("BSNW", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Suhu</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.suhu}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("suhu", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>SG</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.sg}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("sg", e.target.value)
+                    }
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <FormControl isRequired>
+                <FormLabel>Kualitas</FormLabel>
+                <Select
+                  placeholder="Pilih kualitas"
+                  value={ujiLabForm.kualitas}
+                  onChange={(e) =>
+                    handleUjiLabFieldChange("kualitas", e.target.value)
+                  }
+                >
+                  <option value="ONSPEC">ONSPEC</option>
+                  <option value="OFFSPEC">OFFSPEC</option>
+                </Select>
+                {ujiLabForm.kualitas === "OFFSPEC" && (
+                  <FormHelperText color="red.500">
+                    Perlu pencampuran bahan kimia, lalu uji ulang
+                  </FormHelperText>
+                )}
+                {ujiLabForm.kualitas === "ONSPEC" && (
+                  <FormHelperText color="green.600">
+                    Tanki siap untuk pembuatan BA Bongkar
+                  </FormHelperText>
+                )}
+              </FormControl>
+              <FormControl>
+                <FormLabel>Foto Uji Lab</FormLabel>
+                <Input
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg"
+                  onChange={(e) =>
+                    handleUjiLabFotoChange(e.target.files?.[0] || null)
+                  }
+                />
+                {ujiLabForm.picPreview && (
+                  <Image
+                    src={ujiLabForm.picPreview}
+                    alt="Preview foto uji lab"
+                    mt={3}
+                    maxH="180px"
+                    objectFit="cover"
+                    borderRadius="md"
+                  />
+                )}
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={handleCloseUjiLab}>
+              Batal
+            </Button>
+            <Button
+              colorScheme="orange"
+              onClick={handleSubmitUjiLab}
+              isLoading={isSubmittingUjiLab}
+            >
+              Simpan Uji Lab
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1140,6 +1984,10 @@ const PengisianTanki = () => {
 
                 <Box>
                   <FormLabel mb={3}>Konfirmasi Penerimaan (opsional)</FormLabel>
+                  <Text fontSize="sm" color="gray.500" mb={3}>
+                    Konfirmasi yang sudah terhubung ke tanki lain tetap dapat
+                    dipilih.
+                  </Text>
                   {editKonfirmasiOptions.length === 0 ? (
                     <Text fontSize="sm" color="gray.500">
                       Tidak ada konfirmasi penerimaan tersedia
@@ -1152,20 +2000,32 @@ const PengisianTanki = () => {
                       }
                     >
                       <Stack spacing={2}>
-                        {editKonfirmasiOptions.map((kp) => (
-                          <Checkbox key={kp.id} value={String(kp.id)}>
-                            {kp.nomor || `Konfirmasi #${kp.id}`}
-                            {" — "}
-                            {formatDate(kp.tanggal)}
-                            {" — "}
-                            {kp.suratJalan?.transportir?.plat || "-"}
-                            {" — Vol: "}
-                            {formatVolumeLabel(
-                              kp.volume ?? kp.suratJalan?.volume,
-                              kp.suratJalan?.satuanVolume?.satuan,
-                            )}
-                          </Checkbox>
-                        ))}
+                        {editKonfirmasiOptions.map((kp) => {
+                          const linkedTanki = getLinkedTankiKode(kp);
+
+                          return (
+                            <Checkbox key={kp.id} value={String(kp.id)}>
+                              {kp.nomor || `Konfirmasi #${kp.id}`}
+                              {" — "}
+                              {formatDate(kp.tanggal)}
+                              {" — "}
+                              {kp.suratJalan?.transportir?.plat || "-"}
+                              {" — Vol: "}
+                              <VolumeMultiSatuan
+                                volume={
+                                  kp.volume ?? kp.suratJalan?.volume
+                                }
+                                satuan={
+                                  kp.suratJalan?.satuanVolume?.satuan || "Barrel"
+                                }
+                                fontSize="sm"
+                              />
+                              {linkedTanki.length > 0
+                                ? ` — Tanki: ${linkedTanki.join(", ")}`
+                                : ""}
+                            </Checkbox>
+                          );
+                        })}
                       </Stack>
                     </CheckboxGroup>
                   )}

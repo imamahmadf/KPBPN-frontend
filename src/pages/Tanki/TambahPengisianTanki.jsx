@@ -8,6 +8,7 @@ import {
   Button,
   FormControl,
   FormErrorMessage,
+  FormHelperText,
   FormLabel,
   Input,
   Textarea,
@@ -19,14 +20,21 @@ import {
   HStack,
   SimpleGrid,
   Checkbox,
-  CheckboxGroup,
-  Stack,
   Text,
   Divider,
   Spinner,
   Center,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
+  Badge,
 } from "@chakra-ui/react";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -37,12 +45,32 @@ const pengisianSchema = Yup.object({
   gross: Yup.number()
     .typeError("Gross harus angka")
     .required("Gross wajib diisi"),
-  net: Yup.number().typeError("Net harus angka").required("Net wajib diisi"),
+  net: Yup.number()
+    .typeError("Net harus angka")
+    .required("Net wajib diisi")
+    .min(0, "Net tidak boleh negatif"),
   penampilanVisual: Yup.string().required("Penampilan visual wajib diisi"),
   warna: Yup.string().required("Warna wajib diisi"),
   kandunganAir: Yup.number()
     .typeError("Kandungan air harus angka")
-    .required("Kandungan air wajib diisi"),
+    .required("Kandungan air wajib diisi")
+    .min(0, "Kandungan air tidak boleh negatif")
+    .test(
+      "max-gross",
+      "Kandungan air tidak boleh lebih besar dari Gross",
+      function (value) {
+        const { gross } = this.parent;
+        if (
+          value === undefined ||
+          value === null ||
+          gross === "" ||
+          gross === undefined
+        ) {
+          return true;
+        }
+        return Number(value) <= Number(gross);
+      },
+    ),
   BSW: Yup.number().typeError("BSW harus angka").required("BSW wajib diisi"),
   satuanVolumeId: Yup.string().required("Satuan volume wajib dipilih"),
   catatan: Yup.string(),
@@ -79,22 +107,39 @@ const formatDate = (date) => {
   });
 };
 
-const formatVolumeLabel = (volume, satuan) => {
-  if (volume === null || volume === undefined || volume === "") return "-";
-  return satuan ? `${volume} ${satuan}` : String(volume);
+const hitungNet = (gross, kandunganAir) => {
+  if (gross === "" || kandunganAir === "") return "";
+  const nilaiGross = Number(gross);
+  const nilaiKandunganAir = Number(kandunganAir);
+  if (Number.isNaN(nilaiGross) || Number.isNaN(nilaiKandunganAir)) return "";
+  return nilaiGross - nilaiKandunganAir;
 };
 
-const getKonfirmasiPenerimaanLabel = (item) => {
-  const volume = formatVolumeLabel(
-    item.volume ?? item.suratJalan?.volume,
-    item.suratJalan?.satuanVolume?.satuan,
+const formatAngka = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  const angka = Number(value);
+  if (Number.isNaN(angka)) return String(value);
+  return new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0,
+  }).format(angka);
+};
+
+const toggleKonfirmasiId = (ids, id) => {
+  const strId = String(id);
+  return ids.includes(strId)
+    ? ids.filter((value) => value !== strId)
+    : [...ids, strId];
+};
+
+const getLinkedTankiKode = (kp) =>
+  Array.from(
+    new Set(
+      (kp.pengisianTankis || [])
+        .map((item) => item.tanki?.kode)
+        .filter(Boolean),
+    ),
   );
-  const tanggal = formatDate(item.tanggal);
-  const mitra = item.suratJalan?.mitra?.nama || "-";
-  const nomorSuratJalan = item.suratJalan?.nomor || "-";
-
-  return `Vol: ${volume} — ${tanggal} — ${mitra} — SJ: ${nomorSuratJalan}`;
-};
 
 const TambahPengisianTanki = () => {
   const toast = useToast();
@@ -136,15 +181,18 @@ const TambahPengisianTanki = () => {
   const handleSubmit = async (values, { resetForm }) => {
     setIsSubmitting(true);
     try {
+      const gross = parseInt(values.gross, 10);
+      const kandunganAir = parseInt(values.kandunganAir, 10);
+
       await axios.post(`${API_BASE}/tanki/post`, {
         tanggal: values.tanggal,
         tangkiId: parseInt(values.tangkiId, 10),
 
-        gross: parseInt(values.gross, 10),
-        net: parseInt(values.net, 10),
+        gross,
+        net: gross - kandunganAir,
         penampilanVisual: values.penampilanVisual,
         warna: values.warna,
-        kandunganAir: parseInt(values.kandunganAir, 10),
+        kandunganAir,
         BSW: parseInt(values.BSW, 10),
         catatan: values.catatan,
         saksi: values.saksi,
@@ -209,6 +257,7 @@ const TambahPengisianTanki = () => {
                 handleChange,
                 handleBlur,
                 setFieldValue,
+                setFieldTouched,
               }) => (
                 <Form>
                   <VStack spacing={6} align="stretch">
@@ -235,7 +284,18 @@ const TambahPengisianTanki = () => {
                           name="tangkiId"
                           placeholder="Pilih tangki"
                           value={values.tangkiId}
-                          onChange={handleChange}
+                          onChange={(e) => {
+                            handleChange(e);
+                            const selected = dataTanki.find(
+                              (item) => String(item.id) === e.target.value,
+                            );
+                            if (selected?.satuanVolumeId) {
+                              setFieldValue(
+                                "satuanVolumeId",
+                                String(selected.satuanVolumeId),
+                              );
+                            }
+                          }}
                           onBlur={handleBlur}
                         >
                           {dataTanki.map((item) => (
@@ -253,21 +313,52 @@ const TambahPengisianTanki = () => {
                           name="gross"
                           type="number"
                           value={values.gross}
-                          onChange={handleChange}
+                          onChange={(e) => {
+                            handleChange(e);
+                            setFieldValue(
+                              "net",
+                              hitungNet(e.target.value, values.kandunganAir),
+                            );
+                          }}
                           onBlur={handleBlur}
                         />
                         <FormErrorMessage>{errors.gross}</FormErrorMessage>
                       </FormControl>
 
+                      <FormControl
+                        isInvalid={touched.kandunganAir && errors.kandunganAir}
+                      >
+                        <FormLabel>Kandungan Air</FormLabel>
+                        <Input
+                          name="kandunganAir"
+                          type="number"
+                          value={values.kandunganAir}
+                          onChange={(e) => {
+                            handleChange(e);
+                            setFieldValue(
+                              "net",
+                              hitungNet(values.gross, e.target.value),
+                            );
+                          }}
+                          onBlur={handleBlur}
+                        />
+                        <FormErrorMessage>
+                          {errors.kandunganAir}
+                        </FormErrorMessage>
+                      </FormControl>
                       <FormControl isInvalid={touched.net && errors.net}>
                         <FormLabel>Net</FormLabel>
                         <Input
                           name="net"
                           type="number"
                           value={values.net}
-                          onChange={handleChange}
+                          isReadOnly
+                          bg="gray.50"
                           onBlur={handleBlur}
                         />
+                        <FormHelperText>
+                          Otomatis: Gross − Kandungan Air
+                        </FormHelperText>
                         <FormErrorMessage>{errors.net}</FormErrorMessage>
                       </FormControl>
 
@@ -323,22 +414,6 @@ const TambahPengisianTanki = () => {
                         <FormErrorMessage>{errors.warna}</FormErrorMessage>
                       </FormControl>
 
-                      <FormControl
-                        isInvalid={touched.kandunganAir && errors.kandunganAir}
-                      >
-                        <FormLabel>Kandungan Air</FormLabel>
-                        <Input
-                          name="kandunganAir"
-                          type="number"
-                          value={values.kandunganAir}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                        />
-                        <FormErrorMessage>
-                          {errors.kandunganAir}
-                        </FormErrorMessage>
-                      </FormControl>
-
                       <FormControl isInvalid={touched.BSW && errors.BSW}>
                         <FormLabel>BSW</FormLabel>
                         <Input
@@ -379,8 +454,9 @@ const TambahPengisianTanki = () => {
                     <FormControl isInvalid={touched.ids && errors.ids}>
                       <FormLabel mb={3}>Konfirmasi Penerimaan</FormLabel>
                       <Text fontSize="sm" color="gray.500" mb={3}>
-                        Pilih minimal satu konfirmasi penerimaan yang belum
-                        terhubung ke pengisian tanki
+                        Pilih minimal satu konfirmasi penerimaan. Konfirmasi
+                        yang sudah terhubung ke tanki lain tetap dapat dipilih
+                        untuk tanki berikutnya.
                       </Text>
                       {dataKonfirmasi.length === 0 ? (
                         <Text fontSize="sm" color="red.500">
@@ -389,18 +465,155 @@ const TambahPengisianTanki = () => {
                           tanki.
                         </Text>
                       ) : (
-                        <CheckboxGroup
-                          value={values.ids}
-                          onChange={(val) => setFieldValue("ids", val)}
-                        >
-                          <Stack spacing={2}>
-                            {dataKonfirmasi.map((item) => (
-                              <Checkbox key={item.id} value={String(item.id)}>
-                                {getKonfirmasiPenerimaanLabel(item)}
-                              </Checkbox>
-                            ))}
-                          </Stack>
-                        </CheckboxGroup>
+                        <Box>
+                          <Text fontSize="sm" color="gray.600" mb={2}>
+                            {values.ids.length} dari {dataKonfirmasi.length}{" "}
+                            data dipilih
+                          </Text>
+                          <TableContainer
+                            border="1px solid"
+                            borderColor="gray.200"
+                            borderRadius="md"
+                            maxH="360px"
+                            overflowY="auto"
+                          >
+                            <Table size="sm" variant="simple">
+                              <Thead
+                                bg="gray.50"
+                                position="sticky"
+                                top={0}
+                                zIndex={1}
+                                sx={{ th: { bg: "gray.50" } }}
+                              >
+                                <Tr>
+                                  <Th w="48px">
+                                    <Checkbox
+                                      isChecked={
+                                        dataKonfirmasi.length > 0 &&
+                                        dataKonfirmasi.every((item) =>
+                                          values.ids.includes(String(item.id)),
+                                        )
+                                      }
+                                      isIndeterminate={
+                                        values.ids.length > 0 &&
+                                        values.ids.length < dataKonfirmasi.length
+                                      }
+                                      onChange={(e) => {
+                                        setFieldTouched("ids", true);
+                                        setFieldValue(
+                                          "ids",
+                                          e.target.checked
+                                            ? dataKonfirmasi.map((item) =>
+                                                String(item.id),
+                                              )
+                                            : [],
+                                        );
+                                      }}
+                                    />
+                                  </Th>
+                                  <Th textTransform="capitalize">No.</Th>
+                                  <Th textTransform="capitalize">Nomor</Th>
+                                  <Th textTransform="capitalize">Tanggal</Th>
+                                  <Th textTransform="capitalize">Surat Jalan</Th>
+                                  <Th textTransform="capitalize">Mitra</Th>
+                                  <Th textTransform="capitalize">Transportir</Th>
+                                  <Th textTransform="capitalize">Volume</Th>
+                                  <Th textTransform="capitalize">API</Th>
+                                  <Th textTransform="capitalize">BSNW</Th>
+                                  <Th textTransform="capitalize">Petugas</Th>
+                                  <Th textTransform="capitalize">Tanki terkait</Th>
+                                </Tr>
+                              </Thead>
+                              <Tbody>
+                                {dataKonfirmasi.map((item, index) => {
+                                  const id = String(item.id);
+                                  const isSelected = values.ids.includes(id);
+                                  const linkedTanki = getLinkedTankiKode(item);
+
+                                  return (
+                                    <Tr
+                                      key={item.id}
+                                      bg={isSelected ? "orange.50" : "white"}
+                                      _hover={{ bg: isSelected ? "orange.50" : "gray.50" }}
+                                      cursor="pointer"
+                                      onClick={() => {
+                                        setFieldTouched("ids", true);
+                                        setFieldValue(
+                                          "ids",
+                                          toggleKonfirmasiId(values.ids, item.id),
+                                        );
+                                      }}
+                                    >
+                                      <Td onClick={(e) => e.stopPropagation()}>
+                                        <Checkbox
+                                          isChecked={isSelected}
+                                          onChange={() => {
+                                            setFieldTouched("ids", true);
+                                            setFieldValue(
+                                              "ids",
+                                              toggleKonfirmasiId(
+                                                values.ids,
+                                                item.id,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                      </Td>
+                                      <Td>{index + 1}</Td>
+                                      <Td fontWeight="medium">
+                                        {item.nomor || "-"}
+                                      </Td>
+                                      <Td>{formatDate(item.tanggal)}</Td>
+                                      <Td>
+                                        {item.suratJalan?.nomor || "-"}
+                                      </Td>
+                                      <Td>
+                                        {item.suratJalan?.mitra?.nama || "-"}
+                                      </Td>
+                                      <Td>
+                                        {item.suratJalan?.transportir?.plat ||
+                                          "-"}
+                                      </Td>
+                                      <Td>
+                                        <VolumeMultiSatuan
+                                          volume={
+                                            item.volume ??
+                                            item.suratJalan?.volume
+                                          }
+                                          satuan={
+                                            item.suratJalan?.satuanVolume
+                                              ?.satuan || "Barrel"
+                                          }
+                                        />
+                                      </Td>
+                                      <Td>{formatAngka(item.api)}</Td>
+                                      <Td>{formatAngka(item.BSNW)}</Td>
+                                      <Td>{item.pegawai?.nama || "-"}</Td>
+                                      <Td>
+                                        {linkedTanki.length === 0 ? (
+                                          <Text fontSize="sm" color="gray.500">
+                                            Belum terhubung
+                                          </Text>
+                                        ) : (
+                                          linkedTanki.map((kode) => (
+                                            <Badge
+                                              key={kode}
+                                              colorScheme="orange"
+                                              mr={1}
+                                              mb={1}
+                                            >
+                                              {kode}
+                                            </Badge>
+                                          ))
+                                        )}
+                                      </Td>
+                                    </Tr>
+                                  );
+                                })}
+                              </Tbody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
                       )}
                       <FormErrorMessage>{errors.ids}</FormErrorMessage>
                     </FormControl>

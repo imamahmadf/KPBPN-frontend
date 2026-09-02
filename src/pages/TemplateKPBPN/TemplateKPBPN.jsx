@@ -42,7 +42,7 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const JENIS_DOKUMEN_OPTIONS = [
   { value: "BAST", label: "BAST" },
-  { value: "BAPenerimaan", label: "BA Penerimaan" },
+  { value: "BABongkar", label: "BA Bongkar" },
   { value: "suratJalan", label: "Surat Jalan" },
 ];
 
@@ -52,7 +52,7 @@ const getJenisLabel = (jenis) =>
 const templateSchema = Yup.object({
   nama: Yup.string().required("Nama template wajib diisi"),
   jenisDokumen: Yup.string()
-    .oneOf(["BAST", "BAPenerimaan", "suratJalan"], "Jenis dokumen tidak valid")
+    .oneOf(["BAST", "BABongkar", "suratJalan"], "Jenis dokumen tidak valid")
     .required("Jenis dokumen wajib dipilih"),
   status: Yup.string()
     .oneOf(["aktif", "nonaktif"], "Status tidak valid")
@@ -291,7 +291,7 @@ const TemplateKPBPN = () => {
           <Box>
             <Heading size="lg">Template Dokumen KPBPN</Heading>
             <Text color="gray.600" mt={1}>
-              Kelola template BAST, BA Penerimaan, dan Surat Jalan
+              Kelola template BAST, BA Bongkar, dan Surat Jalan
             </Text>
           </Box>
           <Button variant="primary" onClick={openTambahModal}>

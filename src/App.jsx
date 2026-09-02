@@ -23,11 +23,17 @@ import DaftarMitra from "./pages/MitraKPBPN/DaftarMitra.jsx";
 import SuratJalan from "./pages/PengirimanAdminKPBPN/SuratJalan.jsx";
 import SuratJalanMitra from "./pages/PengirimanMitraKPBPN/SuratJalanMitra.jsx";
 import PengisianTanki from "./pages/Tanki/PengisianTanki.jsx";
-import BAPenerimaan from "./pages/Tanki/BAPenerimaan.jsx";
+import BABongkar from "./pages/Tanki/BABongkar.jsx";
 import TambahPengisianTanki from "./pages/Tanki/TambahPengisianTanki.jsx";
 import DaftarTanki from "./pages/Tanki/DaftarTanki.jsx";
 import AdminDashborad from "./pages/Dashboard/AdminDashborad.jsx";
 import TemplateKPBPN from "./pages/TemplateKPBPN/TemplateKPBPN.jsx";
+import StokOpname from "./pages/Tanki/StokOpname";
+import UjiLabK3S from "./pages/Tanki/UjiLabK3S.jsx";
+import AdminSumurMinyak from "./pages/Admin/AdminSumurMinyak.jsx";
+import ProduksiSumur from "./pages/Admin/ProduksiSumur.jsx";
+import PetaSumur from "./pages/Admin/PetaSumur.jsx";
+import StasiunPengumpulMinyak from "./pages/Admin/StasiunPengumpulMinyak.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -116,8 +122,15 @@ function App() {
           />
 
           <ProtectedRoute
-            component={BAPenerimaan}
+            component={BABongkar}
             path="/tanki-kpbpn/ba-bongkar"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={UjiLabK3S}
+            path="/tanki-kpbpn/uji-lab"
             exact
             roleRoute={[1, 2]}
           />
@@ -130,7 +143,7 @@ function App() {
           />
           <ProtectedRoute
             component={DaftarTanki}
-            path="/tanki-kpbpn/daftar-tanki"
+            path="/admin/daftar-tanki"
             exact
             roleRoute={[1, 2]}
           />
@@ -145,6 +158,41 @@ function App() {
           <ProtectedRoute
             component={TemplateKPBPN}
             path="/admin/template-kpbpn"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={StokOpname}
+            path="/tanki-kpbpn/stok-opname"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={AdminSumurMinyak}
+            path="/sumur/sumur-minyak"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={ProduksiSumur}
+            path="/sumur/produksi-sumur/:id"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={PetaSumur}
+            path="/sumur/peta-sumur"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={StasiunPengumpulMinyak}
+            path="/admin/stasiun-pengumpul-minyak"
             exact
             roleRoute={[1, 2]}
           />

@@ -39,9 +39,12 @@ import {
   ModalFooter,
   ModalCloseButton,
   useDisclosure,
+  Collapse,
 } from "@chakra-ui/react";
-import { Select as Select2, AsyncSelect } from "chakra-react-select";
+import { Select as Select2 } from "chakra-react-select";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
+import { isVolumeEqual } from "../../lib/volumeSatuan";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -50,7 +53,9 @@ const suratJalanSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
   mitraId: Yup.mixed().nullable().required("Mitra wajib dipilih"),
   transportirId: Yup.mixed().nullable().required("Transportir wajib dipilih"),
-  unitKerjaId: Yup.mixed().nullable().required("Proyek wajib dipilih"),
+  stasiunPengumpulMinyakId: Yup.mixed()
+    .nullable()
+    .required("Stasiun pengumpul minyak wajib dipilih"),
   volume: Yup.number()
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
@@ -67,8 +72,7 @@ const initialValuesTambahBase = {
   tanggal: "",
   mitraId: null,
   transportirId: null,
-  unitKerjaId: null,
-  unitKerjaLabel: "",
+  stasiunPengumpulMinyakId: null,
   volume: "",
   satuanVolumeId: null,
   supirId: null,
@@ -113,11 +117,6 @@ const formatTransportirLabel = (val) => {
   return label;
 };
 
-const formatVolumeLabel = (volume, satuan) => {
-  if (volume === null || volume === undefined || volume === "") return "-";
-  return satuan ? `${volume} ${satuan}` : String(volume);
-};
-
 const MobileField = ({ label, children }) => (
   <Box>
     <Text
@@ -130,9 +129,9 @@ const MobileField = ({ label, children }) => (
     >
       {label}
     </Text>
-    <Text fontSize="sm" color="gray.700">
+    <Box fontSize="sm" color="gray.700">
       {children}
-    </Text>
+    </Box>
   </Box>
 );
 
@@ -156,10 +155,24 @@ const SuratJalanMitra = () => {
   const [rows, setRows] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingCetak, setLoadingCetak] = useState({});
+  const [expandedProduksiId, setExpandedProduksiId] = useState(null);
+  const [produksiPanel, setProduksiPanel] = useState({
+    loading: false,
+    saving: false,
+    sumurList: [],
+    inputs: {},
+    volume: 0,
+    satuan: "",
+    satuanVolumeId: null,
+    satuanVolumeOptions: [],
+  });
+
+  const TABLE_COL_SPAN = 11;
 
   const [transportirFilterId, setTransportirFilterId] = useState(0);
   const [supirFilterId, setSupirFilterId] = useState(0);
-  const [unitKerjaFilterId, setUnitKerjaFilterId] = useState(0);
+  const [stasiunPengumpulMinyakFilterId, setStasiunPengumpulMinyakFilterId] =
+    useState(0);
   const [statusSuratJalanFilterId, setStatusSuratJalanFilterId] = useState(0);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
@@ -240,7 +253,7 @@ const SuratJalanMitra = () => {
           mitraId: mitraId || undefined,
           transportirId: transportirFilterId || undefined,
           supirId: supirFilterId || undefined,
-          unitKerjaId: unitKerjaFilterId || undefined,
+          stasiunPengumpulMinyakId: stasiunPengumpulMinyakFilterId || undefined,
           statusSuratJalanId: statusSuratJalanFilterId || undefined,
           startDate: tanggalAwal || undefined,
           endDate: tanggalAkhir || undefined,
@@ -268,7 +281,7 @@ const SuratJalanMitra = () => {
   const resetFilter = () => {
     setTransportirFilterId(0);
     setSupirFilterId(0);
-    setUnitKerjaFilterId(0);
+    setStasiunPengumpulMinyakFilterId(0);
     setStatusSuratJalanFilterId(0);
     setTanggalAwal("");
     setTanggalAkhir("");
@@ -291,7 +304,7 @@ const SuratJalanMitra = () => {
         tanggal: values.tanggal,
         mitraId: values.mitraId || mitraId,
         transportirId: values.transportirId,
-        unitKerjaId: values.unitKerjaId,
+        stasiunPengumpulMinyakId: values.stasiunPengumpulMinyakId,
         volume: values.volume,
         satuanVolumeId: values.satuanVolumeId,
         supirId: values.supirId,
@@ -403,10 +416,257 @@ const SuratJalanMitra = () => {
     }
   };
 
+  const fetchProduksiPanel = async (item) => {
+    setProduksiPanel((prev) => ({
+      ...prev,
+      loading: true,
+      sumurList: [],
+      inputs: {},
+      volume: item.volume || 0,
+      satuan: item.satuanVolume?.satuan || "",
+      satuanVolumeId: item.satuanVolumeId || null,
+    }));
+
+    try {
+      const res = await axios.get(
+        `${API_BASE}/pengiriman/get/produksi-sumur/${item.id}`,
+      );
+
+      const sumurList = res.data.resultSumurMinyak || [];
+      const existingProduksi = res.data.resultProduksi || [];
+      const satuanVolumeOptions =
+        res.data.resultSatuanVolume ||
+        dataSeed?.resultSatuanVolume ||
+        [];
+      const inputs = {};
+
+      sumurList.forEach((sumur) => {
+        const existing = existingProduksi.find(
+          (p) => p.sumurMinyakId === sumur.id,
+        );
+        inputs[sumur.id] = existing?.produksi ?? "";
+      });
+
+      const defaultSatuanVolumeId =
+        existingProduksi.find((p) => p.satuanVolumeId)?.satuanVolumeId ??
+        res.data.suratJalan?.satuanVolumeId ??
+        item.satuanVolumeId ??
+        satuanVolumeOptions[0]?.id ??
+        null;
+
+      setProduksiPanel((prev) => ({
+        ...prev,
+        loading: false,
+        sumurList,
+        inputs,
+        volume: res.data.suratJalan?.volume ?? item.volume ?? 0,
+        satuan: res.data.suratJalan?.satuanVolume?.satuan
+          || item.satuanVolume?.satuan
+          || "",
+        satuanVolumeId: defaultSatuanVolumeId,
+        satuanVolumeOptions,
+      }));
+    } catch (err) {
+      console.error(err);
+      setExpandedProduksiId(null);
+      setProduksiPanel((prev) => ({ ...prev, loading: false }));
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error || "Gagal memuat data produksi sumur",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const toggleProduksiPanel = async (item) => {
+    if (expandedProduksiId === item.id) {
+      setExpandedProduksiId(null);
+      return;
+    }
+
+    setExpandedProduksiId(item.id);
+    await fetchProduksiPanel(item);
+  };
+
+  const handleProduksiInputChange = (sumurMinyakId, value) => {
+    setProduksiPanel((prev) => ({
+      ...prev,
+      inputs: {
+        ...prev.inputs,
+        [sumurMinyakId]: value,
+      },
+    }));
+  };
+
+  const totalProduksiInput = useMemo(() => {
+    return Object.values(produksiPanel.inputs).reduce((sum, val) => {
+      const num = parseInt(val, 10);
+      return sum + (Number.isNaN(num) ? 0 : num);
+    }, 0);
+  }, [produksiPanel.inputs]);
+
+  const produksiSatuanOptions = useMemo(() => {
+    const options = produksiPanel.satuanVolumeOptions.length
+      ? produksiPanel.satuanVolumeOptions
+      : dataSeed?.resultSatuanVolume || [];
+
+    return options.map((val) => ({
+      value: val.id,
+      label: val.satuan || `Satuan #${val.id}`,
+    }));
+  }, [produksiPanel.satuanVolumeOptions, dataSeed?.resultSatuanVolume]);
+
+  const produksiSatuanLabel = useMemo(() => {
+    const selected = produksiSatuanOptions.find(
+      (opt) => opt.value === produksiPanel.satuanVolumeId,
+    );
+    return selected?.label || produksiPanel.satuan || "Barrel";
+  }, [
+    produksiSatuanOptions,
+    produksiPanel.satuanVolumeId,
+    produksiPanel.satuan,
+  ]);
+
+  const isProduksiTotalValid = useMemo(
+    () =>
+      isVolumeEqual(
+        totalProduksiInput,
+        produksiSatuanLabel,
+        produksiPanel.volume,
+        produksiPanel.satuan || "Barrel",
+      ),
+    [
+      totalProduksiInput,
+      produksiSatuanLabel,
+      produksiPanel.volume,
+      produksiPanel.satuan,
+    ],
+  );
+
+  const renderProduksiSatuanField = (isEditable) => (
+    <FormControl mb={4} maxW={{ md: "320px" }}>
+      <FormLabel fontSize="sm">Satuan Produksi</FormLabel>
+      <Select2
+        options={produksiSatuanOptions}
+        placeholder="Pilih satuan volume"
+        isDisabled={!isEditable}
+        value={
+          produksiPanel.satuanVolumeId
+            ? produksiSatuanOptions.find(
+                (opt) => opt.value === produksiPanel.satuanVolumeId,
+              ) || null
+            : null
+        }
+        onChange={(opt) =>
+          setProduksiPanel((prev) => ({
+            ...prev,
+            satuanVolumeId: opt?.value || null,
+          }))
+        }
+        {...selectStyles}
+      />
+    </FormControl>
+  );
+
+  const renderProduksiSummary = () => (
+    <Box mb={2}>
+      <HStack spacing={1} align="start" mb={1}>
+        <Text fontSize="sm" color="gray.600">
+          Total Produksi:
+        </Text>
+        <VolumeMultiSatuan
+          volume={totalProduksiInput}
+          satuan={produksiSatuanLabel}
+          fontSize="sm"
+        />
+      </HStack>
+      <HStack spacing={1} align="start">
+        <Text fontSize="sm" color="gray.600">
+          Volume Surat Jalan:
+        </Text>
+        <VolumeMultiSatuan
+          volume={produksiPanel.volume}
+          satuan={produksiPanel.satuan || "Barrel"}
+          fontSize="sm"
+        />
+      </HStack>
+      {!isProduksiTotalValid && (
+        <Text fontSize="xs" color="red.500" mt={1}>
+          Total produksi harus sama dengan volume surat jalan
+        </Text>
+      )}
+    </Box>
+  );
+
+  const saveProduksiSumur = async (suratJalanId) => {
+    const items = Object.entries(produksiPanel.inputs)
+      .map(([sumurMinyakId, produksi]) => ({
+        sumurMinyakId: parseInt(sumurMinyakId, 10),
+        produksi: parseInt(produksi, 10) || 0,
+      }))
+      .filter((item) => item.produksi > 0);
+
+    if (!produksiPanel.satuanVolumeId) {
+      toast({
+        title: "Satuan belum dipilih",
+        description: "Pilih satuan volume produksi terlebih dahulu.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!isProduksiTotalValid) {
+      toast({
+        title: "Total produksi tidak sesuai",
+        description:
+          "Total produksi harus sama dengan volume surat jalan setelah konversi satuan.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setProduksiPanel((prev) => ({ ...prev, saving: true }));
+
+    try {
+      await axios.post(`${API_BASE}/pengiriman/post/produksi-sumur`, {
+        suratJalanId,
+        satuanVolumeId: produksiPanel.satuanVolumeId,
+        items,
+      });
+
+      toast({
+        title: "Berhasil!",
+        description: "Produksi sumur berhasil disimpan.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error || "Gagal menyimpan produksi sumur",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setProduksiPanel((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
   const hasActiveFilter =
     transportirFilterId ||
     supirFilterId ||
-    unitKerjaFilterId ||
+    stasiunPengumpulMinyakFilterId ||
     statusSuratJalanFilterId ||
     tanggalAwal ||
     tanggalAkhir ||
@@ -423,7 +683,7 @@ const SuratJalanMitra = () => {
     mitraId,
     transportirFilterId,
     supirFilterId,
-    unitKerjaFilterId,
+    stasiunPengumpulMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -439,7 +699,7 @@ const SuratJalanMitra = () => {
     mitraId,
     transportirFilterId,
     supirFilterId,
-    unitKerjaFilterId,
+    stasiunPengumpulMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -529,26 +789,19 @@ const SuratJalanMitra = () => {
 
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
-                  Proyek
+                  Stasiun Pengumpul Minyak
                 </FormLabel>
-                <AsyncSelect
-                  loadOptions={async (inputValue) => {
-                    if (!inputValue) return [];
-                    try {
-                      const res = await axios.get(
-                        `${API_BASE}/admin/search/unit-kerja?q=${encodeURIComponent(inputValue)}&status=gudang`,
-                      );
-                      return (res.data.result || []).map((val) => ({
-                        value: val.id,
-                        label: val.unitKerja,
-                      }));
-                    } catch (err) {
-                      console.error("Failed to load options:", err.message);
-                      return [];
-                    }
-                  }}
-                  placeholder="Ketik Nama Proyek"
-                  onChange={(opt) => setUnitKerjaFilterId(opt?.value || 0)}
+                <Select2
+                  options={(dataSeed?.resultStasiunPengumpulMinyak || []).map(
+                    (val) => ({
+                      value: val.id,
+                      label: val.nama,
+                    }),
+                  )}
+                  placeholder="Pilih Stasiun"
+                  onChange={(opt) =>
+                    setStasiunPengumpulMinyakFilterId(opt?.value || 0)
+                  }
                   {...selectStyles}
                 />
               </FormControl>
@@ -704,74 +957,176 @@ const SuratJalanMitra = () => {
                 </Stack>
               ) : dataSuratJalan?.length > 0 ? (
                 <Stack spacing={4}>
-                  {dataSuratJalan.map((item) => (
-                    <Box
-                      key={item.id}
-                      p={4}
-                      borderRadius="lg"
-                      border="1px solid"
-                      borderColor="gray.200"
-                      bg="white"
-                      boxShadow="sm"
-                    >
-                      <HStack
-                        justify="space-between"
-                        align="start"
-                        mb={3}
-                        flexWrap="wrap"
-                        gap={2}
+                  {dataSuratJalan.map((item) => {
+                    const isProduksiExpanded = expandedProduksiId === item.id;
+
+                    return (
+                      <Box
+                        key={item.id}
+                        p={4}
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        bg="white"
+                        boxShadow="sm"
                       >
-                        <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                          {item.nomor || "-"}
-                        </Text>
-                        <Badge colorScheme="blue" variant="subtle">
-                          {item.statusSuratJalan?.status || "-"}
-                        </Badge>
-                      </HStack>
-                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                        <MobileField label="Tanggal">
-                          {formatTanggal(item.tanggal)}
-                        </MobileField>
-                        <MobileField label="Mitra">
-                          {item.mitra?.nama || "-"}
-                        </MobileField>
-                        <MobileField label="Transportir">
-                          {item.transportir?.plat || "-"}
-                        </MobileField>
-                        <MobileField label="Proyek">
-                          {item.daftarUnitKerja?.unitKerja || "-"}
-                        </MobileField>
-                        <MobileField label="Volume">
-                          {formatVolumeLabel(
-                            item.volume,
-                            item.satuanVolume?.satuan,
-                          )}
-                        </MobileField>
-                        <MobileField label="Supir">
-                          {item.supir?.nama || "-"}
-                        </MobileField>
-                        <MobileField label="Jam Pergi">
-                          {formatJam(item.jamPergi)}
-                        </MobileField>
-                        <MobileField label="Jam Datang">
-                          {formatJam(item.jamDatang)}
-                        </MobileField>
-                      </SimpleGrid>
-                      {item.statusSuratJalanId !== 1 && (
-                        <Button
-                          mt={4}
-                          size="sm"
-                          variant="outline"
-                          colorScheme="teal"
-                          w="full"
-                          isLoading={loadingCetak[item.id]}
-                          onClick={() => cetakSuratJalan(item)}
+                        <HStack
+                          justify="space-between"
+                          align="start"
+                          mb={3}
+                          flexWrap="wrap"
+                          gap={2}
                         >
-                          Cetak
-                        </Button>
-                      )}
-                    </Box>
-                  ))}
+                          <Text fontWeight="bold" color="kpbpn" fontSize="sm">
+                            {item.nomor || "-"}
+                          </Text>
+                          <Badge colorScheme="blue" variant="subtle">
+                            {item.statusSuratJalan?.status || "-"}
+                          </Badge>
+                        </HStack>
+                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                          <MobileField label="Tanggal">
+                            {formatTanggal(item.tanggal)}
+                          </MobileField>
+                          <MobileField label="Mitra">
+                            {item.mitra?.nama || "-"}
+                          </MobileField>
+                          <MobileField label="Transportir">
+                            {item.transportir?.plat || "-"}
+                          </MobileField>
+                          <MobileField label="Stasiun Pengumpul Minyak">
+                            {item.stasiunPengumpulMinyak?.nama || "-"}
+                          </MobileField>
+                          <MobileField label="Volume">
+                            <VolumeMultiSatuan
+                              volume={item.volume}
+                              satuan={item.satuanVolume?.satuan || "Barrel"}
+                            />
+                          </MobileField>
+                          <MobileField label="Supir">
+                            {item.supir?.nama || "-"}
+                          </MobileField>
+                          <MobileField label="Jam Pergi">
+                            {formatJam(item.jamPergi)}
+                          </MobileField>
+                          <MobileField label="Jam Datang">
+                            {formatJam(item.jamDatang)}
+                          </MobileField>
+                        </SimpleGrid>
+                        <HStack mt={4} spacing={2}>
+                          <Button
+                            size="sm"
+                            variant={isProduksiExpanded ? "solid" : "outline"}
+                            colorScheme="orange"
+                            flex={1}
+                            onClick={() => toggleProduksiPanel(item)}
+                          >
+                            Produksi
+                          </Button>
+                          {item.statusSuratJalanId !== 1 && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="teal"
+                              flex={1}
+                              isLoading={loadingCetak[item.id]}
+                              onClick={() => cetakSuratJalan(item)}
+                            >
+                              Cetak
+                            </Button>
+                          )}
+                        </HStack>
+                        <Collapse in={isProduksiExpanded} animateOpacity>
+                          <Box
+                            mt={4}
+                            pt={4}
+                            borderTopWidth="1px"
+                            borderColor="gray.100"
+                          >
+                            <Heading size="xs" mb={3} color="kpbpn">
+                              Input Produksi Sumur Minyak
+                            </Heading>
+                            {produksiPanel.loading ? (
+                              <Stack spacing={2}>
+                                <Skeleton height="20px" />
+                                <Skeleton height="20px" />
+                              </Stack>
+                            ) : produksiPanel.sumurList.length === 0 ? (
+                              <Text fontSize="sm" color="gray.500">
+                                Tidak ada data sumur minyak untuk mitra ini
+                              </Text>
+                            ) : (
+                              <>
+                                {renderProduksiSatuanField(
+                                  item.statusSuratJalanId === 1,
+                                )}
+                                <Stack spacing={3} mb={4}>
+                                  {produksiPanel.sumurList.map((sumur, idx) => (
+                                    <Box
+                                      key={sumur.id}
+                                      p={3}
+                                      borderRadius="md"
+                                      border="1px solid"
+                                      borderColor="gray.100"
+                                      bg="gray.50"
+                                    >
+                                      <Text fontSize="xs" color="gray.500" mb={1}>
+                                        Sumur #{idx + 1} · {sumur.nomor || "-"}
+                                      </Text>
+                                      <Text fontSize="sm" fontWeight="medium" mb={2}>
+                                        {sumur.nama || "-"}
+                                      </Text>
+                                      <FormControl>
+                                        <FormLabel fontSize="xs">
+                                          Produksi ({produksiSatuanLabel})
+                                        </FormLabel>
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          size="sm"
+                                          bgColor="terang"
+                                          value={
+                                            produksiPanel.inputs[sumur.id] ?? ""
+                                          }
+                                          onChange={(e) =>
+                                            handleProduksiInputChange(
+                                              sumur.id,
+                                              e.target.value,
+                                            )
+                                          }
+                                          placeholder="0"
+                                          isDisabled={
+                                            item.statusSuratJalanId !== 1
+                                          }
+                                        />
+                                      </FormControl>
+                                    </Box>
+                                  ))}
+                                </Stack>
+                                {renderProduksiSummary()}
+                                {item.statusSuratJalanId === 1 && (
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    w="full"
+                                    isLoading={produksiPanel.saving}
+                                    isDisabled={
+                                      !isProduksiTotalValid ||
+                                      !produksiPanel.satuanVolumeId ||
+                                      produksiPanel.loading
+                                    }
+                                    onClick={() => saveProduksiSumur(item.id)}
+                                  >
+                                    Simpan Produksi
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Box
@@ -805,7 +1160,9 @@ const SuratJalanMitra = () => {
                     <Th textTransform="capitalize">Tanggal</Th>
                     <Th textTransform="capitalize">Mitra</Th>
                     <Th textTransform="capitalize">Transportir</Th>
-                    <Th textTransform="capitalize">Proyek</Th>
+                    <Th textTransform="capitalize">
+                      Stasiun Pengumpul Minyak
+                    </Th>
                     <Th textTransform="capitalize" isNumeric>
                       Volume
                     </Th>
@@ -828,44 +1185,170 @@ const SuratJalanMitra = () => {
                       </Tr>
                     ))
                   ) : dataSuratJalan?.length > 0 ? (
-                    dataSuratJalan.map((item) => (
-                      <Tr key={item.id}>
-                        <Td fontWeight="medium">{item.nomor || "-"}</Td>
-                        <Td>{formatTanggal(item.tanggal)}</Td>
-                        <Td>{item.mitra?.nama || "-"}</Td>
-                        <Td>{item.transportir?.plat || "-"}</Td>
-                        <Td>{item.daftarUnitKerja?.unitKerja || "-"}</Td>
-                        <Td isNumeric>
-                          {formatVolumeLabel(
-                            item.volume,
-                            item.satuanVolume?.satuan,
-                          )}
-                        </Td>
-                        <Td>{item.supir?.nama || "-"}</Td>
-                        <Td>{formatJam(item.jamPergi)}</Td>
-                        <Td>{formatJam(item.jamDatang)}</Td>
-                        <Td>
-                          <Badge colorScheme="blue" variant="subtle">
-                            {item.statusSuratJalan?.status || "-"}
-                          </Badge>
-                        </Td>
-                        <Td>
-                          {item.statusSuratJalanId !== 1 ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              colorScheme="teal"
-                              isLoading={loadingCetak[item.id]}
-                              onClick={() => cetakSuratJalan(item)}
-                            >
-                              Cetak
-                            </Button>
-                          ) : (
-                            "-"
-                          )}
-                        </Td>
-                      </Tr>
-                    ))
+                    dataSuratJalan.map((item) => {
+                      const isProduksiExpanded = expandedProduksiId === item.id;
+
+                      return (
+                        <React.Fragment key={item.id}>
+                          <Tr>
+                            <Td fontWeight="medium">{item.nomor || "-"}</Td>
+                            <Td>{formatTanggal(item.tanggal)}</Td>
+                            <Td>{item.mitra?.nama || "-"}</Td>
+                            <Td>{item.transportir?.plat || "-"}</Td>
+                            <Td>
+                              {item.stasiunPengumpulMinyak?.nama || "-"}
+                            </Td>
+                            <Td>
+                              <VolumeMultiSatuan
+                                volume={item.volume}
+                                satuan={item.satuanVolume?.satuan || "Barrel"}
+                              />
+                            </Td>
+                            <Td>{item.supir?.nama || "-"}</Td>
+                            <Td>{formatJam(item.jamPergi)}</Td>
+                            <Td>{formatJam(item.jamDatang)}</Td>
+                            <Td>
+                              <Badge colorScheme="blue" variant="subtle">
+                                {item.statusSuratJalan?.status || "-"}
+                              </Badge>
+                            </Td>
+                            <Td>
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  variant={isProduksiExpanded ? "solid" : "outline"}
+                                  colorScheme="orange"
+                                  onClick={() => toggleProduksiPanel(item)}
+                                >
+                                  Produksi
+                                </Button>
+                                {item.statusSuratJalanId !== 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorScheme="teal"
+                                    isLoading={loadingCetak[item.id]}
+                                    onClick={() => cetakSuratJalan(item)}
+                                  >
+                                    Cetak
+                                  </Button>
+                                )}
+                              </HStack>
+                            </Td>
+                          </Tr>
+                          <Tr>
+                            <Td colSpan={TABLE_COL_SPAN} p={0} borderBottom="none">
+                              <Collapse in={isProduksiExpanded} animateOpacity>
+                                <Box
+                                  p={4}
+                                  bg="gray.50"
+                                  borderTopWidth="1px"
+                                  borderColor="gray.200"
+                                >
+                                  <Heading size="sm" mb={3} color="kpbpn">
+                                    Input Produksi Sumur Minyak
+                                  </Heading>
+                                  {produksiPanel.loading ? (
+                                    <Stack spacing={2}>
+                                      <Skeleton height="20px" />
+                                      <Skeleton height="20px" />
+                                      <Skeleton height="20px" />
+                                    </Stack>
+                                  ) : produksiPanel.sumurList.length === 0 ? (
+                                    <Text fontSize="sm" color="gray.500">
+                                      Tidak ada data sumur minyak untuk mitra ini
+                                    </Text>
+                                  ) : (
+                                    <>
+                                      {renderProduksiSatuanField(
+                                        item.statusSuratJalanId === 1,
+                                      )}
+                                      <Box overflowX="auto" mb={4}>
+                                        <Table size="sm" variant="simple" bg="white">
+                                          <Thead bg="gray.100">
+                                            <Tr>
+                                              <Th>No</Th>
+                                              <Th>Nomor Sumur</Th>
+                                              <Th>Nama Sumur</Th>
+                                              <Th isNumeric>
+                                                Produksi ({produksiSatuanLabel})
+                                              </Th>
+                                            </Tr>
+                                          </Thead>
+                                          <Tbody>
+                                            {produksiPanel.sumurList.map(
+                                              (sumur, idx) => (
+                                                <Tr key={sumur.id}>
+                                                  <Td>{idx + 1}</Td>
+                                                  <Td>{sumur.nomor || "-"}</Td>
+                                                  <Td>{sumur.nama || "-"}</Td>
+                                                  <Td isNumeric>
+                                                    <Input
+                                                      type="number"
+                                                      min={0}
+                                                      size="sm"
+                                                      w="120px"
+                                                      ml="auto"
+                                                      bgColor="terang"
+                                                      value={
+                                                        produksiPanel.inputs[
+                                                          sumur.id
+                                                        ] ?? ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        handleProduksiInputChange(
+                                                          sumur.id,
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      placeholder="0"
+                                                      isDisabled={
+                                                        item.statusSuratJalanId !==
+                                                        1
+                                                      }
+                                                    />
+                                                  </Td>
+                                                </Tr>
+                                              ),
+                                            )}
+                                          </Tbody>
+                                        </Table>
+                                      </Box>
+                                      <Flex
+                                        align={{ base: "stretch", md: "center" }}
+                                        direction={{ base: "column", md: "row" }}
+                                        gap={3}
+                                        justify="space-between"
+                                      >
+                                        <Box>{renderProduksiSummary()}</Box>
+                                        {item.statusSuratJalanId === 1 && (
+                                          <Button
+                                            variant="primary"
+                                            size="sm"
+                                            isLoading={produksiPanel.saving}
+                                            isDisabled={
+                                              !isProduksiTotalValid ||
+                                              !produksiPanel.satuanVolumeId ||
+                                              produksiPanel.loading
+                                            }
+                                            onClick={() =>
+                                              saveProduksiSumur(item.id)
+                                            }
+                                            w={{ base: "full", md: "auto" }}
+                                          >
+                                            Simpan Produksi
+                                          </Button>
+                                        )}
+                                      </Flex>
+                                    </>
+                                  )}
+                                </Box>
+                              </Collapse>
+                            </Td>
+                          </Tr>
+                        </React.Fragment>
+                      );
+                    })
                   ) : (
                     <Tr>
                       <Td colSpan={11} textAlign="center" py={10}>
@@ -1042,44 +1525,46 @@ const SuratJalanMitra = () => {
                       </FormErrorMessage>
                     </FormControl>
                     <FormControl
-                      isInvalid={touched.unitKerjaId && errors.unitKerjaId}
+                      isInvalid={
+                        touched.stasiunPengumpulMinyakId &&
+                        errors.stasiunPengumpulMinyakId
+                      }
                     >
-                      <FormLabel>Proyek</FormLabel>
-                      <AsyncSelect
-                        loadOptions={async (inputValue) => {
-                          if (!inputValue) return [];
-                          try {
-                            const res = await axios.get(
-                              `${API_BASE}/admin/search/unit-kerja?q=${encodeURIComponent(inputValue)}&status=gudang`,
-                            );
-                            return (res.data.result || []).map((val) => ({
-                              value: val.id,
-                              label: val.unitKerja,
-                            }));
-                          } catch (err) {
-                            console.error(
-                              "Failed to load options:",
-                              err.message,
-                            );
-                            return [];
-                          }
-                        }}
-                        placeholder="Ketik Nama Proyek"
+                      <FormLabel>Stasiun Pengumpul Minyak</FormLabel>
+                      <Select2
+                        options={(
+                          dataSeed?.resultStasiunPengumpulMinyak || []
+                        ).map((val) => ({
+                          value: val.id,
+                          label: val.nama,
+                        }))}
+                        placeholder="Pilih Stasiun Pengumpul Minyak"
                         value={
-                          values.unitKerjaId
+                          values.stasiunPengumpulMinyakId
                             ? {
-                                value: values.unitKerjaId,
-                                label: values.unitKerjaLabel,
+                                value: values.stasiunPengumpulMinyakId,
+                                label:
+                                  (
+                                    dataSeed?.resultStasiunPengumpulMinyak ||
+                                    []
+                                  ).find(
+                                    (s) =>
+                                      s.id === values.stasiunPengumpulMinyakId,
+                                  )?.nama || "",
                               }
                             : null
                         }
                         onChange={(opt) => {
-                          setFieldValue("unitKerjaId", opt?.value || null);
-                          setFieldValue("unitKerjaLabel", opt?.label || "");
+                          setFieldValue(
+                            "stasiunPengumpulMinyakId",
+                            opt?.value || null,
+                          );
                         }}
                         {...selectStyles}
                       />
-                      <FormErrorMessage>{errors.unitKerjaId}</FormErrorMessage>
+                      <FormErrorMessage>
+                        {errors.stasiunPengumpulMinyakId}
+                      </FormErrorMessage>
                     </FormControl>
                     <FormControl isInvalid={touched.volume && errors.volume}>
                       <FormLabel>Volume</FormLabel>

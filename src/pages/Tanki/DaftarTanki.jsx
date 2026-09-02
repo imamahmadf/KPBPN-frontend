@@ -33,11 +33,13 @@ import {
   Spinner,
   Center,
   IconButton,
+  Select,
+  SimpleGrid,
 } from "@chakra-ui/react";
 import { BsPencil, BsTrash } from "react-icons/bs";
-import { AsyncSelect } from "chakra-react-select";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import FotoPlaceholder from "../../assets/add_photo.png";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -94,15 +96,21 @@ const tankiSchema = Yup.object({
   factorTank: Yup.number()
     .typeError("Factor tank harus angka")
     .positive("Factor tank harus lebih dari 0")
-    .integer("Factor tank harus bilangan bulat")
     .required("Factor tank wajib diisi"),
-  unitKerjaId: Yup.mixed().nullable().required("Unit kerja wajib dipilih"),
+  stasiunPengumpulMinyakId: Yup.string().required(
+    "Stasiun pengumpul minyak wajib dipilih",
+  ),
+  satuanVolumeId: Yup.string().required("Satuan volume wajib dipilih"),
   pic: Yup.mixed().nullable(),
 });
 
 const DaftarTanki = () => {
   const toast = useToast();
   const [dataTanki, setDataTanki] = useState([]);
+  const [dataSatuanVolume, setDataSatuanVolume] = useState([]);
+  const [dataStasiunPengumpulMinyak, setDataStasiunPengumpulMinyak] = useState(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [previewFoto, setPreviewFoto] = useState(null);
   const [editingTanki, setEditingTanki] = useState(null);
@@ -130,6 +138,10 @@ const DaftarTanki = () => {
     try {
       const res = await axios.get(`${API_BASE}/tanki/get/tanki`);
       setDataTanki(res.data.result || []);
+      setDataSatuanVolume(res.data.resultSatuanVolume || []);
+      setDataStasiunPengumpulMinyak(
+        res.data.resultStasiunPengumpulMinyak || [],
+      );
     } catch (err) {
       console.error(err);
       toast({
@@ -214,21 +226,6 @@ const DaftarTanki = () => {
     }
   };
 
-  const loadUnitKerjaOptions = async (inputValue) => {
-    try {
-      const res = await axios.get(
-        `${API_BASE}/admin/search/unit-kerja?q=${encodeURIComponent(inputValue || "")}`,
-      );
-      return (res.data.result || []).map((val) => ({
-        value: val.id,
-        label: val.unitKerja,
-      }));
-    } catch (err) {
-      console.error(err);
-      return [];
-    }
-  };
-
   return (
     <LayoutKPBPN>
       <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
@@ -256,7 +253,7 @@ const DaftarTanki = () => {
                   <Tr>
                     <Th>No</Th>
                     <Th>Kode</Th>
-                    <Th>Unit Kerja</Th>
+                    <Th>Stasiun Pengumpul Minyak</Th>
                     <Th>Kapasitas</Th>
                     <Th>Factor Tank</Th>
                     <Th>Foto</Th>
@@ -275,8 +272,13 @@ const DaftarTanki = () => {
                       <Tr key={item.id}>
                         <Td>{index + 1}</Td>
                         <Td>{item.kode || "-"}</Td>
-                        <Td>{item.daftarUnitKerja?.unitKerja || "-"}</Td>
-                        <Td>{item.kapasitas ?? "-"}</Td>
+                        <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
+                        <Td>
+                          <VolumeMultiSatuan
+                            volume={item.kapasitas}
+                            satuan={item.satuanVolume?.satuan}
+                          />
+                        </Td>
                         <Td>{item.factorTank ?? "-"}</Td>
                         <Td>
                           {item.foto ? (
@@ -337,9 +339,14 @@ const DaftarTanki = () => {
               kode: editingTanki?.kode || "",
               kapasitas: editingTanki?.kapasitas?.toString() || "",
               factorTank: editingTanki?.factorTank?.toString() || "",
-              unitKerjaId: editingTanki?.unitKerjaId || null,
-              unitKerjaLabel:
-                editingTanki?.daftarUnitKerja?.unitKerja || "",
+              stasiunPengumpulMinyakId:
+                editingTanki?.stasiunPengumpulMinyakId?.toString() ||
+                editingTanki?.stasiunPengumpulMinyak?.id?.toString() ||
+                "",
+              satuanVolumeId:
+                editingTanki?.satuanVolumeId?.toString() ||
+                editingTanki?.satuanVolume?.id?.toString() ||
+                "",
               pic: null,
               picPreview: editingTanki?.foto
                 ? getImageUrl(editingTanki.foto)
@@ -352,7 +359,11 @@ const DaftarTanki = () => {
                 formData.append("kode", values.kode);
                 formData.append("kapasitas", values.kapasitas);
                 formData.append("factorTank", values.factorTank);
-                formData.append("unitKerjaId", values.unitKerjaId);
+                formData.append(
+                  "stasiunPengumpulMinyakId",
+                  values.stasiunPengumpulMinyakId,
+                );
+                formData.append("satuanVolumeId", values.satuanVolumeId);
                 if (values.pic) formData.append("pic", values.pic);
 
                 if (editingTanki) {
@@ -401,20 +412,46 @@ const DaftarTanki = () => {
                       <FormErrorMessage>{errors.kode}</FormErrorMessage>
                     </FormControl>
 
-                    <FormControl
-                      isInvalid={touched.kapasitas && errors.kapasitas}
-                    >
-                      <FormLabel>Kapasitas (liter)</FormLabel>
-                      <Input
-                        name="kapasitas"
-                        type="number"
-                        value={values.kapasitas}
-                        onChange={(e) =>
-                          setFieldValue("kapasitas", e.target.value)
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="100%">
+                      <FormControl
+                        isInvalid={touched.kapasitas && errors.kapasitas}
+                      >
+                        <FormLabel>Kapasitas</FormLabel>
+                        <Input
+                          name="kapasitas"
+                          type="number"
+                          value={values.kapasitas}
+                          onChange={(e) =>
+                            setFieldValue("kapasitas", e.target.value)
+                          }
+                        />
+                        <FormErrorMessage>{errors.kapasitas}</FormErrorMessage>
+                      </FormControl>
+
+                      <FormControl
+                        isInvalid={
+                          touched.satuanVolumeId && errors.satuanVolumeId
                         }
-                      />
-                      <FormErrorMessage>{errors.kapasitas}</FormErrorMessage>
-                    </FormControl>
+                      >
+                        <FormLabel>Satuan Volume</FormLabel>
+                        <Select
+                          placeholder="Pilih satuan volume"
+                          value={values.satuanVolumeId}
+                          onChange={(e) =>
+                            setFieldValue("satuanVolumeId", e.target.value)
+                          }
+                        >
+                          {dataSatuanVolume.map((item) => (
+                            <option key={item.id} value={String(item.id)}>
+                              {item.satuan}
+                            </option>
+                          ))}
+                        </Select>
+                        <FormErrorMessage>
+                          {errors.satuanVolumeId}
+                        </FormErrorMessage>
+                      </FormControl>
+                    </SimpleGrid>
 
                     <FormControl
                       isInvalid={touched.factorTank && errors.factorTank}
@@ -423,6 +460,7 @@ const DaftarTanki = () => {
                       <Input
                         name="factorTank"
                         type="number"
+                        step="any"
                         value={values.factorTank}
                         onChange={(e) =>
                           setFieldValue("factorTank", e.target.value)
@@ -432,38 +470,31 @@ const DaftarTanki = () => {
                     </FormControl>
 
                     <FormControl
-                      isInvalid={touched.unitKerjaId && errors.unitKerjaId}
+                      isInvalid={
+                        touched.stasiunPengumpulMinyakId &&
+                        errors.stasiunPengumpulMinyakId
+                      }
                     >
-                      <FormLabel>Unit Kerja</FormLabel>
-                      <AsyncSelect
-                        placeholder="Cari unit kerja..."
-                        cacheOptions
-                        defaultOptions
-                        loadOptions={loadUnitKerjaOptions}
-                        value={
-                          values.unitKerjaId
-                            ? {
-                                value: values.unitKerjaId,
-                                label: values.unitKerjaLabel,
-                              }
-                            : null
+                      <FormLabel>Stasiun Pengumpul Minyak</FormLabel>
+                      <Select
+                        placeholder="Pilih stasiun pengumpul minyak"
+                        value={values.stasiunPengumpulMinyakId}
+                        onChange={(e) =>
+                          setFieldValue(
+                            "stasiunPengumpulMinyakId",
+                            e.target.value,
+                          )
                         }
-                        onChange={(opt) => {
-                          setFieldValue("unitKerjaId", opt?.value || null);
-                          setFieldValue("unitKerjaLabel", opt?.label || "");
-                        }}
-                        chakraStyles={{
-                          container: (provided) => ({
-                            ...provided,
-                            width: "100%",
-                          }),
-                          control: (provided) => ({
-                            ...provided,
-                            minHeight: "40px",
-                          }),
-                        }}
-                      />
-                      <FormErrorMessage>{errors.unitKerjaId}</FormErrorMessage>
+                      >
+                        {dataStasiunPengumpulMinyak.map((item) => (
+                          <option key={item.id} value={String(item.id)}>
+                            {item.nama}
+                          </option>
+                        ))}
+                      </Select>
+                      <FormErrorMessage>
+                        {errors.stasiunPengumpulMinyakId}
+                      </FormErrorMessage>
                     </FormControl>
 
                     <FileUploadField
