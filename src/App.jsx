@@ -176,21 +176,21 @@ function App() {
             component={AdminSumurMinyak}
             path="/sumur/sumur-minyak"
             exact
-            roleRoute={[1, 2]}
+            roleRoute={[1, 2, 3]}
           />
 
           <ProtectedRoute
             component={ProduksiSumur}
             path="/sumur/produksi-sumur/:id"
             exact
-            roleRoute={[1, 2]}
+            roleRoute={[1, 2, 3]}
           />
 
           <ProtectedRoute
             component={PetaSumur}
             path="/sumur/peta-sumur"
             exact
-            roleRoute={[1, 2]}
+            roleRoute={[1, 2, 3]}
           />
 
           <ProtectedRoute

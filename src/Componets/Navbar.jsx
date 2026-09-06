@@ -225,7 +225,7 @@ const menuData = [
     icon: GiOilPump,
     group: "Operasional",
     pathPrefix: "/sumur",
-    allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
+    allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN, ROLE_KPBPN.MITRA],
     items: [
       { label: "Sumur Minyak", path: "/sumur/sumur-minyak" },
       { label: "Peta Sumur", path: "/sumur/peta-sumur" },

@@ -40,7 +40,13 @@ import {
 } from "@chakra-ui/react";
 import { BsPencil, BsTrash, BsEyeFill } from "react-icons/bs";
 import { Link as RouterLink } from "react-router-dom";
+import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import {
+  selectIsKpbpnAdmin,
+  selectMitra,
+  selectScopedMitraId,
+} from "../../Redux/Reducers/auth";
 import FotoPlaceholder from "../../assets/add_photo.png";
 import "../../Style/pagination.css";
 
@@ -136,6 +142,9 @@ const formatTanggal = (d) =>
 function AdminSumurMinyak() {
   const toast = useToast();
   const dataListRef = useRef(null);
+  const isKpbpnAdmin = useSelector(selectIsKpbpnAdmin);
+  const mitra = useSelector(selectMitra);
+  const scopedMitraId = useSelector(selectScopedMitraId);
 
   const [dataSumur, setDataSumur] = useState([]);
   const [dataMitra, setDataMitra] = useState([]);
@@ -196,7 +205,7 @@ function AdminSumurMinyak() {
         params: {
           page,
           limit,
-          mitraId: mitraFilterId || undefined,
+          mitraId: scopedMitraId || mitraFilterId || undefined,
           statusVerifikasi: statusFilter || undefined,
           search: search || undefined,
         },
@@ -225,7 +234,7 @@ function AdminSumurMinyak() {
 
   useEffect(() => {
     fetchDataSumur();
-  }, [page, limit, mitraFilterId, statusFilter, search]);
+  }, [page, limit, mitraFilterId, statusFilter, search, scopedMitraId]);
 
   const showSuccess = (message) => {
     toast({
@@ -325,6 +334,7 @@ function AdminSumurMinyak() {
             bg="gray.50"
           >
             <HStack spacing={4} flexWrap="wrap" align="flex-end">
+              {isKpbpnAdmin && (
               <FormControl maxW="220px">
                 <FormLabel fontSize="sm">Mitra</FormLabel>
                 <Select
@@ -342,6 +352,7 @@ function AdminSumurMinyak() {
                   ))}
                 </Select>
               </FormControl>
+              )}
 
               <FormControl maxW="180px">
                 <FormLabel fontSize="sm">Status Verifikasi</FormLabel>
@@ -555,7 +566,9 @@ function AdminSumurMinyak() {
             enableReinitialize
             initialValues={{
               nama: editingSumur?.nama || "",
-              mitraId: editingSumur?.mitraId?.toString() || "",
+              mitraId:
+                editingSumur?.mitraId?.toString() ||
+                (scopedMitraId ? String(scopedMitraId) : ""),
               nomor: editingSumur?.nomor || "",
               statusVerifikasi: editingSumur?.statusVerifikasi || "belum",
               tanggalVerifikasi: editingSumur?.tanggalVerifikasi
@@ -649,12 +662,27 @@ function AdminSumurMinyak() {
                         onChange={(e) =>
                           setFieldValue("mitraId", e.target.value)
                         }
+                        isDisabled={!isKpbpnAdmin}
                       >
-                        {dataMitra.map((m) => (
+                        {(isKpbpnAdmin
+                          ? dataMitra
+                          : dataMitra.filter(
+                              (m) => Number(m.id) === Number(scopedMitraId),
+                            )
+                        ).map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.nama}
                           </option>
                         ))}
+                        {!isKpbpnAdmin &&
+                          scopedMitraId &&
+                          !dataMitra.some(
+                            (m) => Number(m.id) === Number(scopedMitraId),
+                          ) && (
+                            <option value={scopedMitraId}>
+                              {mitra?.nama || `Mitra #${scopedMitraId}`}
+                            </option>
+                          )}
                       </Select>
                       <FormErrorMessage>{errors.mitraId}</FormErrorMessage>
                     </FormControl>

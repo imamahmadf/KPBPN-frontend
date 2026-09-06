@@ -197,6 +197,14 @@ export default authSlice.reducer;
 export const selectIsAuthenticated = (state) => !!state.auth.token;
 export const selectUser = (state) => state.auth.user;
 export const selectMitra = (state) => state.auth.mitra;
+export const selectIsKpbpnAdmin = (state) => {
+  const roleIds = selectRoleIds(state);
+  return roleIds.includes(1) || roleIds.includes(2);
+};
+export const selectScopedMitraId = (state) => {
+  if (selectIsKpbpnAdmin(state)) return null;
+  return state.auth.mitra?.id ?? state.auth.user?.mitraId ?? null;
+};
 
 axios.interceptors.response.use(
   (response) => response,
