@@ -43,6 +43,7 @@ import {
   Image,
   FormHelperText,
   Flex,
+  Spacer,
 } from "@chakra-ui/react";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
@@ -153,6 +154,24 @@ const isUjiLabSiapBA = (uji) =>
   Boolean(uji && uji.kualitas === "ONSPEC" && !uji.BABongkarId);
 
 const PENGISIAN_TANKI_COL_COUNT = 14;
+
+const MobileField = ({ label, children }) => (
+  <Box>
+    <Text
+      fontSize="xs"
+      color="gray.500"
+      fontWeight="semibold"
+      textTransform="uppercase"
+      letterSpacing="wide"
+      mb={0.5}
+    >
+      {label}
+    </Text>
+    <Box fontSize="sm" color="gray.700" wordBreak="break-word">
+      {children}
+    </Box>
+  </Box>
+);
 
 const baSectionBorder = {
   borderLeftWidth: "2px",
@@ -1121,18 +1140,141 @@ const PengisianTanki = () => {
 
   const colSpan = PENGISIAN_TANKI_COL_COUNT + 3 + 1;
 
+  const renderAksiButtons = (item, stacked = false) => {
+    const isProduksiExpanded = expandedProduksiId === item.id;
+    const sudahAdaBA = Boolean(item.BABongkarId);
+    const Wrapper = stacked ? VStack : Flex;
+    const wrapperProps = stacked
+      ? { align: "stretch", spacing: 2 }
+      : { gap: 2, wrap: "wrap" };
+
+    return (
+      <Wrapper {...wrapperProps}>
+        <Button
+          size="sm"
+          variant={isProduksiExpanded ? "solid" : "outline"}
+          colorScheme="orange"
+          onClick={() => toggleProduksiPanel(item)}
+        >
+          Produksi
+        </Button>
+        {canModifyPengisian(item) && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              colorScheme="blue"
+              onClick={() => handleOpenEdit(item)}
+            >
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              colorScheme="red"
+              onClick={() => handleOpenDelete(item)}
+            >
+              Hapus
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          colorScheme="teal"
+          isLoading={loadingCetak[item.id]}
+          onClick={() => cetakBAST(item)}
+        >
+          Cetak BAST
+        </Button>
+        {sudahAdaBA && (
+          <Button
+            size="sm"
+            variant="outline"
+            colorScheme="orange"
+            isLoading={loadingCetakBA[item.BABongkarId]}
+            onClick={() => cetakUlangBABongkar(item)}
+          >
+            Cetak Ulang BA
+          </Button>
+        )}
+      </Wrapper>
+    );
+  };
+
+  const renderMitraCell = (mitraNames) =>
+    mitraNames.length === 0 ? (
+      "-"
+    ) : (
+      <Box>
+        {mitraNames.map((nama) => (
+          <Text key={nama} fontSize="xs">
+            {nama}
+          </Text>
+        ))}
+      </Box>
+    );
+
+  const renderPlatCell = (item) =>
+    (item.konfirmasiPenerimaans || []).length === 0 ? (
+      "-"
+    ) : (
+      <Box>
+        {item.konfirmasiPenerimaans.map((kp) => (
+          <Badge key={kp.id} colorScheme="orange" mr={1} mb={1}>
+            {kp.nomor || kp.suratJalan?.transportir?.plat || `ID ${kp.id}`}
+          </Badge>
+        ))}
+      </Box>
+    );
+
   return (
     <LayoutKPBPN>
-      <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
-        <Container variant="primary" p="30px" my="30px" minW="2000px">
-          <HStack justify="space-between" mb={6}>
-            <Heading color="kpbpn">Unloading truck - tanki </Heading>
-            <HStack spacing={3}>
-              <Text fontSize="sm" color="gray.500">
+      <Box
+        bgColor="secondary"
+        pb={{ base: 6, md: "40px" }}
+        px={{ base: 3, sm: 4, md: 6, lg: "30px" }}
+        minH="90vh"
+        overflowX="hidden"
+      >
+        <Container
+          variant="primary"
+          maxW="100%"
+          p={{ base: 4, sm: 5, md: 6, lg: "30px" }}
+          my={{ base: 4, md: "30px" }}
+        >
+          <Flex
+            align={{ base: "stretch", md: "center" }}
+            direction={{ base: "column", md: "row" }}
+            gap={4}
+            mb={6}
+          >
+            <VStack align={{ base: "center", md: "start" }} spacing={1}>
+              <Heading
+                color="kpbpn"
+                size={{ base: "md", md: "lg" }}
+                textAlign={{ base: "center", md: "left" }}
+              >
+                Unloading truck - tanki
+              </Heading>
+              <Text
+                fontSize="sm"
+                color="gray.500"
+                textAlign={{ base: "center", md: "left" }}
+              >
                 Total: {totalRows} data
               </Text>
+            </VStack>
+            <Spacer />
+            <Flex
+              gap={3}
+              wrap="wrap"
+              justify={{ base: "center", md: "flex-end" }}
+              w={{ base: "full", md: "auto" }}
+            >
               <Button
                 variant="outline"
+                w={{ base: "full", sm: "auto" }}
                 onClick={() => history.push("/tanki-kpbpn/uji-lab")}
               >
                 Uji Lab K3S
@@ -1140,27 +1282,185 @@ const PengisianTanki = () => {
               <Button
                 variant="outline"
                 colorScheme="orange"
+                w={{ base: "full", sm: "auto" }}
                 onClick={handleOpenModalBA}
               >
                 Buat BA Bongkar
               </Button>
               <Button
                 variant="primary"
+                w={{ base: "full", sm: "auto" }}
                 onClick={() => history.push("/tanki-kpbpn/tambah-pengisian")}
               >
                 + Tambah Unloading
               </Button>
-            </HStack>
-          </HStack>
+            </Flex>
+          </Flex>
 
           <Box ref={dataListRef} scrollMarginTop={{ base: "72px", md: "88px" }}>
-          {isLoading ? (
-            <Center py={10}>
-              <Spinner size="lg" color="kpbpn" />
-            </Center>
-          ) : (
-            <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
-              <Table size="sm">
+          <Box display={{ base: "block", lg: "none" }}>
+            {isLoading ? (
+              <Stack spacing={4}>
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <Box
+                    key={idx}
+                    p={4}
+                    borderRadius="lg"
+                    border="1px solid"
+                    borderColor="gray.200"
+                    bg="white"
+                  >
+                    <Skeleton height="20px" mb={3} width="60%" />
+                    <SimpleGrid columns={2} spacing={3}>
+                      {Array.from({ length: 6 }).map((__, i) => (
+                        <Skeleton key={i} height="36px" />
+                      ))}
+                    </SimpleGrid>
+                  </Box>
+                ))}
+              </Stack>
+            ) : dataPengisian.length === 0 ? (
+              <Box
+                py={10}
+                textAlign="center"
+                borderRadius="lg"
+                border="1px solid"
+                borderColor="gray.200"
+                bg="white"
+              >
+                <Text fontSize="lg" color="gray.500">
+                  Belum ada data pengisian tanki
+                </Text>
+              </Box>
+            ) : (
+              <Stack spacing={4}>
+                {dataPengisian.map((item, index) => {
+                  const sudahAdaBA = Boolean(item.BABongkarId);
+                  const mitraNames = getMitraNamesFromPengisian(item);
+                  const isProduksiExpanded = expandedProduksiId === item.id;
+                  const ukuranBA = getUkuranForPengisian(item);
+
+                  return (
+                    <Box
+                      key={item.id}
+                      p={4}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor="gray.200"
+                      bg={sudahAdaBA ? "gray.50" : "white"}
+                      boxShadow="sm"
+                    >
+                      <HStack justify="space-between" mb={3} align="start">
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="xs" color="gray.500">
+                            No. {page * limit + index + 1}
+                          </Text>
+                          <Text fontWeight="bold" color="kpbpn">
+                            {item.tanki?.kode || "-"}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {formatDate(item.tanggal || item.createdAt)}
+                          </Text>
+                        </VStack>
+                        {sudahAdaBA ? (
+                          <Badge colorScheme="green">
+                            BA #{item.BABongkarId}
+                          </Badge>
+                        ) : (
+                          <Badge colorScheme="gray">Belum BA</Badge>
+                        )}
+                      </HStack>
+
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                        <MobileField label="Mitra">
+                          {renderMitraCell(mitraNames)}
+                        </MobileField>
+                        <MobileField label="No. Plat">
+                          {renderPlatCell(item)}
+                        </MobileField>
+                        <MobileField label="Gross">
+                          <VolumeMultiSatuan
+                            volume={item.gross}
+                            satuan={getPengisianSatuanOrDefault(item)}
+                          />
+                        </MobileField>
+                        <MobileField label="Net">
+                          <VolumeMultiSatuan
+                            volume={item.net}
+                            satuan={getPengisianSatuanOrDefault(item)}
+                          />
+                        </MobileField>
+                        <MobileField label="Penampilan Visual">
+                          {item.penampilanVisual || "-"}
+                        </MobileField>
+                        <MobileField label="Warna">
+                          {item.warna || "-"}
+                        </MobileField>
+                        <MobileField label="Kandungan Air">
+                          <VolumeMultiSatuan
+                            volume={item.kandunganAir}
+                            satuan={getPengisianSatuanOrDefault(item)}
+                          />
+                        </MobileField>
+                        <MobileField label="BSW">{item.BSW ?? "-"}</MobileField>
+                        <MobileField label="Saksi">
+                          {item.saksi || "-"}
+                        </MobileField>
+                        <MobileField label="Nomor Surat BAST">
+                          {item.nomorSurat || (
+                            <Badge colorScheme="gray">Belum ada</Badge>
+                          )}
+                        </MobileField>
+                        <MobileField label="Ukuran Cairan">
+                          {ukuranBA.ukuranCairan ?? "-"}
+                        </MobileField>
+                        <MobileField label="Ukuran Air">
+                          {ukuranBA.ukuranAir ?? "-"}
+                        </MobileField>
+                      </SimpleGrid>
+
+                      {item.catatan && (
+                        <Box mt={3}>
+                          <MobileField label="Catatan">
+                            {item.catatan}
+                          </MobileField>
+                        </Box>
+                      )}
+
+                      <Box mt={4}>{renderAksiButtons(item)}</Box>
+
+                      <Collapse in={isProduksiExpanded} animateOpacity>
+                        <Box
+                          mt={4}
+                          pt={4}
+                          borderTopWidth="1px"
+                          borderColor="gray.100"
+                        >
+                          <Heading size="sm" mb={3} color="kpbpn">
+                            Produksi Sumur Minyak
+                          </Heading>
+                          {renderProduksiPanelContent(item)}
+                        </Box>
+                      </Collapse>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            )}
+          </Box>
+
+          <Box
+            display={{ base: "none", lg: "block" }}
+            overflowX="auto"
+            borderWidth="1px"
+            borderRadius="lg"
+          >
+            {isLoading ? (
+              <Center py={10}>
+                <Spinner size="lg" color="kpbpn" />
+              </Center>
+            ) : (
+              <Table size="sm" minW="1400px">
                 <Thead bg="gray.50">
                   <Tr>
                     <Th
@@ -1237,19 +1537,7 @@ const PengisianTanki = () => {
                             <Td>{page * limit + index + 1}</Td>
                             <Td>{formatDate(item.tanggal || item.createdAt)}</Td>
                             <Td>{item.tanki?.kode || "-"}</Td>
-                            <Td>
-                              {mitraNames.length === 0 ? (
-                                "-"
-                              ) : (
-                                <Box>
-                                  {mitraNames.map((nama) => (
-                                    <Text key={nama} fontSize="xs">
-                                      {nama}
-                                    </Text>
-                                  ))}
-                                </Box>
-                              )}
-                            </Td>
+                            <Td>{renderMitraCell(mitraNames)}</Td>
                             <Td>
                               <VolumeMultiSatuan
                                 volume={item.gross}
@@ -1271,28 +1559,11 @@ const PengisianTanki = () => {
                               />
                             </Td>
                             <Td>{item.BSW ?? "-"}</Td>
-                            <Td>{item.catatan || "-"}</Td>
-                            <Td>{item.saksi || "-"}</Td>
-                            <Td>
-                              {(item.konfirmasiPenerimaans || []).length === 0 ? (
-                                "-"
-                              ) : (
-                                <Box>
-                                  {item.konfirmasiPenerimaans.map((kp) => (
-                                    <Badge
-                                      key={kp.id}
-                                      colorScheme="orange"
-                                      mr={1}
-                                      mb={1}
-                                    >
-                                      {kp.nomor ||
-                                        kp.suratJalan?.transportir?.plat ||
-                                        `ID ${kp.id}`}
-                                    </Badge>
-                                  ))}
-                                </Box>
-                              )}
+                            <Td maxW="180px" whiteSpace="normal">
+                              {item.catatan || "-"}
                             </Td>
+                            <Td>{item.saksi || "-"}</Td>
+                            <Td>{renderPlatCell(item)}</Td>
                             <Td>
                               {item.nomorSurat ? (
                                 <Text fontSize="xs" whiteSpace="nowrap">
@@ -1316,58 +1587,7 @@ const PengisianTanki = () => {
                               )}
                             </Td>
                             <Td {...baSectionBorder}>
-                              <VStack align="stretch" spacing={2}>
-                                <Button
-                                  size="sm"
-                                  variant={
-                                    isProduksiExpanded ? "solid" : "outline"
-                                  }
-                                  colorScheme="orange"
-                                  onClick={() => toggleProduksiPanel(item)}
-                                >
-                                  Produksi
-                                </Button>
-                                {canModifyPengisian(item) && (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      colorScheme="blue"
-                                      onClick={() => handleOpenEdit(item)}
-                                    >
-                                      Edit
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      colorScheme="red"
-                                      onClick={() => handleOpenDelete(item)}
-                                    >
-                                      Hapus
-                                    </Button>
-                                  </>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  colorScheme="teal"
-                                  isLoading={loadingCetak[item.id]}
-                                  onClick={() => cetakBAST(item)}
-                                >
-                                  Cetak BAST
-                                </Button>
-                                {sudahAdaBA && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorScheme="orange"
-                                    isLoading={loadingCetakBA[item.BABongkarId]}
-                                    onClick={() => cetakUlangBABongkar(item)}
-                                  >
-                                    Cetak Ulang BA
-                                  </Button>
-                                )}
-                              </VStack>
+                              {renderAksiButtons(item, true)}
                             </Td>
                           </Tr>
                           <Tr>
@@ -1393,8 +1613,8 @@ const PengisianTanki = () => {
                   )}
                 </Tbody>
               </Table>
-            </Box>
-          )}
+            )}
+          </Box>
 
           {totalRows > 0 && (
             <Flex
@@ -1456,14 +1676,16 @@ const PengisianTanki = () => {
       <Modal
         isOpen={isOpen}
         onClose={handleCloseModalBA}
-        size="4xl"
+        size={{ base: "full", md: "4xl" }}
         scrollBehavior="inside"
       >
         <ModalOverlay />
-        <ModalContent maxW="1100px">
-          <ModalHeader>Buat BA Bongkar</ModalHeader>
+        <ModalContent maxW={{ base: "100%", md: "1100px" }} mx={{ base: 0, md: 4 }}>
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
+            Buat BA Bongkar
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody px={{ base: 4, md: 6 }}>
             <VStack spacing={5} align="stretch">
               <Text fontSize="sm" color="gray.600">
                 Uji lab K3S wajib ONSPEC per tanki sebelum BA Bongkar dibuat.
@@ -1514,7 +1736,13 @@ const PengisianTanki = () => {
                           borderRadius="md"
                           p={3}
                         >
-                          <HStack justify="space-between" mb={3} align="start">
+                          <HStack
+                            justify="space-between"
+                            mb={3}
+                            align="start"
+                            flexWrap="wrap"
+                            gap={2}
+                          >
                             <Checkbox
                               isChecked={allSelected}
                               isIndeterminate={someSelected}
@@ -1530,7 +1758,7 @@ const PengisianTanki = () => {
                                 Tanki {group.kode}
                               </Text>
                             </Checkbox>
-                            <HStack spacing={2}>
+                            <HStack spacing={2} flexWrap="wrap">
                               {latestUji ? (
                                 <Badge
                                   colorScheme={
@@ -1619,7 +1847,7 @@ const PengisianTanki = () => {
                             </FormControl>
                           </SimpleGrid>
                           <Box overflowX="auto">
-                            <Table size="sm">
+                            <Table size="sm" minW="520px">
                               <Thead bg="gray.50">
                                 <Tr>
                                   <Th w="40px" />
@@ -1696,12 +1924,21 @@ const PengisianTanki = () => {
               </FormControl>
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={handleCloseModalBA}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseModalBA}
+            >
               Batal
             </Button>
             <Button
               colorScheme="orange"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleSubmitBABongkar}
               isLoading={isSubmittingBA}
               isDisabled={isLoadingModal || !tangkiGroups.length}
@@ -1715,17 +1952,17 @@ const PengisianTanki = () => {
       <Modal
         isOpen={isUjiLabOpen}
         onClose={handleCloseUjiLab}
-        size="lg"
+        size={{ base: "full", md: "lg" }}
         scrollBehavior="inside"
       >
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
+        <ModalContent mx={{ base: 0, md: 4 }}>
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
             Tambah Uji Lab K3S
             {ujiLabTarget?.kode ? ` — Tanki ${ujiLabTarget.kode}` : ""}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody px={{ base: 4, md: 6 }}>
             <VStack spacing={4} align="stretch">
               <FormControl isRequired>
                 <FormLabel>Tanggal Uji</FormLabel>
@@ -1828,12 +2065,21 @@ const PengisianTanki = () => {
               </FormControl>
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={handleCloseUjiLab}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseUjiLab}
+            >
               Batal
             </Button>
             <Button
               colorScheme="orange"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleSubmitUjiLab}
               isLoading={isSubmittingUjiLab}
             >
@@ -1846,14 +2092,16 @@ const PengisianTanki = () => {
       <Modal
         isOpen={isEditOpen}
         onClose={handleCloseEdit}
-        size="4xl"
+        size={{ base: "full", md: "4xl" }}
         scrollBehavior="inside"
       >
         <ModalOverlay />
-        <ModalContent maxW="900px">
-          <ModalHeader>Edit Pengisian Tanki</ModalHeader>
+        <ModalContent maxW={{ base: "100%", md: "900px" }} mx={{ base: 0, md: 4 }}>
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
+            Edit Pengisian Tanki
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody px={{ base: 4, md: 6 }}>
             {isLoadingEditForm ? (
               <Center py={10}>
                 <Spinner color="kpbpn" />
@@ -2004,25 +2252,34 @@ const PengisianTanki = () => {
                           const linkedTanki = getLinkedTankiKode(kp);
 
                           return (
-                            <Checkbox key={kp.id} value={String(kp.id)}>
-                              {kp.nomor || `Konfirmasi #${kp.id}`}
-                              {" — "}
-                              {formatDate(kp.tanggal)}
-                              {" — "}
-                              {kp.suratJalan?.transportir?.plat || "-"}
-                              {" — Vol: "}
-                              <VolumeMultiSatuan
-                                volume={
-                                  kp.volume ?? kp.suratJalan?.volume
-                                }
-                                satuan={
-                                  kp.suratJalan?.satuanVolume?.satuan || "Barrel"
-                                }
+                            <Checkbox
+                              key={kp.id}
+                              value={String(kp.id)}
+                              alignItems="flex-start"
+                            >
+                              <Box
                                 fontSize="sm"
-                              />
-                              {linkedTanki.length > 0
-                                ? ` — Tanki: ${linkedTanki.join(", ")}`
-                                : ""}
+                                whiteSpace="normal"
+                                wordBreak="break-word"
+                              >
+                                {kp.nomor || `Konfirmasi #${kp.id}`}
+                                {" — "}
+                                {formatDate(kp.tanggal)}
+                                {" — "}
+                                {kp.suratJalan?.transportir?.plat || "-"}
+                                {" — Vol: "}
+                                <VolumeMultiSatuan
+                                  volume={kp.volume ?? kp.suratJalan?.volume}
+                                  satuan={
+                                    kp.suratJalan?.satuanVolume?.satuan ||
+                                    "Barrel"
+                                  }
+                                  fontSize="sm"
+                                />
+                                {linkedTanki.length > 0
+                                  ? ` — Tanki: ${linkedTanki.join(", ")}`
+                                  : ""}
+                              </Box>
                             </Checkbox>
                           );
                         })}
@@ -2033,12 +2290,21 @@ const PengisianTanki = () => {
               </VStack>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={handleCloseEdit}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseEdit}
+            >
               Batal
             </Button>
             <Button
               colorScheme="blue"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleSubmitEdit}
               isLoading={isSubmittingEdit}
               isDisabled={isLoadingEditForm}
@@ -2051,8 +2317,8 @@ const PengisianTanki = () => {
 
       <Modal isOpen={isDeleteOpen} onClose={handleCloseDelete} isCentered>
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Hapus Pengisian Tanki</ModalHeader>
+        <ModalContent mx={4}>
+          <ModalHeader pr={12}>Hapus Pengisian Tanki</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Text>
@@ -2070,12 +2336,21 @@ const PengisianTanki = () => {
               Tindakan ini tidak dapat dibatalkan.
             </Text>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={handleCloseDelete}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseDelete}
+            >
               Batal
             </Button>
             <Button
               colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleDelete}
               isLoading={isDeleting}
             >

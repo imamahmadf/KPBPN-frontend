@@ -34,6 +34,9 @@ import AdminSumurMinyak from "./pages/Admin/AdminSumurMinyak.jsx";
 import ProduksiSumur from "./pages/Admin/ProduksiSumur.jsx";
 import PetaSumur from "./pages/Admin/PetaSumur.jsx";
 import StasiunPengumpulMinyak from "./pages/Admin/StasiunPengumpulMinyak.jsx";
+import AsalMinyak from "./pages/Admin/AsalMinyak.jsx";
+import AdminData from "./pages/Admin/AdminData.jsx";
+import DetailSuratJalan from "./pages/SuratJalan/DetailSuratJalan.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -193,6 +196,25 @@ function App() {
           <ProtectedRoute
             component={StasiunPengumpulMinyak}
             path="/admin/stasiun-pengumpul-minyak"
+            exact
+            roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={AsalMinyak}
+            path="/admin/asal-minyak"
+            exact
+            roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={AdminData}
+            path="/admin/data"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={DetailSuratJalan}
+            path="/pengiriman-kpbpn/detail-surat-jalan/:id"
             exact
             roleRoute={[1, 2]}
           />

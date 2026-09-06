@@ -243,9 +243,11 @@ const menuData = [
       { label: "Daftar Pengguna", path: "/admin/daftar-user" },
       { label: "Daftar Tanki", path: "/admin/daftar-tanki" },
       { label: "Stasiun Pengumpul Minyak", path: "/admin/stasiun-pengumpul-minyak" },
+      { label: "Asal Minyak", path: "/admin/asal-minyak" },
       { label: "Dashboard", path: "/admin/dashboard" },
       { label: "Mitra", path: "/admin/mitra" },
       { label: "Kelola Template", path: "/admin/template-kpbpn" },
+      { label: "Kelola Data", path: "/admin/data" },
     ],
   },
 ];

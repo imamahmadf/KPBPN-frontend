@@ -39,14 +39,19 @@ import {
   Textarea,
   useDisclosure,
   Collapse,
+  Image,
 } from "@chakra-ui/react";
 import { Select as Select2, AsyncSelect } from "chakra-react-select";
+import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import { formatVolumeNumber } from "../../lib/volumeSatuan";
+import FotoPlaceholder from "../../assets/add_photo.png";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
+
+const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
 
 const parseDecimalInput = (value) => {
   if (value === null || value === undefined || value === "") return null;
@@ -74,6 +79,10 @@ const konfirmasiSchema = Yup.object({
   catatan: Yup.string().nullable(),
   api: decimalFieldSchema("API"),
   BSNW: decimalFieldSchema("BSNW"),
+  foto: Yup.mixed()
+    .nullable()
+    .required("Foto bukti penerimaan wajib diunggah")
+    .test("is-file", "Foto tidak valid", (value) => value instanceof File),
 });
 
 const initialValuesKonfirmasi = {
@@ -84,6 +93,50 @@ const initialValuesKonfirmasi = {
   catatan: "",
   api: "",
   BSNW: "",
+  foto: null,
+  fotoPreview: "",
+};
+
+const FileUploadField = ({ label, preview, onChange, error, touched }) => {
+  const inputRef = useRef(null);
+
+  return (
+    <FormControl isInvalid={touched && error} isRequired>
+      <FormLabel>{label}</FormLabel>
+      <Input
+        ref={inputRef}
+        type="file"
+        accept="image/png, image/jpeg, image/jpg"
+        display="none"
+        onChange={(e) => {
+          const file = e.target.files?.[0] || null;
+          onChange(file);
+        }}
+      />
+      <Image
+        src={preview || FotoPlaceholder}
+        alt={label}
+        w="100%"
+        maxH="200px"
+        objectFit="cover"
+        borderRadius="md"
+        border="1px solid"
+        borderColor="gray.200"
+        mb={2}
+        cursor="pointer"
+        onClick={() => inputRef.current?.click()}
+      />
+      <Button
+        variant="secondary"
+        w="100%"
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+      >
+        Pilih Foto
+      </Button>
+      <FormErrorMessage>{error}</FormErrorMessage>
+    </FormControl>
+  );
 };
 
 const selectStyles = {
@@ -112,6 +165,75 @@ const selectStyles = {
   },
 };
 
+const suratJalanSchema = Yup.object({
+  nomor: Yup.string().nullable(),
+  tanggal: Yup.string().required("Tanggal wajib diisi"),
+  mitraId: Yup.mixed().nullable().required("Mitra wajib dipilih"),
+  transportirId: Yup.mixed().nullable().required("Transportir wajib dipilih"),
+  stasiunPengumpulMinyakId: Yup.mixed()
+    .nullable()
+    .required("Stasiun pengumpul minyak wajib dipilih"),
+  asalMinyakId: Yup.mixed()
+    .nullable()
+    .required("Asal minyak wajib dipilih"),
+  volume: Yup.number()
+    .typeError("Volume harus angka")
+    .positive("Volume harus lebih dari 0")
+    .required("Volume wajib diisi"),
+  satuanVolumeId: Yup.mixed()
+    .nullable()
+    .required("Satuan volume wajib dipilih"),
+  supirId: Yup.mixed().nullable().required("Supir wajib dipilih"),
+  jamDatang: Yup.string().required("Jam datang wajib diisi"),
+  jamPergi: Yup.string().required("Jam pergi wajib diisi"),
+});
+
+const toDateInput = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const toDateTimeLocalInput = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+};
+
+const formatTransportirLabel = (val) => {
+  if (!val) return "";
+  const satuan = val?.satuanVolume?.satuan;
+  const kapasitas = val?.kapasitas;
+  let label = val.plat || `Transportir #${val.id}`;
+  if (kapasitas) {
+    label += ` (${kapasitas}${satuan ? ` ${satuan}` : ""})`;
+  }
+  return label;
+};
+
+const formatMitraLabel = (val) => {
+  if (!val) return "";
+  return val.kode
+    ? `${val.nama} (${val.kode})`
+    : val.nama || `Mitra #${val.id}`;
+};
+
+const formatAsalMinyakLabel = (val) => {
+  if (!val) return "";
+  if (val.nomor && val.asal) return `${val.nomor} - ${val.asal}`;
+  return val.asal || val.nomor || `Asal #${val.id}`;
+};
+
 const MobileField = ({ label, children }) => (
   <Box>
     <Text
@@ -134,6 +256,12 @@ const SuratJalan = () => {
   const toast = useToast();
   const dataListRef = useRef(null);
   const formikRefKonfirmasi = useRef(null);
+  const formikRefEdit = useRef(null);
+  const {
+    isOpen: isEditOpen,
+    onOpen: onEditOpen,
+    onClose: onEditClose,
+  } = useDisclosure();
   const {
     isOpen: isKonfirmasiOpen,
     onOpen: onKonfirmasiOpen,
@@ -144,7 +272,14 @@ const SuratJalan = () => {
     onOpen: onDetailKonfirmasiOpen,
     onClose: onDetailKonfirmasiClose,
   } = useDisclosure();
+  const {
+    isOpen: isPreviewFotoOpen,
+    onOpen: onPreviewFotoOpen,
+    onClose: onPreviewFotoClose,
+  } = useDisclosure();
+  const [previewFoto, setPreviewFoto] = useState("");
   const [selectedSuratJalan, setSelectedSuratJalan] = useState(null);
+  const [editingSuratJalan, setEditingSuratJalan] = useState(null);
   const [selectedSuratJalanDetail, setSelectedSuratJalanDetail] =
     useState(null);
   const [dataKonfirmasi, setDataKonfirmasi] = useState([]);
@@ -159,7 +294,7 @@ const SuratJalan = () => {
     satuan: "",
   });
 
-  const TABLE_COL_SPAN = 10;
+  const TABLE_COL_SPAN = 11;
 
   const [dataSuratJalan, setDataSuratJalan] = useState([]);
   const [dataSeed, setDataSeed] = useState(null);
@@ -174,6 +309,7 @@ const SuratJalan = () => {
   const [supirFilterId, setSupirFilterId] = useState(0);
   const [stasiunPengumpulMinyakFilterId, setStasiunPengumpulMinyakFilterId] =
     useState(0);
+  const [asalMinyakFilterId, setAsalMinyakFilterId] = useState(0);
   const [statusSuratJalanFilterId, setStatusSuratJalanFilterId] = useState(0);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
@@ -186,6 +322,47 @@ const SuratJalan = () => {
       mitraNama: m.nama,
     })),
   );
+
+  const getSupirByMitra = (selectedMitraId) => {
+    if (!selectedMitraId) return [];
+    const mitraData = (dataSeed?.resultMitra || []).find(
+      (m) => String(m.id) === String(selectedMitraId),
+    );
+    return mitraData?.supirs || [];
+  };
+
+  const initialValuesEdit = useMemo(() => {
+    if (!editingSuratJalan) {
+      return {
+        nomor: "",
+        tanggal: "",
+        mitraId: null,
+        transportirId: null,
+        stasiunPengumpulMinyakId: null,
+        asalMinyakId: null,
+        volume: "",
+        satuanVolumeId: null,
+        supirId: null,
+        jamDatang: "",
+        jamPergi: "",
+      };
+    }
+
+    return {
+      nomor: editingSuratJalan.nomor || "",
+      tanggal: toDateInput(editingSuratJalan.tanggal),
+      mitraId: editingSuratJalan.mitraId || null,
+      transportirId: editingSuratJalan.transportirId || null,
+      stasiunPengumpulMinyakId:
+        editingSuratJalan.stasiunPengumpulMinyakId || null,
+      asalMinyakId: editingSuratJalan.asalMinyakId || null,
+      volume: editingSuratJalan.volume ?? "",
+      satuanVolumeId: editingSuratJalan.satuanVolumeId || null,
+      supirId: editingSuratJalan.supirId || null,
+      jamDatang: toDateTimeLocalInput(editingSuratJalan.jamDatang),
+      jamPergi: toDateTimeLocalInput(editingSuratJalan.jamPergi),
+    };
+  }, [editingSuratJalan]);
 
   const formatTanggal = (d) =>
     d
@@ -232,6 +409,7 @@ const SuratJalan = () => {
           transportirId: transportirFilterId || undefined,
           supirId: supirFilterId || undefined,
           stasiunPengumpulMinyakId: stasiunPengumpulMinyakFilterId || undefined,
+          asalMinyakId: asalMinyakFilterId || undefined,
           statusSuratJalanId: statusSuratJalanFilterId || undefined,
           startDate: tanggalAwal || undefined,
           endDate: tanggalAkhir || undefined,
@@ -281,6 +459,71 @@ const SuratJalan = () => {
     }
   };
 
+  const openEditModal = (item) => {
+    if (item.statusSuratJalanId === 3) {
+      toast({
+        title: "Tidak dapat diubah",
+        description: "Surat jalan yang sudah dikonfirmasi tidak dapat diubah",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+    setEditingSuratJalan(item);
+    onEditOpen();
+  };
+
+  const handleCloseEditModal = () => {
+    formikRefEdit.current?.resetForm();
+    setEditingSuratJalan(null);
+    onEditClose();
+  };
+
+  const submitEditSuratJalan = async (values, { setSubmitting, resetForm }) => {
+    if (!editingSuratJalan?.id) return;
+
+    try {
+      await axios.post(`${API_BASE}/pengiriman/edit/${editingSuratJalan.id}`, {
+        nomor: values.nomor,
+        tanggal: values.tanggal,
+        mitraId: values.mitraId,
+        transportirId: values.transportirId,
+        stasiunPengumpulMinyakId: values.stasiunPengumpulMinyakId,
+        asalMinyakId: values.asalMinyakId,
+        volume: values.volume,
+        satuanVolumeId: values.satuanVolumeId,
+        supirId: values.supirId,
+        jamDatang: values.jamDatang,
+        jamPergi: values.jamPergi,
+      });
+
+      toast({
+        title: "Berhasil",
+        description: "Surat jalan berhasil diperbarui",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+
+      resetForm();
+      handleCloseEditModal();
+      fetchDataSuratJalan();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error || "Gagal memperbarui surat jalan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const openKonfirmasiModal = (item) => {
     setSelectedSuratJalan(item);
     onKonfirmasiOpen();
@@ -295,7 +538,15 @@ const SuratJalan = () => {
   const handleCloseDetailKonfirmasiModal = () => {
     setSelectedSuratJalanDetail(null);
     setDataKonfirmasi([]);
+    setPreviewFoto("");
     onDetailKonfirmasiClose();
+  };
+
+  const showPreviewFoto = (path) => {
+    const url = getImageUrl(path);
+    if (!url) return;
+    setPreviewFoto(url);
+    onPreviewFotoOpen();
   };
 
   const openDetailKonfirmasiModal = async (item) => {
@@ -332,14 +583,18 @@ const SuratJalan = () => {
     if (!selectedSuratJalan?.id) return;
 
     try {
-      await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, {
-        suratJalanId: selectedSuratJalan.id,
-        tanggal: values.tanggal,
-        volume: values.volume,
-        pegawaiId: values.pegawaiId,
-        catatan: values.catatan || "",
-        api: parseDecimalInput(values.api),
-        BSNW: parseDecimalInput(values.BSNW),
+      const formData = new FormData();
+      formData.append("suratJalanId", selectedSuratJalan.id);
+      formData.append("tanggal", values.tanggal);
+      formData.append("volume", values.volume);
+      formData.append("pegawaiId", values.pegawaiId);
+      formData.append("catatan", values.catatan || "");
+      formData.append("api", parseDecimalInput(values.api) ?? "");
+      formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
+      if (values.foto) formData.append("foto", values.foto);
+
+      await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       toast({
@@ -600,11 +855,11 @@ const SuratJalan = () => {
                           }
                           placeholder="0"
                         />
+                      ) : produksiPanel.inputs[sumur.id] !== "" &&
+                        produksiPanel.inputs[sumur.id] != null ? (
+                        produksiPanel.inputs[sumur.id]
                       ) : (
-                        produksiPanel.inputs[sumur.id] !== "" &&
-                        produksiPanel.inputs[sumur.id] != null
-                          ? produksiPanel.inputs[sumur.id]
-                          : "-"
+                        "-"
                       )}
                     </Td>
                   </Tr>
@@ -675,6 +930,7 @@ const SuratJalan = () => {
     setTransportirFilterId(0);
     setSupirFilterId(0);
     setStasiunPengumpulMinyakFilterId(0);
+    setAsalMinyakFilterId(0);
     setStatusSuratJalanFilterId(0);
     setTanggalAwal("");
     setTanggalAkhir("");
@@ -687,6 +943,7 @@ const SuratJalan = () => {
     transportirFilterId ||
     supirFilterId ||
     stasiunPengumpulMinyakFilterId ||
+    asalMinyakFilterId ||
     statusSuratJalanFilterId ||
     tanggalAwal ||
     tanggalAkhir ||
@@ -694,7 +951,34 @@ const SuratJalan = () => {
     sortOrder !== "DESC";
 
   const renderAksi = (item, fullWidth = false) => {
-    const actions = [];
+    const actions = [
+      <Button
+        key="detail"
+        as={RouterLink}
+        to={`/pengiriman-kpbpn/detail-surat-jalan/${item.id}`}
+        size="sm"
+        variant="outline"
+        colorScheme="purple"
+        w={fullWidth ? "full" : "auto"}
+      >
+        Detail
+      </Button>,
+    ];
+
+    if (item.statusSuratJalanId === 1 || item.statusSuratJalanId === 2) {
+      actions.push(
+        <Button
+          key="edit"
+          size="sm"
+          variant="outline"
+          colorScheme="yellow"
+          w={fullWidth ? "full" : "auto"}
+          onClick={() => openEditModal(item)}
+        >
+          Edit
+        </Button>,
+      );
+    }
 
     if (item.statusSuratJalanId === 1) {
       actions.push(
@@ -749,7 +1033,11 @@ const SuratJalan = () => {
       );
     }
 
-    return <HStack spacing={2}>{actions}</HStack>;
+    return (
+      <HStack spacing={2} flexWrap="wrap">
+        {actions}
+      </HStack>
+    );
   };
 
   useEffect(() => {
@@ -763,6 +1051,7 @@ const SuratJalan = () => {
     transportirFilterId,
     supirFilterId,
     stasiunPengumpulMinyakFilterId,
+    asalMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -779,6 +1068,7 @@ const SuratJalan = () => {
     transportirFilterId,
     supirFilterId,
     stasiunPengumpulMinyakFilterId,
+    asalMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -888,6 +1178,21 @@ const SuratJalan = () => {
                   onChange={(opt) =>
                     setStasiunPengumpulMinyakFilterId(opt?.value || 0)
                   }
+                  {...selectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium">
+                  Asal Minyak
+                </FormLabel>
+                <Select2
+                  options={(dataSeed?.resultAsalMinyak || []).map((val) => ({
+                    value: val.id,
+                    label: formatAsalMinyakLabel(val),
+                  }))}
+                  placeholder="Pilih Asal Minyak"
+                  onChange={(opt) => setAsalMinyakFilterId(opt?.value || 0)}
                   {...selectStyles}
                 />
               </FormControl>
@@ -1047,79 +1352,82 @@ const SuratJalan = () => {
                     const isProduksiExpanded = expandedProduksiId === item.id;
 
                     return (
-                    <Box
-                      key={item.id}
-                      p={4}
-                      borderRadius="lg"
-                      border="1px solid"
-                      borderColor="gray.200"
-                      bg="white"
-                      boxShadow="sm"
-                    >
-                      <HStack
-                        justify="space-between"
-                        align="start"
-                        mb={3}
-                        flexWrap="wrap"
-                        gap={2}
+                      <Box
+                        key={item.id}
+                        p={4}
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        bg="white"
+                        boxShadow="sm"
                       >
-                        <VStack align="start" spacing={0}>
-                          <Text fontSize="xs" color="gray.500">
-                            No. {page * limit + index + 1}
-                          </Text>
-                          <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                            {item.nomor || "-"}
-                          </Text>
-                        </VStack>
-                        <Badge colorScheme="blue" variant="subtle">
-                          {item.statusSuratJalan?.status || "-"}
-                        </Badge>
-                      </HStack>
-                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                        <MobileField label="Tanggal">
-                          {formatTanggal(item.tanggal)}
-                        </MobileField>
-                        <MobileField label="Mitra">
-                          {item.mitra?.nama || "-"}
-                        </MobileField>
-                        <MobileField label="Transportir">
-                          {item.transportir?.plat || "-"}
-                        </MobileField>
-                        <MobileField label="Stasiun Pengumpul Minyak">
-                          {item.stasiunPengumpulMinyak?.nama || "-"}
-                        </MobileField>
-                        <MobileField label="Volume">
-                          <VolumeMultiSatuan
-                            volume={item.volume}
-                            satuan={item.satuanVolume?.satuan || "Barrel"}
-                          />
-                        </MobileField>
-                        <MobileField label="Supir">
-                          {item.supir?.nama || "-"}
-                        </MobileField>
-                      </SimpleGrid>
-                      <HStack mt={4} spacing={2} flexWrap="wrap">
-                        <Button
-                          size="sm"
-                          variant={isProduksiExpanded ? "solid" : "outline"}
-                          colorScheme="orange"
-                          onClick={() => toggleProduksiPanel(item)}
+                        <HStack
+                          justify="space-between"
+                          align="start"
+                          mb={3}
+                          flexWrap="wrap"
+                          gap={2}
                         >
-                          Produksi
-                        </Button>
-                        {renderAksi(item, true)}
-                      </HStack>
-                      <Collapse in={isProduksiExpanded} animateOpacity>
-                        <Box
-                          mt={4}
-                          pt={4}
-                          borderTopWidth="1px"
-                          borderColor="gray.100"
-                        >
-                          {renderProduksiPanelContent(item, "mobile")}
-                        </Box>
-                      </Collapse>
-                    </Box>
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="xs" color="gray.500">
+                              No. {page * limit + index + 1}
+                            </Text>
+                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
+                              {item.nomor || "-"}
+                            </Text>
+                          </VStack>
+                          <Badge colorScheme="blue" variant="subtle">
+                            {item.statusSuratJalan?.status || "-"}
+                          </Badge>
+                        </HStack>
+                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                          <MobileField label="Tanggal">
+                            {formatTanggal(item.tanggal)}
+                          </MobileField>
+                          <MobileField label="Mitra">
+                            {item.mitra?.nama || "-"}
+                          </MobileField>
+                          <MobileField label="Transportir">
+                            {item.transportir?.plat || "-"}
+                          </MobileField>
+                          <MobileField label="Stasiun Pengumpul Minyak">
+                            {item.stasiunPengumpulMinyak?.nama || "-"}
+                          </MobileField>
+                          <MobileField label="Asal Minyak">
+                            {formatAsalMinyakLabel(item.asalMinyak) || "-"}
+                          </MobileField>
+                          <MobileField label="Volume">
+                            <VolumeMultiSatuan
+                              volume={item.volume}
+                              satuan={item.satuanVolume?.satuan || "Barrel"}
+                            />
+                          </MobileField>
+                          <MobileField label="Supir">
+                            {item.supir?.nama || "-"}
+                          </MobileField>
+                        </SimpleGrid>
+                        <HStack mt={4} spacing={2} flexWrap="wrap">
+                          <Button
+                            size="sm"
+                            variant={isProduksiExpanded ? "solid" : "outline"}
+                            colorScheme="orange"
+                            onClick={() => toggleProduksiPanel(item)}
+                          >
+                            Produksi
+                          </Button>
+                          {renderAksi(item, true)}
+                        </HStack>
+                        <Collapse in={isProduksiExpanded} animateOpacity>
+                          <Box
+                            mt={4}
+                            pt={4}
+                            borderTopWidth="1px"
+                            borderColor="gray.100"
+                          >
+                            {renderProduksiPanelContent(item, "mobile")}
+                          </Box>
+                        </Collapse>
+                      </Box>
                     );
                   })}
                 </Stack>
@@ -1156,9 +1464,8 @@ const SuratJalan = () => {
                     <Th textTransform="capitalize">Tanggal</Th>
                     <Th textTransform="capitalize">Mitra</Th>
                     <Th textTransform="capitalize">Transportir</Th>
-                    <Th textTransform="capitalize">
-                      Stasiun Pengumpul Minyak
-                    </Th>
+                    <Th textTransform="capitalize">Stasiun Pengumpul Minyak</Th>
+                    <Th textTransform="capitalize">Asal Minyak</Th>
                     <Th textTransform="capitalize" isNumeric>
                       Volume
                     </Th>
@@ -1171,7 +1478,7 @@ const SuratJalan = () => {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <Tr key={idx}>
-                        {Array.from({ length: 10 }).map((__, i) => (
+                        {Array.from({ length: 11 }).map((__, i) => (
                           <Td key={i}>
                             <Skeleton height="20px" />
                           </Td>
@@ -1183,63 +1490,72 @@ const SuratJalan = () => {
                       const isProduksiExpanded = expandedProduksiId === item.id;
 
                       return (
-                      <React.Fragment key={item.id}>
-                        <Tr>
-                          <Td fontWeight="medium">{page * limit + index + 1}</Td>
-                          <Td fontWeight="medium">{item.nomor || "-"}</Td>
-                          <Td>{formatTanggal(item.tanggal)}</Td>
-                          <Td>{item.mitra?.nama || "-"}</Td>
-                          <Td>{item.transportir?.plat || "-"}</Td>
-                          <Td>
-                            {item.stasiunPengumpulMinyak?.nama || "-"}
-                          </Td>
-                          <Td>
-                            <VolumeMultiSatuan
-                              volume={item.volume}
-                              satuan={item.satuanVolume?.satuan || "Barrel"}
-                            />
-                          </Td>
-                          <Td>{item.supir?.nama || "-"}</Td>
-                          <Td>
-                            <Badge colorScheme="blue" variant="subtle">
-                              {item.statusSuratJalan?.status || "-"}
-                            </Badge>
-                          </Td>
+                        <React.Fragment key={item.id}>
+                          <Tr>
+                            <Td fontWeight="medium">
+                              {page * limit + index + 1}
+                            </Td>
+                            <Td fontWeight="medium">{item.nomor || "-"}</Td>
+                            <Td>{formatTanggal(item.tanggal)}</Td>
+                            <Td>{item.mitra?.nama || "-"}</Td>
+                            <Td>{item.transportir?.plat || "-"}</Td>
+                            <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
+                            <Td>
+                              {formatAsalMinyakLabel(item.asalMinyak) || "-"}
+                            </Td>
+                            <Td>
+                              <VolumeMultiSatuan
+                                volume={item.volume}
+                                satuan={item.satuanVolume?.satuan || "Barrel"}
+                              />
+                            </Td>
+                            <Td>{item.supir?.nama || "-"}</Td>
+                            <Td>
+                              <Badge colorScheme="blue" variant="subtle">
+                                {item.statusSuratJalan?.status || "-"}
+                              </Badge>
+                            </Td>
 
-                          <Td>
-                            <HStack spacing={2}>
-                              <Button
-                                size="sm"
-                                variant={isProduksiExpanded ? "solid" : "outline"}
-                                colorScheme="orange"
-                                onClick={() => toggleProduksiPanel(item)}
-                              >
-                                Produksi
-                              </Button>
-                              {renderAksi(item) || null}
-                            </HStack>
-                          </Td>
-                        </Tr>
-                        <Tr>
-                          <Td colSpan={TABLE_COL_SPAN} p={0} borderBottom="none">
-                            <Collapse in={isProduksiExpanded} animateOpacity>
-                              <Box
-                                p={4}
-                                bg="gray.50"
-                                borderTopWidth="1px"
-                                borderColor="gray.200"
-                              >
-                                {renderProduksiPanelContent(item, "desktop")}
-                              </Box>
-                            </Collapse>
-                          </Td>
-                        </Tr>
-                      </React.Fragment>
+                            <Td>
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    isProduksiExpanded ? "solid" : "outline"
+                                  }
+                                  colorScheme="orange"
+                                  onClick={() => toggleProduksiPanel(item)}
+                                >
+                                  Produksi
+                                </Button>
+                                {renderAksi(item) || null}
+                              </HStack>
+                            </Td>
+                          </Tr>
+                          <Tr>
+                            <Td
+                              colSpan={TABLE_COL_SPAN}
+                              p={0}
+                              borderBottom="none"
+                            >
+                              <Collapse in={isProduksiExpanded} animateOpacity>
+                                <Box
+                                  p={4}
+                                  bg="gray.50"
+                                  borderTopWidth="1px"
+                                  borderColor="gray.200"
+                                >
+                                  {renderProduksiPanelContent(item, "desktop")}
+                                </Box>
+                              </Collapse>
+                            </Td>
+                          </Tr>
+                        </React.Fragment>
                       );
                     })
                   ) : (
                     <Tr>
-                      <Td colSpan={10} textAlign="center" py={10}>
+                      <Td colSpan={11} textAlign="center" py={10}>
                         <VStack spacing={2}>
                           <Text fontSize="lg" color="gray.500">
                             Tidak ada data surat jalan
@@ -1316,6 +1632,359 @@ const SuratJalan = () => {
           )}
         </Container>
       </Box>
+
+      <Modal
+        isOpen={isEditOpen}
+        onClose={handleCloseEditModal}
+        size={{ base: "full", md: "xl" }}
+        scrollBehavior="inside"
+        isCentered
+      >
+        <ModalOverlay />
+        <ModalContent
+          mx={{ base: 0, md: 4 }}
+          my={{ base: 0, md: "auto" }}
+          borderRadius={{ base: 0, md: "md" }}
+          maxH={{ base: "100vh", md: "90vh" }}
+        >
+          <ModalHeader>Edit Surat Jalan</ModalHeader>
+          <ModalCloseButton />
+          <Formik
+            innerRef={formikRefEdit}
+            initialValues={initialValuesEdit}
+            enableReinitialize
+            validationSchema={suratJalanSchema}
+            onSubmit={submitEditSuratJalan}
+          >
+            {({
+              values,
+              errors,
+              touched,
+              setFieldValue,
+              isSubmitting,
+              handleChange,
+              handleBlur,
+            }) => (
+              <Form>
+                <ModalBody>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    <FormControl
+                      isInvalid={touched.nomor && errors.nomor}
+                      gridColumn={{ md: "span 2" }}
+                    >
+                      <FormLabel>Nomor Surat Jalan</FormLabel>
+                      <Input
+                        name="nomor"
+                        type="text"
+                        bgColor="terang"
+                        value={values.nomor}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        placeholder="Masukkan nomor surat jalan"
+                      />
+                      <FormErrorMessage>{errors.nomor}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl isInvalid={touched.tanggal && errors.tanggal}>
+                      <FormLabel>Tanggal</FormLabel>
+                      <Input
+                        name="tanggal"
+                        type="date"
+                        bgColor="terang"
+                        value={values.tanggal}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                      />
+                      <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl isInvalid={touched.mitraId && errors.mitraId}>
+                      <FormLabel>Mitra</FormLabel>
+                      <Select2
+                        options={(dataSeed?.resultMitra || []).map((val) => ({
+                          value: val.id,
+                          label: formatMitraLabel(val),
+                        }))}
+                        placeholder="Pilih Mitra"
+                        value={
+                          values.mitraId
+                            ? {
+                                value: values.mitraId,
+                                label: formatMitraLabel(
+                                  (dataSeed?.resultMitra || []).find(
+                                    (m) => m.id === values.mitraId,
+                                  ),
+                                ),
+                              }
+                            : null
+                        }
+                        onChange={(opt) => {
+                          setFieldValue("mitraId", opt?.value || null);
+                          setFieldValue("supirId", null);
+                        }}
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>{errors.mitraId}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={touched.transportirId && errors.transportirId}
+                    >
+                      <FormLabel>Transportir</FormLabel>
+                      <Select2
+                        options={(dataSeed?.resultTransportir || []).map(
+                          (val) => ({
+                            value: val.id,
+                            label: formatTransportirLabel(val),
+                          }),
+                        )}
+                        placeholder="Pilih Transportir"
+                        value={
+                          values.transportirId
+                            ? {
+                                value: values.transportirId,
+                                label: formatTransportirLabel(
+                                  (dataSeed?.resultTransportir || []).find(
+                                    (t) => t.id === values.transportirId,
+                                  ),
+                                ),
+                              }
+                            : null
+                        }
+                        onChange={(opt) => {
+                          setFieldValue("transportirId", opt?.value || null);
+                          const selectedTransportir = (
+                            dataSeed?.resultTransportir || []
+                          ).find((t) => t.id === opt?.value);
+                          if (selectedTransportir?.satuanVolumeId) {
+                            setFieldValue(
+                              "satuanVolumeId",
+                              selectedTransportir.satuanVolumeId,
+                            );
+                          }
+                        }}
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>
+                        {errors.transportirId}
+                      </FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={
+                        touched.stasiunPengumpulMinyakId &&
+                        errors.stasiunPengumpulMinyakId
+                      }
+                    >
+                      <FormLabel>Stasiun Pengumpul Minyak</FormLabel>
+                      <Select2
+                        options={(
+                          dataSeed?.resultStasiunPengumpulMinyak || []
+                        ).map((val) => ({
+                          value: val.id,
+                          label: val.nama,
+                        }))}
+                        placeholder="Pilih Stasiun Pengumpul Minyak"
+                        value={
+                          values.stasiunPengumpulMinyakId
+                            ? {
+                                value: values.stasiunPengumpulMinyakId,
+                                label:
+                                  (
+                                    dataSeed?.resultStasiunPengumpulMinyak || []
+                                  ).find(
+                                    (s) =>
+                                      s.id === values.stasiunPengumpulMinyakId,
+                                  )?.nama || "",
+                              }
+                            : null
+                        }
+                        onChange={(opt) =>
+                          setFieldValue(
+                            "stasiunPengumpulMinyakId",
+                            opt?.value || null,
+                          )
+                        }
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>
+                        {errors.stasiunPengumpulMinyakId}
+                      </FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={touched.asalMinyakId && errors.asalMinyakId}
+                    >
+                      <FormLabel>Asal Minyak</FormLabel>
+                      <Select2
+                        options={(dataSeed?.resultAsalMinyak || []).map(
+                          (val) => ({
+                            value: val.id,
+                            label: formatAsalMinyakLabel(val),
+                          }),
+                        )}
+                        placeholder="Pilih Asal Minyak"
+                        value={
+                          values.asalMinyakId
+                            ? {
+                                value: values.asalMinyakId,
+                                label: formatAsalMinyakLabel(
+                                  (dataSeed?.resultAsalMinyak || []).find(
+                                    (a) => a.id === values.asalMinyakId,
+                                  ),
+                                ),
+                              }
+                            : null
+                        }
+                        onChange={(opt) =>
+                          setFieldValue("asalMinyakId", opt?.value || null)
+                        }
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>
+                        {errors.asalMinyakId}
+                      </FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl isInvalid={touched.volume && errors.volume}>
+                      <FormLabel>Volume</FormLabel>
+                      <Input
+                        name="volume"
+                        type="number"
+                        bgColor="terang"
+                        value={values.volume}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        placeholder="Masukkan volume"
+                      />
+                      <FormErrorMessage>{errors.volume}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={
+                        touched.satuanVolumeId && errors.satuanVolumeId
+                      }
+                    >
+                      <FormLabel>Satuan Volume</FormLabel>
+                      <Select2
+                        options={(dataSeed?.resultSatuanVolume || []).map(
+                          (val) => ({
+                            value: val.id,
+                            label: val.satuan || `Satuan #${val.id}`,
+                          }),
+                        )}
+                        placeholder="Pilih satuan volume"
+                        value={
+                          values.satuanVolumeId
+                            ? {
+                                value: values.satuanVolumeId,
+                                label:
+                                  (dataSeed?.resultSatuanVolume || []).find(
+                                    (s) => s.id === values.satuanVolumeId,
+                                  )?.satuan ||
+                                  `Satuan #${values.satuanVolumeId}`,
+                              }
+                            : null
+                        }
+                        onChange={(opt) =>
+                          setFieldValue("satuanVolumeId", opt?.value || null)
+                        }
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>
+                        {errors.satuanVolumeId}
+                      </FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl isInvalid={touched.supirId && errors.supirId}>
+                      <FormLabel>Supir</FormLabel>
+                      <Select2
+                        options={getSupirByMitra(values.mitraId).map((val) => ({
+                          value: val.id,
+                          label: val.nama || `Supir #${val.id}`,
+                        }))}
+                        placeholder={
+                          values.mitraId
+                            ? "Pilih Supir"
+                            : "Pilih mitra terlebih dahulu"
+                        }
+                        isDisabled={!values.mitraId}
+                        value={
+                          values.supirId
+                            ? {
+                                value: values.supirId,
+                                label:
+                                  getSupirByMitra(values.mitraId).find(
+                                    (s) => s.id === values.supirId,
+                                  )?.nama || `Supir #${values.supirId}`,
+                              }
+                            : null
+                        }
+                        onChange={(opt) =>
+                          setFieldValue("supirId", opt?.value || null)
+                        }
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>{errors.supirId}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={touched.jamPergi && errors.jamPergi}
+                    >
+                      <FormLabel>Jam Pergi</FormLabel>
+                      <Input
+                        name="jamPergi"
+                        type="datetime-local"
+                        bgColor="terang"
+                        value={values.jamPergi}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                      />
+                      <FormErrorMessage>{errors.jamPergi}</FormErrorMessage>
+                    </FormControl>
+
+                    <FormControl
+                      isInvalid={touched.jamDatang && errors.jamDatang}
+                    >
+                      <FormLabel>Jam Datang</FormLabel>
+                      <Input
+                        name="jamDatang"
+                        type="datetime-local"
+                        bgColor="terang"
+                        value={values.jamDatang}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                      />
+                      <FormErrorMessage>{errors.jamDatang}</FormErrorMessage>
+                    </FormControl>
+                  </SimpleGrid>
+                </ModalBody>
+                <ModalFooter
+                  flexDirection={{ base: "column-reverse", sm: "row" }}
+                  gap={{ base: 2, sm: 0 }}
+                >
+                  <Button
+                    variant="ghost"
+                    mr={{ base: 0, sm: 3 }}
+                    onClick={handleCloseEditModal}
+                    w={{ base: "full", sm: "auto" }}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    isLoading={isSubmitting}
+                    w={{ base: "full", sm: "auto" }}
+                  >
+                    Simpan Perubahan
+                  </Button>
+                </ModalFooter>
+              </Form>
+            )}
+          </Formik>
+        </ModalContent>
+      </Modal>
 
       <Modal
         isOpen={isKonfirmasiOpen}
@@ -1473,6 +2142,22 @@ const SuratJalan = () => {
                         rows={3}
                       />
                     </FormControl>
+
+                    <Box gridColumn={{ md: "span 2" }}>
+                      <FileUploadField
+                        label="Foto Bukti Penerimaan"
+                        preview={values.fotoPreview}
+                        touched={touched.foto}
+                        error={errors.foto}
+                        onChange={(file) => {
+                          setFieldValue("foto", file);
+                          setFieldValue(
+                            "fotoPreview",
+                            file ? URL.createObjectURL(file) : "",
+                          );
+                        }}
+                      />
+                    </Box>
                   </SimpleGrid>
                 </ModalBody>
                 <ModalFooter
@@ -1600,6 +2285,26 @@ const SuratJalan = () => {
                           {kp.catatan || "-"}
                         </MobileField>
                       </Box>
+                      <Box gridColumn={{ sm: "span 2" }}>
+                        <MobileField label="Foto Bukti Penerimaan">
+                          {kp.foto ? (
+                            <Image
+                              src={getImageUrl(kp.foto)}
+                              alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                              w="100%"
+                              maxH="220px"
+                              objectFit="cover"
+                              borderRadius="md"
+                              border="1px solid"
+                              borderColor="gray.200"
+                              cursor="pointer"
+                              onClick={() => showPreviewFoto(kp.foto)}
+                            />
+                          ) : (
+                            "-"
+                          )}
+                        </MobileField>
+                      </Box>
                     </SimpleGrid>
                   </Box>
                 ))}
@@ -1621,6 +2326,31 @@ const SuratJalan = () => {
               Tutup
             </Button>
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isPreviewFotoOpen}
+        onClose={onPreviewFotoClose}
+        size="xl"
+        isCentered
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Foto Bukti Penerimaan</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {previewFoto ? (
+              <Image
+                src={previewFoto}
+                alt="Foto bukti penerimaan"
+                w="100%"
+                borderRadius="md"
+                objectFit="contain"
+                maxH="70vh"
+              />
+            ) : null}
+          </ModalBody>
         </ModalContent>
       </Modal>
     </LayoutKPBPN>

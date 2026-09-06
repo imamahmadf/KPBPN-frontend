@@ -3,7 +3,7 @@ import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import axios from "axios";
 import { useSelector } from "react-redux";
-import { selectMitra } from "../../Redux/Reducers/auth";
+import { selectMitra, selectRoleIds } from "../../Redux/Reducers/auth";
 import ReactPaginate from "react-paginate";
 import {
   Box,
@@ -48,6 +48,7 @@ import { isVolumeEqual } from "../../lib/volumeSatuan";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
+const ROLE_SUPER_ADMIN = 1;
 
 const suratJalanSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
@@ -56,6 +57,9 @@ const suratJalanSchema = Yup.object({
   stasiunPengumpulMinyakId: Yup.mixed()
     .nullable()
     .required("Stasiun pengumpul minyak wajib dipilih"),
+  asalMinyakId: Yup.mixed()
+    .nullable()
+    .required("Asal minyak wajib dipilih"),
   volume: Yup.number()
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
@@ -73,6 +77,7 @@ const initialValuesTambahBase = {
   mitraId: null,
   transportirId: null,
   stasiunPengumpulMinyakId: null,
+  asalMinyakId: null,
   volume: "",
   satuanVolumeId: null,
   supirId: null,
@@ -117,6 +122,19 @@ const formatTransportirLabel = (val) => {
   return label;
 };
 
+const formatMitraLabel = (val) => {
+  if (!val) return "";
+  return val.kode
+    ? `${val.nama} (${val.kode})`
+    : val.nama || `Mitra #${val.id}`;
+};
+
+const formatAsalMinyakLabel = (val) => {
+  if (!val) return "";
+  if (val.nomor && val.asal) return `${val.nomor} - ${val.asal}`;
+  return val.asal || val.nomor || `Asal #${val.id}`;
+};
+
 const MobileField = ({ label, children }) => (
   <Box>
     <Text
@@ -138,6 +156,8 @@ const MobileField = ({ label, children }) => (
 const SuratJalanMitra = () => {
   const toast = useToast();
   const mitra = useSelector(selectMitra);
+  const userRoleIds = useSelector(selectRoleIds);
+  const isSuperAdmin = (userRoleIds || []).includes(ROLE_SUPER_ADMIN);
   const mitraId = mitra?.id ?? null;
   const dataListRef = useRef(null);
   const formikRefTambah = useRef(null);
@@ -167,12 +187,14 @@ const SuratJalanMitra = () => {
     satuanVolumeOptions: [],
   });
 
-  const TABLE_COL_SPAN = 11;
+  const TABLE_COL_SPAN = 12;
 
+  const [mitraFilterId, setMitraFilterId] = useState(0);
   const [transportirFilterId, setTransportirFilterId] = useState(0);
   const [supirFilterId, setSupirFilterId] = useState(0);
   const [stasiunPengumpulMinyakFilterId, setStasiunPengumpulMinyakFilterId] =
     useState(0);
+  const [asalMinyakFilterId, setAsalMinyakFilterId] = useState(0);
   const [statusSuratJalanFilterId, setStatusSuratJalanFilterId] = useState(0);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
@@ -182,21 +204,30 @@ const SuratJalanMitra = () => {
   const initialValuesTambah = useMemo(
     () => ({
       ...initialValuesTambahBase,
-      mitraId,
+      mitraId: isSuperAdmin ? null : mitraId,
     }),
-    [mitraId],
+    [isSuperAdmin, mitraId],
   );
 
   const allSupir = useMemo(() => {
+    const mitraList = dataSeed?.resultMitra || [];
+    if (isSuperAdmin) {
+      return mitraList.flatMap((m) =>
+        (m.supirs || []).map((s) => ({
+          ...s,
+          mitraNama: m.nama,
+        })),
+      );
+    }
     if (!mitraId) return [];
-    const mitraData = (dataSeed?.resultMitra || []).find(
+    const mitraData = mitraList.find(
       (m) => String(m.id) === String(mitraId),
     );
     return (mitraData?.supirs || []).map((s) => ({
       ...s,
       mitraNama: mitraData?.nama || mitra?.nama,
     }));
-  }, [dataSeed, mitraId, mitra?.nama]);
+  }, [dataSeed, isSuperAdmin, mitraId, mitra?.nama]);
 
   const formatTanggal = (d) =>
     d
@@ -250,10 +281,13 @@ const SuratJalanMitra = () => {
         params: {
           page,
           limit,
-          mitraId: mitraId || undefined,
+          mitraId: isSuperAdmin
+            ? mitraFilterId || undefined
+            : mitraId || undefined,
           transportirId: transportirFilterId || undefined,
           supirId: supirFilterId || undefined,
           stasiunPengumpulMinyakId: stasiunPengumpulMinyakFilterId || undefined,
+          asalMinyakId: asalMinyakFilterId || undefined,
           statusSuratJalanId: statusSuratJalanFilterId || undefined,
           startDate: tanggalAwal || undefined,
           endDate: tanggalAkhir || undefined,
@@ -279,9 +313,11 @@ const SuratJalanMitra = () => {
   };
 
   const resetFilter = () => {
+    setMitraFilterId(0);
     setTransportirFilterId(0);
     setSupirFilterId(0);
     setStasiunPengumpulMinyakFilterId(0);
+    setAsalMinyakFilterId(0);
     setStatusSuratJalanFilterId(0);
     setTanggalAwal("");
     setTanggalAkhir("");
@@ -305,6 +341,7 @@ const SuratJalanMitra = () => {
         mitraId: values.mitraId || mitraId,
         transportirId: values.transportirId,
         stasiunPengumpulMinyakId: values.stasiunPengumpulMinyakId,
+        asalMinyakId: values.asalMinyakId,
         volume: values.volume,
         satuanVolumeId: values.satuanVolumeId,
         supirId: values.supirId,
@@ -339,7 +376,7 @@ const SuratJalanMitra = () => {
   };
 
   const handleOpenTambahModal = () => {
-    if (!mitraId) {
+    if (!isSuperAdmin && !mitraId) {
       toast({
         title: "Mitra tidak ditemukan",
         description:
@@ -353,10 +390,10 @@ const SuratJalanMitra = () => {
     onTambahOpen();
   };
 
-  const getSupirByMitra = () => {
-    if (!mitraId) return [];
+  const getSupirByMitra = (selectedMitraId) => {
+    if (!selectedMitraId) return [];
     const mitraData = (dataSeed?.resultMitra || []).find(
-      (m) => String(m.id) === String(mitraId),
+      (m) => String(m.id) === String(selectedMitraId),
     );
     return mitraData?.supirs || [];
   };
@@ -664,9 +701,11 @@ const SuratJalanMitra = () => {
   };
 
   const hasActiveFilter =
+    (isSuperAdmin && mitraFilterId) ||
     transportirFilterId ||
     supirFilterId ||
     stasiunPengumpulMinyakFilterId ||
+    asalMinyakFilterId ||
     statusSuratJalanFilterId ||
     tanggalAwal ||
     tanggalAkhir ||
@@ -681,9 +720,12 @@ const SuratJalanMitra = () => {
     setPage(0);
   }, [
     mitraId,
+    mitraFilterId,
+    isSuperAdmin,
     transportirFilterId,
     supirFilterId,
     stasiunPengumpulMinyakFilterId,
+    asalMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -697,9 +739,12 @@ const SuratJalanMitra = () => {
     page,
     limit,
     mitraId,
+    mitraFilterId,
+    isSuperAdmin,
     transportirFilterId,
     supirFilterId,
     stasiunPengumpulMinyakFilterId,
+    asalMinyakFilterId,
     statusSuratJalanFilterId,
     tanggalAwal,
     tanggalAkhir,
@@ -757,6 +802,36 @@ const SuratJalanMitra = () => {
               Filter Pencarian
             </Heading>
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+              {isSuperAdmin && (
+                <FormControl>
+                  <FormLabel fontSize="sm" fontWeight="medium">
+                    Mitra
+                  </FormLabel>
+                  <Select2
+                    options={(dataSeed?.resultMitra || []).map((val) => ({
+                      value: val.id,
+                      label: formatMitraLabel(val),
+                    }))}
+                    placeholder="Pilih Mitra"
+                    isClearable
+                    value={
+                      mitraFilterId
+                        ? {
+                            value: mitraFilterId,
+                            label: formatMitraLabel(
+                              (dataSeed?.resultMitra || []).find(
+                                (m) => m.id === mitraFilterId,
+                              ),
+                            ),
+                          }
+                        : null
+                    }
+                    onChange={(opt) => setMitraFilterId(opt?.value || 0)}
+                    {...selectStyles}
+                  />
+                </FormControl>
+              )}
+
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
                   Transportir
@@ -802,6 +877,21 @@ const SuratJalanMitra = () => {
                   onChange={(opt) =>
                     setStasiunPengumpulMinyakFilterId(opt?.value || 0)
                   }
+                  {...selectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium">
+                  Asal Minyak
+                </FormLabel>
+                <Select2
+                  options={(dataSeed?.resultAsalMinyak || []).map((val) => ({
+                    value: val.id,
+                    label: formatAsalMinyakLabel(val),
+                  }))}
+                  placeholder="Pilih Asal Minyak"
+                  onChange={(opt) => setAsalMinyakFilterId(opt?.value || 0)}
                   {...selectStyles}
                 />
               </FormControl>
@@ -997,6 +1087,9 @@ const SuratJalanMitra = () => {
                           <MobileField label="Stasiun Pengumpul Minyak">
                             {item.stasiunPengumpulMinyak?.nama || "-"}
                           </MobileField>
+                          <MobileField label="Asal Minyak">
+                            {formatAsalMinyakLabel(item.asalMinyak) || "-"}
+                          </MobileField>
                           <MobileField label="Volume">
                             <VolumeMultiSatuan
                               volume={item.volume}
@@ -1163,6 +1256,7 @@ const SuratJalanMitra = () => {
                     <Th textTransform="capitalize">
                       Stasiun Pengumpul Minyak
                     </Th>
+                    <Th textTransform="capitalize">Asal Minyak</Th>
                     <Th textTransform="capitalize" isNumeric>
                       Volume
                     </Th>
@@ -1177,7 +1271,7 @@ const SuratJalanMitra = () => {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <Tr key={idx}>
-                        {Array.from({ length: 11 }).map((__, i) => (
+                        {Array.from({ length: 12 }).map((__, i) => (
                           <Td key={i}>
                             <Skeleton height="20px" />
                           </Td>
@@ -1197,6 +1291,9 @@ const SuratJalanMitra = () => {
                             <Td>{item.transportir?.plat || "-"}</Td>
                             <Td>
                               {item.stasiunPengumpulMinyak?.nama || "-"}
+                            </Td>
+                            <Td>
+                              {formatAsalMinyakLabel(item.asalMinyak) || "-"}
                             </Td>
                             <Td>
                               <VolumeMultiSatuan
@@ -1351,7 +1448,7 @@ const SuratJalanMitra = () => {
                     })
                   ) : (
                     <Tr>
-                      <Td colSpan={11} textAlign="center" py={10}>
+                      <Td colSpan={12} textAlign="center" py={10}>
                         <VStack spacing={2}>
                           <Text fontSize="lg" color="gray.500">
                             Tidak ada data surat jalan
@@ -1470,17 +1567,45 @@ const SuratJalanMitra = () => {
                       />
                       <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
                     </FormControl>
-                    <FormControl>
+                    <FormControl isInvalid={touched.mitraId && errors.mitraId}>
                       <FormLabel>Mitra</FormLabel>
-                      <Input
-                        bgColor="terang"
-                        value={
-                          mitra?.kode
-                            ? `${mitra.nama} (${mitra.kode})`
-                            : mitra?.nama || "-"
-                        }
-                        isReadOnly
-                      />
+                      {isSuperAdmin ? (
+                        <Select2
+                          options={(dataSeed?.resultMitra || []).map((val) => ({
+                            value: val.id,
+                            label: formatMitraLabel(val),
+                          }))}
+                          placeholder="Pilih Mitra"
+                          value={
+                            values.mitraId
+                              ? {
+                                  value: values.mitraId,
+                                  label: formatMitraLabel(
+                                    (dataSeed?.resultMitra || []).find(
+                                      (m) => m.id === values.mitraId,
+                                    ),
+                                  ),
+                                }
+                              : null
+                          }
+                          onChange={(opt) => {
+                            setFieldValue("mitraId", opt?.value || null);
+                            setFieldValue("supirId", null);
+                          }}
+                          {...selectStyles}
+                        />
+                      ) : (
+                        <Input
+                          bgColor="terang"
+                          value={
+                            mitra?.kode
+                              ? `${mitra.nama} (${mitra.kode})`
+                              : mitra?.nama || "-"
+                          }
+                          isReadOnly
+                        />
+                      )}
+                      <FormErrorMessage>{errors.mitraId}</FormErrorMessage>
                     </FormControl>
                     <FormControl
                       isInvalid={touched.transportirId && errors.transportirId}
@@ -1566,6 +1691,39 @@ const SuratJalanMitra = () => {
                         {errors.stasiunPengumpulMinyakId}
                       </FormErrorMessage>
                     </FormControl>
+                    <FormControl
+                      isInvalid={touched.asalMinyakId && errors.asalMinyakId}
+                    >
+                      <FormLabel>Asal Minyak</FormLabel>
+                      <Select2
+                        options={(dataSeed?.resultAsalMinyak || []).map(
+                          (val) => ({
+                            value: val.id,
+                            label: formatAsalMinyakLabel(val),
+                          }),
+                        )}
+                        placeholder="Pilih Asal Minyak"
+                        value={
+                          values.asalMinyakId
+                            ? {
+                                value: values.asalMinyakId,
+                                label: formatAsalMinyakLabel(
+                                  (dataSeed?.resultAsalMinyak || []).find(
+                                    (a) => a.id === values.asalMinyakId,
+                                  ),
+                                ),
+                              }
+                            : null
+                        }
+                        onChange={(opt) =>
+                          setFieldValue("asalMinyakId", opt?.value || null)
+                        }
+                        {...selectStyles}
+                      />
+                      <FormErrorMessage>
+                        {errors.asalMinyakId}
+                      </FormErrorMessage>
+                    </FormControl>
                     <FormControl isInvalid={touched.volume && errors.volume}>
                       <FormLabel>Volume</FormLabel>
                       <Input
@@ -1617,18 +1775,22 @@ const SuratJalanMitra = () => {
                     <FormControl isInvalid={touched.supirId && errors.supirId}>
                       <FormLabel>Supir</FormLabel>
                       <Select2
-                        options={getSupirByMitra().map((val) => ({
+                        options={getSupirByMitra(values.mitraId).map((val) => ({
                           value: val.id,
                           label: val.nama || `Supir #${val.id}`,
                         }))}
-                        placeholder="Pilih Supir"
-                        isDisabled={!mitraId}
+                        placeholder={
+                          values.mitraId
+                            ? "Pilih Supir"
+                            : "Pilih mitra terlebih dahulu"
+                        }
+                        isDisabled={!values.mitraId}
                         value={
                           values.supirId
                             ? {
                                 value: values.supirId,
                                 label:
-                                  getSupirByMitra().find(
+                                  getSupirByMitra(values.mitraId).find(
                                     (s) => s.id === values.supirId,
                                   )?.nama || `Supir #${values.supirId}`,
                               }
