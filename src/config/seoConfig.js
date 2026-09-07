@@ -2,7 +2,7 @@
 export const seoConfig = {
   // Default SEO untuk semua halaman
   default: {
-    title: "Jasirah Diza Berjaya",
+    title: "Batanghari Patra Nusantara",
     description:
       "Sistem informasi perjalanan dinas dan pengelolaan aset Dinas Kesehatan",
     image: "/src/assets/dinkes.jpg",
@@ -26,8 +26,8 @@ export const seoConfig = {
 
   // SEO untuk halaman Home
   home: {
-    title: "Jasirah Diza Berjaya",
-    description: "Jasirah Diza Berjaya",
+    title: "Batanghari Patra Nusantara",
+    description: "Batanghari Patra Nusantara",
     image: "/src/assets/dinkes.jpg",
   },
 

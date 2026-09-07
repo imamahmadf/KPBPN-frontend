@@ -70,6 +70,7 @@ const emptyEditForm = () => ({
   catatan: "",
   saksi: "",
   satuanVolumeId: "",
+  nomorSurat: "",
   ids: [],
 });
 
@@ -374,18 +375,6 @@ const PengisianTanki = () => {
   };
 
   const handleOpenEdit = async (item) => {
-    if (!canModifyPengisian(item)) {
-      toast({
-        title: "Tidak dapat diubah",
-        description:
-          "Data yang sudah memiliki BA Bongkar atau nomor surat BAST tidak dapat diubah",
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
-
     setEditingItem(item);
     setEditForm({
       tanggal: toInputDate(item.tanggal || item.createdAt),
@@ -403,6 +392,7 @@ const PengisianTanki = () => {
         : item.satuanVolume?.id
           ? String(item.satuanVolume.id)
           : "",
+      nomorSurat: item.nomorSurat || "",
       ids: (item.konfirmasiPenerimaans || []).map((kp) => String(kp.id)),
     });
     onEditOpen();
@@ -473,6 +463,7 @@ const PengisianTanki = () => {
         catatan: editForm.catatan,
         saksi: editForm.saksi,
         satuanVolumeId: parseInt(editForm.satuanVolumeId, 10),
+        nomorSurat: editForm.nomorSurat.trim(),
         ids: editForm.ids.map((id) => parseInt(id, 10)),
       });
 
@@ -1158,25 +1149,23 @@ const PengisianTanki = () => {
         >
           Produksi
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          colorScheme="blue"
+          onClick={() => handleOpenEdit(item)}
+        >
+          Edit
+        </Button>
         {canModifyPengisian(item) && (
-          <>
-            <Button
-              size="sm"
-              variant="outline"
-              colorScheme="blue"
-              onClick={() => handleOpenEdit(item)}
-            >
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              colorScheme="red"
-              onClick={() => handleOpenDelete(item)}
-            >
-              Hapus
-            </Button>
-          </>
+          <Button
+            size="sm"
+            variant="outline"
+            colorScheme="red"
+            onClick={() => handleOpenDelete(item)}
+          >
+            Hapus
+          </Button>
         )}
         <Button
           size="sm"
@@ -2133,6 +2122,20 @@ const PengisianTanki = () => {
                         </option>
                       ))}
                     </Select>
+                  </FormControl>
+
+                  <FormControl gridColumn={{ md: "1 / -1" }}>
+                    <FormLabel>Nomor Surat BAST</FormLabel>
+                    <Input
+                      name="nomorSurat"
+                      value={editForm.nomorSurat}
+                      onChange={handleEditFieldChange}
+                      placeholder="Contoh: 25/BAST/KPBPN/PGY-SSE/IX/2026"
+                    />
+                    <FormHelperText>
+                      Nomor surat dapat diubah kapan saja, termasuk setelah BAST
+                      tercetak.
+                    </FormHelperText>
                   </FormControl>
 
                   <FormControl isRequired>

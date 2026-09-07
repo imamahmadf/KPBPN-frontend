@@ -247,6 +247,7 @@ const menuData = [
       { label: "Dashboard", path: "/admin/dashboard" },
       { label: "Mitra", path: "/admin/mitra" },
       { label: "Kelola Template", path: "/admin/template-kpbpn" },
+      { label: "Nomor Urut Surat", path: "/admin/nomor-urut" },
       { label: "Kelola Data", path: "/admin/data" },
     ],
   },

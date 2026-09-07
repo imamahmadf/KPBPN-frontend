@@ -29,16 +29,27 @@ const CONFIRM_TEXT = "HAPUS SEMUA";
 
 function AdminData() {
   const toast = useToast();
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const suratJalanModal = useDisclosure();
+  const pengisianModal = useDisclosure();
+  const ujiLabModal = useDisclosure();
 
   const [stats, setStats] = useState({
     totalSuratJalan: 0,
     totalKonfirmasi: 0,
     totalProduksi: 0,
+    totalPengisianTanki: 0,
+    totalPengisianDenganBA: 0,
+    totalBABongkarTerkait: 0,
+    totalUjiLabK3S: 0,
+    totalUjiLabDenganBA: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [confirmInput, setConfirmInput] = useState("");
+  const [isDeletingSuratJalan, setIsDeletingSuratJalan] = useState(false);
+  const [isDeletingPengisian, setIsDeletingPengisian] = useState(false);
+  const [isDeletingUjiLab, setIsDeletingUjiLab] = useState(false);
+  const [confirmSuratJalan, setConfirmSuratJalan] = useState("");
+  const [confirmPengisian, setConfirmPengisian] = useState("");
+  const [confirmUjiLab, setConfirmUjiLab] = useState("");
 
   const fetchStats = async () => {
     setIsLoading(true);
@@ -48,6 +59,11 @@ function AdminData() {
         totalSuratJalan: res.data.totalSuratJalan || 0,
         totalKonfirmasi: res.data.totalKonfirmasi || 0,
         totalProduksi: res.data.totalProduksi || 0,
+        totalPengisianTanki: res.data.totalPengisianTanki || 0,
+        totalPengisianDenganBA: res.data.totalPengisianDenganBA || 0,
+        totalBABongkarTerkait: res.data.totalBABongkarTerkait || 0,
+        totalUjiLabK3S: res.data.totalUjiLabK3S || 0,
+        totalUjiLabDenganBA: res.data.totalUjiLabDenganBA || 0,
       });
     } catch (err) {
       toast({
@@ -66,15 +82,25 @@ function AdminData() {
     fetchStats();
   }, []);
 
-  const closeModal = () => {
-    setConfirmInput("");
-    onClose();
+  const closeSuratJalanModal = () => {
+    setConfirmSuratJalan("");
+    suratJalanModal.onClose();
   };
 
-  const handleDeleteAll = async () => {
-    if (confirmInput !== CONFIRM_TEXT) return;
+  const closePengisianModal = () => {
+    setConfirmPengisian("");
+    pengisianModal.onClose();
+  };
 
-    setIsDeleting(true);
+  const closeUjiLabModal = () => {
+    setConfirmUjiLab("");
+    ujiLabModal.onClose();
+  };
+
+  const handleDeleteAllSuratJalan = async () => {
+    if (confirmSuratJalan !== CONFIRM_TEXT) return;
+
+    setIsDeletingSuratJalan(true);
     try {
       const res = await axios.post(
         `${API_BASE}/pengiriman/admin/delete-all-surat-jalan`,
@@ -86,7 +112,7 @@ function AdminData() {
         duration: 5000,
         isClosable: true,
       });
-      closeModal();
+      closeSuratJalanModal();
       fetchStats();
     } catch (err) {
       toast({
@@ -97,7 +123,67 @@ function AdminData() {
         isClosable: true,
       });
     } finally {
-      setIsDeleting(false);
+      setIsDeletingSuratJalan(false);
+    }
+  };
+
+  const handleDeleteAllPengisian = async () => {
+    if (confirmPengisian !== CONFIRM_TEXT) return;
+
+    setIsDeletingPengisian(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/pengiriman/admin/delete-all-pengisian-tanki`,
+      );
+      toast({
+        title: "Berhasil",
+        description: res.data.message,
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+      closePengisianModal();
+      fetchStats();
+    } catch (err) {
+      toast({
+        title: "Gagal menghapus data",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingPengisian(false);
+    }
+  };
+
+  const handleDeleteAllUjiLab = async () => {
+    if (confirmUjiLab !== CONFIRM_TEXT) return;
+
+    setIsDeletingUjiLab(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/pengiriman/admin/delete-all-uji-lab`,
+      );
+      toast({
+        title: "Berhasil",
+        description: res.data.message,
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+      closeUjiLabModal();
+      fetchStats();
+    } catch (err) {
+      toast({
+        title: "Gagal menghapus data",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingUjiLab(false);
     }
   };
 
@@ -109,57 +195,140 @@ function AdminData() {
             Kelola Data
           </Heading>
           <Text color="gray.600" mb={6}>
-            Halaman ini digunakan untuk menghapus seluruh data surat jalan.
-            Tindakan ini bersifat permanen.
+            Halaman ini digunakan untuk menghapus seluruh data surat jalan,
+            pengisian tanki, atau uji lab K3S. Tindakan ini bersifat permanen.
           </Text>
 
-          <Alert status="warning" borderRadius="md" mb={6}>
-            <AlertIcon />
-            Menghapus surat jalan juga akan menghapus konfirmasi penerimaan dan
-            produksi sumur yang terkait.
-          </Alert>
-
-          <Box borderWidth="1px" borderRadius="lg" p={6}>
-            <HStack justify="space-between" align="flex-start" spacing={6}>
-              <Box>
-                <Text fontWeight="bold" fontSize="lg" mb={2}>
-                  Surat Jalan
-                </Text>
-                {isLoading ? (
-                  <Spinner size="sm" color="kpbpn" />
-                ) : (
-                  <VStack align="start" spacing={1}>
-                    <Text fontSize="sm" color="gray.700">
-                      Jumlah surat jalan:{" "}
-                      <Text as="span" fontWeight="bold">
-                        {stats.totalSuratJalan}
+          <VStack spacing={6} align="stretch">
+            <Box borderWidth="1px" borderRadius="lg" p={6}>
+              <Alert status="warning" borderRadius="md" mb={6}>
+                <AlertIcon />
+                Menghapus surat jalan juga akan menghapus konfirmasi penerimaan
+                dan produksi sumur yang terkait.
+              </Alert>
+              <HStack justify="space-between" align="flex-start" spacing={6}>
+                <Box>
+                  <Text fontWeight="bold" fontSize="lg" mb={2}>
+                    Surat Jalan
+                  </Text>
+                  {isLoading ? (
+                    <Spinner size="sm" color="kpbpn" />
+                  ) : (
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="sm" color="gray.700">
+                        Jumlah surat jalan:{" "}
+                        <Text as="span" fontWeight="bold">
+                          {stats.totalSuratJalan}
+                        </Text>
                       </Text>
-                    </Text>
-                    <Text fontSize="sm" color="gray.600">
-                      Konfirmasi penerimaan terkait: {stats.totalKonfirmasi}
-                    </Text>
-                    <Text fontSize="sm" color="gray.600">
-                      Produksi sumur terkait: {stats.totalProduksi}
-                    </Text>
-                  </VStack>
-                )}
-              </Box>
-              <Button
-                colorScheme="red"
-                onClick={onOpen}
-                isDisabled={isLoading || stats.totalSuratJalan === 0}
-              >
-                Hapus Semua Surat Jalan
-              </Button>
-            </HStack>
-          </Box>
+                      <Text fontSize="sm" color="gray.600">
+                        Konfirmasi penerimaan terkait: {stats.totalKonfirmasi}
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Produksi sumur terkait: {stats.totalProduksi}
+                      </Text>
+                    </VStack>
+                  )}
+                </Box>
+                <Button
+                  colorScheme="red"
+                  onClick={suratJalanModal.onOpen}
+                  isDisabled={isLoading || stats.totalSuratJalan === 0}
+                >
+                  Hapus Semua Surat Jalan
+                </Button>
+              </HStack>
+            </Box>
+
+            <Box borderWidth="1px" borderRadius="lg" p={6}>
+              <Alert status="warning" borderRadius="md" mb={6}>
+                <AlertIcon />
+                Menghapus pengisian tanki juga akan menghapus BA Bongkar, uji
+                lab, dan BAK3S yang terkait.
+              </Alert>
+              <HStack justify="space-between" align="flex-start" spacing={6}>
+                <Box>
+                  <Text fontWeight="bold" fontSize="lg" mb={2}>
+                    Pengisian Tanki
+                  </Text>
+                  {isLoading ? (
+                    <Spinner size="sm" color="kpbpn" />
+                  ) : (
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="sm" color="gray.700">
+                        Jumlah pengisian tanki:{" "}
+                        <Text as="span" fontWeight="bold">
+                          {stats.totalPengisianTanki}
+                        </Text>
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Terhubung BA Bongkar: {stats.totalPengisianDenganBA}
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        BA Bongkar terkait: {stats.totalBABongkarTerkait}
+                      </Text>
+                    </VStack>
+                  )}
+                </Box>
+                <Button
+                  colorScheme="red"
+                  onClick={pengisianModal.onOpen}
+                  isDisabled={isLoading || stats.totalPengisianTanki === 0}
+                >
+                  Hapus Semua Pengisian Tanki
+                </Button>
+              </HStack>
+            </Box>
+
+            <Box borderWidth="1px" borderRadius="lg" p={6}>
+              <Alert status="warning" borderRadius="md" mb={6}>
+                <AlertIcon />
+                Menghapus uji lab K3S akan menghapus seluruh data uji lab,
+                termasuk yang sudah terhubung ke BA Bongkar. BA Bongkar tidak
+                ikut terhapus.
+              </Alert>
+              <HStack justify="space-between" align="flex-start" spacing={6}>
+                <Box>
+                  <Text fontWeight="bold" fontSize="lg" mb={2}>
+                    Uji Lab K3S
+                  </Text>
+                  {isLoading ? (
+                    <Spinner size="sm" color="kpbpn" />
+                  ) : (
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="sm" color="gray.700">
+                        Jumlah uji lab K3S:{" "}
+                        <Text as="span" fontWeight="bold">
+                          {stats.totalUjiLabK3S}
+                        </Text>
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Terhubung BA Bongkar: {stats.totalUjiLabDenganBA}
+                      </Text>
+                    </VStack>
+                  )}
+                </Box>
+                <Button
+                  colorScheme="red"
+                  onClick={ujiLabModal.onOpen}
+                  isDisabled={isLoading || stats.totalUjiLabK3S === 0}
+                >
+                  Hapus Semua Uji Lab K3S
+                </Button>
+              </HStack>
+            </Box>
+          </VStack>
         </Container>
       </Box>
 
-      <Modal isOpen={isOpen} onClose={closeModal} size="md">
+      <Modal
+        isOpen={suratJalanModal.isOpen}
+        onClose={closeSuratJalanModal}
+        size="md"
+      >
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Konfirmasi Hapus Semua Data</ModalHeader>
+          <ModalHeader>Konfirmasi Hapus Semua Surat Jalan</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Text mb={3}>
@@ -180,19 +349,110 @@ function AdminData() {
             </Text>
             <Input
               placeholder={CONFIRM_TEXT}
-              value={confirmInput}
-              onChange={(e) => setConfirmInput(e.target.value)}
+              value={confirmSuratJalan}
+              onChange={(e) => setConfirmSuratJalan(e.target.value)}
             />
           </ModalBody>
           <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={closeModal}>
+            <Button variant="ghost" mr={3} onClick={closeSuratJalanModal}>
               Batal
             </Button>
             <Button
               colorScheme="red"
-              onClick={handleDeleteAll}
-              isLoading={isDeleting}
-              isDisabled={confirmInput !== CONFIRM_TEXT}
+              onClick={handleDeleteAllSuratJalan}
+              isLoading={isDeletingSuratJalan}
+              isDisabled={confirmSuratJalan !== CONFIRM_TEXT}
+            >
+              Hapus Semua
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={pengisianModal.isOpen}
+        onClose={closePengisianModal}
+        size="md"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Konfirmasi Hapus Semua Pengisian Tanki</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text mb={3}>
+              Anda akan menghapus{" "}
+              <Text as="span" fontWeight="bold">
+                {stats.totalPengisianTanki} pengisian tanki
+              </Text>
+              , beserta {stats.totalBABongkarTerkait} BA Bongkar terkait
+              termasuk uji lab dan BAK3S. Tindakan ini tidak dapat dibatalkan.
+            </Text>
+            <Text fontSize="sm" mb={2}>
+              Ketik{" "}
+              <Text as="span" fontWeight="bold">
+                {CONFIRM_TEXT}
+              </Text>{" "}
+              untuk konfirmasi.
+            </Text>
+            <Input
+              placeholder={CONFIRM_TEXT}
+              value={confirmPengisian}
+              onChange={(e) => setConfirmPengisian(e.target.value)}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closePengisianModal}>
+              Batal
+            </Button>
+            <Button
+              colorScheme="red"
+              onClick={handleDeleteAllPengisian}
+              isLoading={isDeletingPengisian}
+              isDisabled={confirmPengisian !== CONFIRM_TEXT}
+            >
+              Hapus Semua
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={ujiLabModal.isOpen} onClose={closeUjiLabModal} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Konfirmasi Hapus Semua Uji Lab K3S</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text mb={3}>
+              Anda akan menghapus{" "}
+              <Text as="span" fontWeight="bold">
+                {stats.totalUjiLabK3S} uji lab K3S
+              </Text>
+              , termasuk {stats.totalUjiLabDenganBA} data yang terhubung ke BA
+              Bongkar. BA Bongkar tidak ikut terhapus. Tindakan ini tidak dapat
+              dibatalkan.
+            </Text>
+            <Text fontSize="sm" mb={2}>
+              Ketik{" "}
+              <Text as="span" fontWeight="bold">
+                {CONFIRM_TEXT}
+              </Text>{" "}
+              untuk konfirmasi.
+            </Text>
+            <Input
+              placeholder={CONFIRM_TEXT}
+              value={confirmUjiLab}
+              onChange={(e) => setConfirmUjiLab(e.target.value)}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closeUjiLabModal}>
+              Batal
+            </Button>
+            <Button
+              colorScheme="red"
+              onClick={handleDeleteAllUjiLab}
+              isLoading={isDeletingUjiLab}
+              isDisabled={confirmUjiLab !== CONFIRM_TEXT}
             >
               Hapus Semua
             </Button>
