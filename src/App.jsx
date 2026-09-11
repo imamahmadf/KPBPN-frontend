@@ -38,6 +38,7 @@ import AsalMinyak from "./pages/Admin/AsalMinyak.jsx";
 import AdminData from "./pages/Admin/AdminData.jsx";
 import AdminNomorUrut from "./pages/Admin/AdminNomorUrut.jsx";
 import DetailSuratJalan from "./pages/SuratJalan/DetailSuratJalan.jsx";
+import DetailSuratJalanMitra from "./pages/PengirimanMitraKPBPN/DetailSuratJalanMitra.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -225,7 +226,12 @@ function App() {
             exact
             roleRoute={[1, 2]}
           />
-
+          <ProtectedRoute
+            component={DetailSuratJalanMitra}
+            path="/pengiriman-mitra/detail-surat-jalan/:id"
+            exact
+            roleRoute={[1, 2, 3]}
+          />
           <Route component={verifikasi} path="/verifikasi/:id" />
           <Route component={DeveloperProfile} path="/developer-profile" />
           <Route component={Home} path="/" />

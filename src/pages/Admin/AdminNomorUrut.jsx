@@ -39,18 +39,17 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const getKeteranganSurat = (item) => {
   if (item.id === 1) {
-    return "Dipakai saat verifikasi surat jalan. Nomor berikutnya adalah nilai ini + 1.";
+    return "Template format nomor surat jalan. Nomor urut mengikuti masing-masing mitra.";
   }
   if (item.id === 2) {
     return "Template format nomor BAST. Nomor urut BAST mengikuti masing-masing mitra.";
   }
-  return "Nomor urut dokumen KPBPN.";
+  return "Template format nomor dokumen KPBPN.";
 };
 
 function AdminNomorUrut() {
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
-
   const [dataNomorSurat, setDataNomorSurat] = useState([]);
   const [dataMitra, setDataMitra] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,15 +81,19 @@ function AdminNomorUrut() {
   }, []);
 
   const openEdit = (item, jenis) => {
+    const isSuratJalan = jenis === "suratJalan";
     setEditing({
       ...item,
       jenis,
-      title:
-        jenis === "surat"
-          ? `Ubah Nomor Urut ${item.label || "Dokumen"}`
-          : `Ubah Nomor Urut BAST ${item.nama}`,
+      title: isSuratJalan
+        ? `Ubah Nomor Urut Surat Jalan ${item.nama}`
+        : `Ubah Nomor Urut BAST ${item.nama}`,
     });
-    setNomorUrutInput(String(item.nomorUrut ?? 0));
+    setNomorUrutInput(
+      String(
+        isSuratJalan ? (item.nomorUrutSuratJalan ?? 0) : (item.nomorUrut ?? 0),
+      ),
+    );
     onOpen();
   };
 
@@ -121,12 +124,10 @@ function AdminNomorUrut() {
 
     setIsSaving(true);
     try {
-      const endpoint =
-        editing.jenis === "surat"
-          ? `${API_BASE}/nomor-surat-kpbpn/edit/surat/${editing.id}`
-          : `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`;
-
-      const res = await axios.post(endpoint, { nomorUrut: parsed });
+      const res = await axios.post(
+        `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`,
+        { nomorUrut: parsed, jenis: editing.jenis },
+      );
       toast({
         title: "Berhasil",
         description: res.data.message,
@@ -152,13 +153,13 @@ function AdminNomorUrut() {
   return (
     <LayoutKPBPN>
       <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
-        <Container variant="primary" p="30px" my="30px" maxW="1100px">
+        <Container variant="primary" p="30px" my="30px" maxW="1200px">
           <Heading color="kpbpn" mb={4}>
             Nomor Urut Surat
           </Heading>
           <Text color="gray.600" mb={6}>
-            Atur nomor urut terakhir yang tersimpan. Dokumen berikutnya akan
-            memakai nilai ini ditambah 1.
+            Atur nomor urut terakhir per mitra. Dokumen berikutnya akan memakai
+            nilai ini ditambah 1.
           </Text>
 
           {isLoading ? (
@@ -169,11 +170,11 @@ function AdminNomorUrut() {
             <VStack spacing={8} align="stretch">
               <Box>
                 <Heading size="md" mb={2}>
-                  Nomor Urut Global
+                  Format Nomor Dokumen
                 </Heading>
                 <Text fontSize="sm" color="gray.600" mb={4}>
-                  Counter surat jalan diambil dari tabel nomor surat KPBPN.
-                  Nomor urut BAST mengikuti masing-masing mitra.
+                  Template format nomor diambil dari tabel nomor surat KPBPN.
+                  Nomor urut surat jalan dan BAST mengikuti masing-masing mitra.
                 </Text>
                 <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
                   <Table size="sm">
@@ -181,15 +182,12 @@ function AdminNomorUrut() {
                       <Tr>
                         <Th>Jenis</Th>
                         <Th>Format Nomor</Th>
-                        <Th>Nomor Urut Terakhir</Th>
-                        <Th>Nomor Berikutnya</Th>
-                        <Th>Aksi</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       {dataNomorSurat.length === 0 ? (
                         <Tr>
-                          <Td colSpan={5} textAlign="center" py={6}>
+                          <Td colSpan={2} textAlign="center" py={6}>
                             Data nomor surat belum tersedia
                           </Td>
                         </Tr>
@@ -207,18 +205,6 @@ function AdminNomorUrut() {
                             <Td>
                               <Badge colorScheme="purple">{item.nomor}</Badge>
                             </Td>
-                            <Td fontWeight="bold">{item.nomorUrut ?? 0}</Td>
-                            <Td>{item.nomorBerikutnya}</Td>
-                            <Td>
-                              <IconButton
-                                aria-label="Ubah nomor urut"
-                                icon={<BsPencil />}
-                                size="sm"
-                                variant="ghost"
-                                colorScheme="blue"
-                                onClick={() => openEdit(item, "surat")}
-                              />
-                            </Td>
                           </Tr>
                         ))
                       )}
@@ -229,11 +215,11 @@ function AdminNomorUrut() {
 
               <Box>
                 <Heading size="md" mb={2}>
-                  Nomor Urut BAST per Mitra
+                  Nomor Urut per Mitra
                 </Heading>
                 <Text fontSize="sm" color="gray.600" mb={4}>
-                  Setiap mitra memiliki counter BAST sendiri. Nomor berikutnya
-                  adalah nilai tersimpan + 1.
+                  Setiap mitra memiliki counter sendiri untuk BAST dan surat
+                  jalan. Nomor berikutnya adalah nilai tersimpan + 1.
                 </Text>
                 <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
                   <Table size="sm">
@@ -243,15 +229,16 @@ function AdminNomorUrut() {
                         <Th>Kode</Th>
                         <Th>Jenis</Th>
                         <Th>Nama Mitra</Th>
-                        <Th>Nomor Urut Terakhir</Th>
-                        <Th>Nomor Berikutnya</Th>
-                        <Th>Aksi</Th>
+                        <Th>BAST Terakhir</Th>
+                        <Th>BAST Berikutnya</Th>
+                        <Th>Surat Jalan Terakhir</Th>
+                        <Th>Surat Jalan Berikutnya</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       {dataMitra.length === 0 ? (
                         <Tr>
-                          <Td colSpan={7} textAlign="center" py={6}>
+                          <Td colSpan={8} textAlign="center" py={6}>
                             Belum ada data mitra
                           </Td>
                         </Tr>
@@ -262,18 +249,40 @@ function AdminNomorUrut() {
                             <Td>{item.kode || "-"}</Td>
                             <Td>{item.jenisMitra?.jenis || "-"}</Td>
                             <Td fontWeight="medium">{item.nama}</Td>
-                            <Td fontWeight="bold">{item.nomorUrut ?? 0}</Td>
+                            <Td>
+                              <HStack spacing={1}>
+                                <Text fontWeight="bold">
+                                  {item.nomorUrut ?? 0}
+                                </Text>
+                                <IconButton
+                                  aria-label="Ubah nomor urut BAST"
+                                  title="Ubah nomor urut BAST"
+                                  icon={<BsPencil />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="blue"
+                                  onClick={() => openEdit(item, "bast")}
+                                />
+                              </HStack>
+                            </Td>
                             <Td>{item.nomorBerikutnya}</Td>
                             <Td>
-                              <IconButton
-                                aria-label="Ubah nomor urut mitra"
-                                icon={<BsPencil />}
-                                size="sm"
-                                variant="ghost"
-                                colorScheme="blue"
-                                onClick={() => openEdit(item, "mitra")}
-                              />
+                              <HStack spacing={1}>
+                                <Text fontWeight="bold">
+                                  {item.nomorUrutSuratJalan ?? 0}
+                                </Text>
+                                <IconButton
+                                  aria-label="Ubah nomor urut surat jalan"
+                                  title="Ubah nomor urut surat jalan"
+                                  icon={<BsPencil />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="purple"
+                                  onClick={() => openEdit(item, "suratJalan")}
+                                />
+                              </HStack>
                             </Td>
+                            <Td>{item.nomorBerikutnyaSuratJalan}</Td>
                           </Tr>
                         ))
                       )}
@@ -316,11 +325,7 @@ function AdminNomorUrut() {
             <Button variant="ghost" mr={3} onClick={closeEdit}>
               Batal
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              isLoading={isSaving}
-            >
+            <Button variant="primary" onClick={handleSave} isLoading={isSaving}>
               Simpan
             </Button>
           </ModalFooter>

@@ -22,11 +22,16 @@ import {
   Image,
   VStack,
   Stack,
+  FormControl,
+  FormLabel,
+  Input,
+  Select,
+  Skeleton,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
-import { formatVolumeNumber } from "../../lib/volumeSatuan";
+import { formatVolumeNumber, isVolumeEqual } from "../../lib/volumeSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -150,12 +155,26 @@ const NestedCard = ({ children }) => (
   </Box>
 );
 
-function DetailSuratJalan({ match }) {
+function DetailSuratJalan({
+  match,
+  backTo = "/pengiriman-kpbpn/surat-jalan",
+  showExtendedSections = true,
+}) {
   const suratJalanId = match.params.id;
   const toast = useToast();
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [produksiPanel, setProduksiPanel] = useState({
+    loading: false,
+    saving: false,
+    sumurList: [],
+    inputs: {},
+    volume: 0,
+    satuan: "",
+    satuanVolumeId: null,
+    satuanVolumeOptions: [],
+  });
 
   const fetchDetail = async () => {
     setIsLoading(true);
@@ -179,13 +198,184 @@ function DetailSuratJalan({ match }) {
     }
   };
 
+  const fetchProduksiPanel = async () => {
+    if (!suratJalanId) return;
+
+    setProduksiPanel((prev) => ({
+      ...prev,
+      loading: true,
+      sumurList: [],
+      inputs: {},
+    }));
+
+    try {
+      const res = await axios.get(
+        `${API_BASE}/pengiriman/get/produksi-sumur/${suratJalanId}`,
+      );
+
+      const sumurList = res.data.resultSumurMinyak || [];
+      const existingProduksi = res.data.resultProduksi || [];
+      const satuanVolumeOptions = res.data.resultSatuanVolume || [];
+      const inputs = {};
+
+      sumurList.forEach((sumur) => {
+        const existing = existingProduksi.find(
+          (p) => p.sumurMinyakId === sumur.id,
+        );
+        inputs[sumur.id] = existing?.produksi ?? "";
+      });
+
+      const defaultSatuanVolumeId =
+        existingProduksi.find((p) => p.satuanVolumeId)?.satuanVolumeId ??
+        res.data.suratJalan?.satuanVolumeId ??
+        satuanVolumeOptions[0]?.id ??
+        null;
+
+      setProduksiPanel((prev) => ({
+        ...prev,
+        loading: false,
+        sumurList,
+        inputs,
+        volume: res.data.suratJalan?.volume ?? 0,
+        satuan: res.data.suratJalan?.satuanVolume?.satuan || "",
+        satuanVolumeId: defaultSatuanVolumeId,
+        satuanVolumeOptions,
+      }));
+    } catch (err) {
+      console.error(err);
+      setProduksiPanel((prev) => ({ ...prev, loading: false }));
+      toast({
+        title: "Gagal memuat produksi",
+        description:
+          err.response?.data?.error || "Gagal memuat data produksi sumur",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
   useEffect(() => {
     fetchDetail();
+    fetchProduksiPanel();
   }, [suratJalanId]);
 
-  const produksiList = data?.produksiSumurs || [];
+  const handleProduksiInputChange = (sumurMinyakId, value) => {
+    setProduksiPanel((prev) => ({
+      ...prev,
+      inputs: {
+        ...prev.inputs,
+        [sumurMinyakId]: value,
+      },
+    }));
+  };
+
+  const totalProduksiInput = useMemo(() => {
+    return Object.values(produksiPanel.inputs).reduce((sum, val) => {
+      const num = parseInt(val, 10);
+      return sum + (Number.isNaN(num) ? 0 : num);
+    }, 0);
+  }, [produksiPanel.inputs]);
+
+  const produksiSatuanLabel = useMemo(() => {
+    const selected = produksiPanel.satuanVolumeOptions.find(
+      (opt) => opt.id === produksiPanel.satuanVolumeId,
+    );
+    return selected?.satuan || produksiPanel.satuan || "Barrel";
+  }, [
+    produksiPanel.satuanVolumeOptions,
+    produksiPanel.satuanVolumeId,
+    produksiPanel.satuan,
+  ]);
+
+  const isProduksiTotalValid = useMemo(
+    () =>
+      isVolumeEqual(
+        totalProduksiInput,
+        produksiSatuanLabel,
+        produksiPanel.volume,
+        produksiPanel.satuan || "Barrel",
+      ),
+    [
+      totalProduksiInput,
+      produksiSatuanLabel,
+      produksiPanel.volume,
+      produksiPanel.satuan,
+    ],
+  );
+
+  const saveProduksiSumur = async () => {
+    const items = Object.entries(produksiPanel.inputs)
+      .map(([sumurMinyakId, produksi]) => ({
+        sumurMinyakId: parseInt(sumurMinyakId, 10),
+        produksi: parseInt(produksi, 10) || 0,
+      }))
+      .filter((item) => item.produksi > 0);
+
+    if (!produksiPanel.satuanVolumeId) {
+      toast({
+        title: "Satuan belum dipilih",
+        description: "Pilih satuan volume produksi terlebih dahulu.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!isProduksiTotalValid) {
+      toast({
+        title: "Total produksi tidak sesuai",
+        description: `Total produksi harus sama dengan volume surat jalan (${produksiPanel.volume}${produksiPanel.satuan ? ` ${produksiPanel.satuan}` : ""})`,
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setProduksiPanel((prev) => ({ ...prev, saving: true }));
+
+    try {
+      await axios.post(`${API_BASE}/pengiriman/post/produksi-sumur`, {
+        suratJalanId,
+        satuanVolumeId: produksiPanel.satuanVolumeId,
+        items,
+      });
+
+      toast({
+        title: "Berhasil",
+        description: "Produksi sumur berhasil disimpan.",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+
+      await Promise.all([fetchDetail(), fetchProduksiPanel()]);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal menyimpan",
+        description:
+          err.response?.data?.error || "Gagal menyimpan produksi sumur",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setProduksiPanel((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
   const konfirmasiList = data?.konfirmasiPenerimaans || [];
   const satuanSurat = data?.satuanVolume?.satuan || "Barrel";
+  const canEditProduksi = data?.statusSuratJalanId === 1;
+  const displayedSumurList = canEditProduksi
+    ? produksiPanel.sumurList
+    : produksiPanel.sumurList.filter((sumur) => {
+        const value = produksiPanel.inputs[sumur.id];
+        return value !== "" && value != null && Number(value) > 0;
+      });
 
   const pengisianList = useMemo(() => {
     const items = [];
@@ -273,7 +463,7 @@ function DetailSuratJalan({ match }) {
           <VStack align="stretch" spacing={2} mb={{ base: 4, md: 6 }}>
             <Button
               as={RouterLink}
-              to="/pengiriman-kpbpn/surat-jalan"
+              to={backTo}
               variant="ghost"
               size="sm"
               alignSelf={{ base: "stretch", sm: "flex-start" }}
@@ -426,24 +616,73 @@ function DetailSuratJalan({ match }) {
                 </SectionCard>
               </SimpleGrid>
 
-              <SimpleGrid
-                columns={{ base: 1, lg: 2 }}
-                spacing={{ base: 4, md: 6 }}
-                alignItems="stretch"
+              <SectionCard
+                title={
+                  canEditProduksi
+                    ? "Input Produksi Sumur"
+                    : "Produksi Sumur"
+                }
               >
-                <SectionCard title="Produksi Sumur">
-                {produksiList.length === 0 ? (
+                {produksiPanel.loading ? (
+                  <Stack spacing={3}>
+                    <Skeleton height="20px" />
+                    <Skeleton height="36px" />
+                    <Skeleton height="36px" />
+                  </Stack>
+                ) : displayedSumurList.length === 0 ? (
                   <EmptyText>
-                    Belum ada data produksi sumur untuk surat jalan ini.
+                    {produksiPanel.sumurList.length === 0
+                      ? "Tidak ada data sumur minyak untuk mitra ini."
+                      : "Belum ada data produksi sumur untuk surat jalan ini."}
                   </EmptyText>
                 ) : (
                   <>
-                    <Stack spacing={3} display={{ base: "flex", lg: "none" }}>
-                      {produksiList.map((item, index) => (
-                        <NestedCard key={item.id}>
+                    <FormControl maxW={{ md: "280px" }} mb={4}>
+                      <FormLabel
+                        fontSize="xs"
+                        color="gray.500"
+                        fontWeight="semibold"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                      >
+                        Satuan Produksi
+                      </FormLabel>
+                      {canEditProduksi ? (
+                        <Select
+                          size="sm"
+                          bg="white"
+                          value={produksiPanel.satuanVolumeId || ""}
+                          onChange={(e) =>
+                            setProduksiPanel((prev) => ({
+                              ...prev,
+                              satuanVolumeId: e.target.value
+                                ? Number(e.target.value)
+                                : null,
+                            }))
+                          }
+                        >
+                          <option value="">Pilih satuan</option>
+                          {produksiPanel.satuanVolumeOptions.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.satuan || `Satuan #${opt.id}`}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Text fontSize="sm">{produksiSatuanLabel}</Text>
+                      )}
+                    </FormControl>
+
+                    <Stack
+                      spacing={3}
+                      mb={4}
+                      display={{ base: "flex", lg: "none" }}
+                    >
+                      {displayedSumurList.map((sumur, index) => (
+                        <NestedCard key={sumur.id}>
                           <HStack justify="space-between" mb={3} align="start">
                             <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {item.sumurMinyak?.nama || "-"}
+                              {sumur.nama || "-"}
                             </Text>
                             <Text fontSize="xs" color="gray.500">
                               No. {index + 1}
@@ -451,16 +690,33 @@ function DetailSuratJalan({ match }) {
                           </HStack>
                           <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
                             <InfoField label="Nomor Sumur">
-                              {item.sumurMinyak?.nomor || "-"}
+                              {sumur.nomor || "-"}
                             </InfoField>
-                            <InfoField label="Tanggal">
-                              {formatTanggal(item.tanggal)}
-                            </InfoField>
-                            <InfoField label="Produksi">
-                              <VolumeMultiSatuan
-                                volume={item.produksi}
-                                satuan={item.satuanVolume?.satuan || satuanSurat}
-                              />
+                            <InfoField label={`Produksi (${produksiSatuanLabel})`}>
+                              {canEditProduksi ? (
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  size="sm"
+                                  bg="white"
+                                  value={produksiPanel.inputs[sumur.id] ?? ""}
+                                  onChange={(e) =>
+                                    handleProduksiInputChange(
+                                      sumur.id,
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="0"
+                                />
+                              ) : produksiPanel.inputs[sumur.id] !== "" &&
+                                produksiPanel.inputs[sumur.id] != null ? (
+                                <VolumeMultiSatuan
+                                  volume={produksiPanel.inputs[sumur.id]}
+                                  satuan={produksiSatuanLabel}
+                                />
+                              ) : (
+                                "-"
+                              )}
                             </InfoField>
                           </SimpleGrid>
                         </NestedCard>
@@ -473,6 +729,7 @@ function DetailSuratJalan({ match }) {
                       borderWidth="1px"
                       borderRadius="md"
                       bg="white"
+                      mb={4}
                     >
                       <Table variant="simple" size="sm">
                         <Thead bg="white">
@@ -480,34 +737,107 @@ function DetailSuratJalan({ match }) {
                             <Th textTransform="capitalize">No.</Th>
                             <Th textTransform="capitalize">Sumur</Th>
                             <Th textTransform="capitalize">Nomor Sumur</Th>
-                            <Th textTransform="capitalize">Tanggal</Th>
-                            <Th textTransform="capitalize">Produksi</Th>
+                            <Th textTransform="capitalize" isNumeric>
+                              Produksi ({produksiSatuanLabel})
+                            </Th>
                           </Tr>
                         </Thead>
                         <Tbody>
-                          {produksiList.map((item, index) => (
-                            <Tr key={item.id}>
+                          {displayedSumurList.map((sumur, index) => (
+                            <Tr key={sumur.id}>
                               <Td>{index + 1}</Td>
-                              <Td>{item.sumurMinyak?.nama || "-"}</Td>
-                              <Td>{item.sumurMinyak?.nomor || "-"}</Td>
-                              <Td>{formatTanggal(item.tanggal)}</Td>
-                              <Td>
-                                <VolumeMultiSatuan
-                                  volume={item.produksi}
-                                  satuan={
-                                    item.satuanVolume?.satuan || satuanSurat
-                                  }
-                                />
+                              <Td>{sumur.nama || "-"}</Td>
+                              <Td>{sumur.nomor || "-"}</Td>
+                              <Td isNumeric>
+                                {canEditProduksi ? (
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    size="sm"
+                                    w="140px"
+                                    ml="auto"
+                                    bg="white"
+                                    value={produksiPanel.inputs[sumur.id] ?? ""}
+                                    onChange={(e) =>
+                                      handleProduksiInputChange(
+                                        sumur.id,
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder="0"
+                                  />
+                                ) : produksiPanel.inputs[sumur.id] !== "" &&
+                                  produksiPanel.inputs[sumur.id] != null ? (
+                                  <VolumeMultiSatuan
+                                    volume={produksiPanel.inputs[sumur.id]}
+                                    satuan={produksiSatuanLabel}
+                                  />
+                                ) : (
+                                  "-"
+                                )}
                               </Td>
                             </Tr>
                           ))}
                         </Tbody>
                       </Table>
                     </Box>
+
+                    <Flex
+                      align={{ base: "stretch", md: "center" }}
+                      direction={{ base: "column", md: "row" }}
+                      gap={3}
+                      justify="space-between"
+                    >
+                      <Box>
+                        <HStack spacing={1} align="start" mb={1}>
+                          <Text fontSize="sm" color="gray.600">
+                            Total Produksi:
+                          </Text>
+                          <VolumeMultiSatuan
+                            volume={totalProduksiInput}
+                            satuan={produksiSatuanLabel}
+                            fontSize="sm"
+                          />
+                        </HStack>
+                        <HStack spacing={1} align="start">
+                          <Text fontSize="sm" color="gray.600">
+                            Volume Surat Jalan:
+                          </Text>
+                          <VolumeMultiSatuan
+                            volume={produksiPanel.volume}
+                            satuan={produksiPanel.satuan || satuanSurat}
+                            fontSize="sm"
+                          />
+                        </HStack>
+                        {canEditProduksi && !isProduksiTotalValid && (
+                          <Text fontSize="xs" color="red.500" mt={1}>
+                            Total produksi harus sama dengan volume surat jalan
+                          </Text>
+                        )}
+                      </Box>
+                      {canEditProduksi && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          isLoading={produksiPanel.saving}
+                          isDisabled={
+                            !isProduksiTotalValid ||
+                            !produksiPanel.satuanVolumeId ||
+                            produksiPanel.loading
+                          }
+                          onClick={saveProduksiSumur}
+                          w={{ base: "full", md: "auto" }}
+                        >
+                          Simpan Produksi
+                        </Button>
+                      )}
+                    </Flex>
                   </>
                 )}
               </SectionCard>
 
+              {showExtendedSections && (
+                <>
               <SectionCard title="Konfirmasi Penerimaan">
                 {konfirmasiList.length === 0 ? (
                   <EmptyText>
@@ -562,7 +892,6 @@ function DetailSuratJalan({ match }) {
                     </Stack>
                   )}
                 </SectionCard>
-              </SimpleGrid>
 
               <SectionCard title="Pengisian Tanki">
                 {pengisianList.length === 0 ? (
@@ -835,6 +1164,8 @@ function DetailSuratJalan({ match }) {
                   )}
                 </SectionCard>
               </SimpleGrid>
+                </>
+              )}
             </Stack>
           )}
         </Container>

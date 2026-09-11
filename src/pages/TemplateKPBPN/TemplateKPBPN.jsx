@@ -49,38 +49,28 @@ const JENIS_DOKUMEN_OPTIONS = [
 const getJenisLabel = (jenis) =>
   JENIS_DOKUMEN_OPTIONS.find((item) => item.value === jenis)?.label || jenis;
 
-const templateSchema = Yup.object({
-  nama: Yup.string().required("Nama template wajib diisi"),
-  jenisDokumen: Yup.string()
-    .oneOf(["BAST", "BABongkar", "suratJalan"], "Jenis dokumen tidak valid")
-    .required("Jenis dokumen wajib dipilih"),
-  status: Yup.string()
-    .oneOf(["aktif", "nonaktif"], "Status tidak valid")
-    .required("Status wajib dipilih"),
-  file: Yup.mixed().when("$isEdit", {
-    is: false,
-    then: (schema) =>
-      schema
-        .required("File harus diunggah")
-        .test(
-          "fileType",
-          "Format file tidak valid. Harap unggah file .docx",
-          (value) =>
-            value &&
-            value.type ===
-              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ),
-    otherwise: (schema) =>
-      schema.test(
+const isDocxFile = (value) =>
+  !value ||
+  value.type ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const getTemplateSchema = (isEdit) =>
+  Yup.object({
+    nama: Yup.string().required("Nama template wajib diisi"),
+    jenisDokumen: Yup.string()
+      .oneOf(["BAST", "BABongkar", "suratJalan"], "Jenis dokumen tidak valid")
+      .required("Jenis dokumen wajib dipilih"),
+    status: Yup.string()
+      .oneOf(["aktif", "nonaktif"], "Status tidak valid")
+      .required("Status wajib dipilih"),
+    file: Yup.mixed()
+      .test("fileRequired", "File harus diunggah", (value) => isEdit || !!value)
+      .test(
         "fileType",
         "Format file tidak valid. Harap unggah file .docx",
-        (value) =>
-          !value ||
-          value.type ===
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        isDocxFile,
       ),
-  }),
-});
+  });
 
 const TemplateKPBPN = () => {
   const toast = useToast();
@@ -291,7 +281,8 @@ const TemplateKPBPN = () => {
           <Box>
             <Heading size="lg">Template Dokumen KPBPN</Heading>
             <Text color="gray.600" mt={1}>
-              Kelola template BAST, BA Bongkar, dan Surat Jalan
+              Kelola template BAST, BA Bongkar, dan Surat Jalan. Template
+              berstatus aktif dipakai saat dokumen dicetak atau diunduh.
             </Text>
           </Box>
           <Button variant="primary" onClick={openTambahModal}>
@@ -395,8 +386,7 @@ const TemplateKPBPN = () => {
               status: editingTemplate?.status || "aktif",
               file: null,
             }}
-            validationSchema={templateSchema}
-            validationContext={{ isEdit: !!editingTemplate }}
+            validationSchema={getTemplateSchema(!!editingTemplate)}
             onSubmit={submitTemplate}
           >
             {({ setFieldValue, isSubmitting, errors, touched, values }) => (

@@ -38,7 +38,6 @@ import {
   FormErrorMessage,
   Textarea,
   useDisclosure,
-  Collapse,
   Image,
 } from "@chakra-ui/react";
 import { Select as Select2, AsyncSelect } from "chakra-react-select";
@@ -284,17 +283,6 @@ const SuratJalan = () => {
     useState(null);
   const [dataKonfirmasi, setDataKonfirmasi] = useState([]);
   const [loadingDetailKonfirmasi, setLoadingDetailKonfirmasi] = useState(false);
-  const [expandedProduksiId, setExpandedProduksiId] = useState(null);
-  const [produksiPanel, setProduksiPanel] = useState({
-    loading: false,
-    saving: false,
-    sumurList: [],
-    inputs: {},
-    volume: 0,
-    satuan: "",
-  });
-
-  const TABLE_COL_SPAN = 11;
 
   const [dataSuratJalan, setDataSuratJalan] = useState([]);
   const [dataSeed, setDataSeed] = useState(null);
@@ -621,308 +609,6 @@ const SuratJalan = () => {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const fetchProduksiPanel = async (item) => {
-    setProduksiPanel((prev) => ({
-      ...prev,
-      loading: true,
-      sumurList: [],
-      inputs: {},
-      volume: item.volume || 0,
-      satuan: item.satuanVolume?.satuan || "",
-    }));
-
-    try {
-      const res = await axios.get(
-        `${API_BASE}/pengiriman/get/produksi-sumur/${item.id}`,
-      );
-
-      const sumurList = res.data.resultSumurMinyak || [];
-      const existingProduksi = res.data.resultProduksi || [];
-      const inputs = {};
-
-      sumurList.forEach((sumur) => {
-        const existing = existingProduksi.find(
-          (p) => p.sumurMinyakId === sumur.id,
-        );
-        inputs[sumur.id] = existing?.produksi ?? "";
-      });
-
-      setProduksiPanel((prev) => ({
-        ...prev,
-        loading: false,
-        sumurList,
-        inputs,
-        volume: res.data.suratJalan?.volume ?? item.volume ?? 0,
-        satuan:
-          res.data.suratJalan?.satuanVolume?.satuan ||
-          item.satuanVolume?.satuan ||
-          "",
-      }));
-    } catch (err) {
-      console.error(err);
-      setExpandedProduksiId(null);
-      setProduksiPanel((prev) => ({ ...prev, loading: false }));
-      toast({
-        title: "Error!",
-        description:
-          err.response?.data?.error || "Gagal memuat data produksi sumur",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const toggleProduksiPanel = async (item) => {
-    if (expandedProduksiId === item.id) {
-      setExpandedProduksiId(null);
-      return;
-    }
-
-    setExpandedProduksiId(item.id);
-    await fetchProduksiPanel(item);
-  };
-
-  const handleProduksiInputChange = (sumurMinyakId, value) => {
-    setProduksiPanel((prev) => ({
-      ...prev,
-      inputs: {
-        ...prev.inputs,
-        [sumurMinyakId]: value,
-      },
-    }));
-  };
-
-  const totalProduksiInput = useMemo(() => {
-    return Object.values(produksiPanel.inputs).reduce((sum, val) => {
-      const num = parseInt(val, 10);
-      return sum + (Number.isNaN(num) ? 0 : num);
-    }, 0);
-  }, [produksiPanel.inputs]);
-
-  const saveProduksiSumur = async (suratJalanId) => {
-    const items = Object.entries(produksiPanel.inputs)
-      .map(([sumurMinyakId, produksi]) => ({
-        sumurMinyakId: parseInt(sumurMinyakId, 10),
-        produksi: parseInt(produksi, 10) || 0,
-      }))
-      .filter((item) => item.produksi > 0);
-
-    if (totalProduksiInput !== produksiPanel.volume) {
-      toast({
-        title: "Total produksi tidak sesuai",
-        description: `Total produksi (${totalProduksiInput}) harus sama dengan volume surat jalan (${produksiPanel.volume}${produksiPanel.satuan ? ` ${produksiPanel.satuan}` : ""})`,
-        status: "warning",
-        duration: 5000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setProduksiPanel((prev) => ({ ...prev, saving: true }));
-
-    try {
-      await axios.post(`${API_BASE}/pengiriman/post/produksi-sumur`, {
-        suratJalanId,
-        items,
-      });
-
-      toast({
-        title: "Berhasil!",
-        description: "Produksi sumur berhasil disimpan.",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
-    } catch (err) {
-      console.error(err);
-      toast({
-        title: "Error!",
-        description:
-          err.response?.data?.error || "Gagal menyimpan produksi sumur",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    } finally {
-      setProduksiPanel((prev) => ({ ...prev, saving: false }));
-    }
-  };
-
-  const renderProduksiPanelContent = (item, variant = "desktop") => {
-    const canEdit = item.statusSuratJalanId === 1;
-    const title = canEdit
-      ? "Input Produksi Sumur Minyak"
-      : "Produksi Sumur Minyak";
-
-    if (produksiPanel.loading) {
-      return (
-        <Stack spacing={2}>
-          <Skeleton height="20px" />
-          <Skeleton height="20px" />
-          {variant === "desktop" && <Skeleton height="20px" />}
-        </Stack>
-      );
-    }
-
-    if (produksiPanel.sumurList.length === 0) {
-      return (
-        <Text fontSize="sm" color="gray.500">
-          Tidak ada data sumur minyak untuk mitra ini
-        </Text>
-      );
-    }
-
-    return (
-      <>
-        <Heading size={variant === "mobile" ? "xs" : "sm"} mb={3} color="kpbpn">
-          {title}
-        </Heading>
-        {variant === "mobile" ? (
-          <Stack spacing={3} mb={4}>
-            {produksiPanel.sumurList.map((sumur, idx) => (
-              <Box
-                key={sumur.id}
-                p={3}
-                borderRadius="md"
-                border="1px solid"
-                borderColor="gray.100"
-                bg="gray.50"
-              >
-                <Text fontSize="xs" color="gray.500" mb={1}>
-                  Sumur #{idx + 1} · {sumur.nomor || "-"}
-                </Text>
-                <Text fontSize="sm" fontWeight="medium" mb={2}>
-                  {sumur.nama || "-"}
-                </Text>
-                <FormControl>
-                  <FormLabel fontSize="xs">Produksi</FormLabel>
-                  {canEdit ? (
-                    <Input
-                      type="number"
-                      min={0}
-                      size="sm"
-                      bgColor="terang"
-                      value={produksiPanel.inputs[sumur.id] ?? ""}
-                      onChange={(e) =>
-                        handleProduksiInputChange(sumur.id, e.target.value)
-                      }
-                      placeholder="0"
-                    />
-                  ) : (
-                    <Text fontWeight="medium">
-                      {produksiPanel.inputs[sumur.id] !== "" &&
-                      produksiPanel.inputs[sumur.id] != null
-                        ? produksiPanel.inputs[sumur.id]
-                        : "-"}
-                    </Text>
-                  )}
-                </FormControl>
-              </Box>
-            ))}
-          </Stack>
-        ) : (
-          <Box overflowX="auto" mb={4}>
-            <Table size="sm" variant="simple" bg="white">
-              <Thead bg="gray.100">
-                <Tr>
-                  <Th>No</Th>
-                  <Th>Nomor Sumur</Th>
-                  <Th>Nama Sumur</Th>
-                  <Th isNumeric>Produksi</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {produksiPanel.sumurList.map((sumur, idx) => (
-                  <Tr key={sumur.id}>
-                    <Td>{idx + 1}</Td>
-                    <Td>{sumur.nomor || "-"}</Td>
-                    <Td>{sumur.nama || "-"}</Td>
-                    <Td isNumeric>
-                      {canEdit ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          size="sm"
-                          w="120px"
-                          ml="auto"
-                          bgColor="terang"
-                          value={produksiPanel.inputs[sumur.id] ?? ""}
-                          onChange={(e) =>
-                            handleProduksiInputChange(sumur.id, e.target.value)
-                          }
-                          placeholder="0"
-                        />
-                      ) : produksiPanel.inputs[sumur.id] !== "" &&
-                        produksiPanel.inputs[sumur.id] != null ? (
-                        produksiPanel.inputs[sumur.id]
-                      ) : (
-                        "-"
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </Box>
-        )}
-        <Flex
-          align={{ base: "stretch", md: "center" }}
-          direction={{ base: "column", md: "row" }}
-          gap={3}
-          justify="space-between"
-        >
-          <Box>
-            <Text fontSize="sm" color="gray.600">
-              Total Produksi:{" "}
-              <Text
-                as="span"
-                fontWeight="bold"
-                color={
-                  totalProduksiInput === produksiPanel.volume
-                    ? "green.600"
-                    : "red.500"
-                }
-              >
-                {totalProduksiInput}
-              </Text>
-            </Text>
-            <HStack spacing={1} align="start" mt={1}>
-              <Text fontSize="sm" color="gray.600">
-                Volume Surat Jalan:
-              </Text>
-              <VolumeMultiSatuan
-                volume={produksiPanel.volume}
-                satuan={produksiPanel.satuan || "Barrel"}
-                fontSize="sm"
-              />
-            </HStack>
-            {canEdit && totalProduksiInput !== produksiPanel.volume && (
-              <Text fontSize="xs" color="red.500" mt={1}>
-                Total produksi harus sama dengan volume surat jalan
-              </Text>
-            )}
-          </Box>
-          {canEdit && (
-            <Button
-              variant="primary"
-              size="sm"
-              isLoading={produksiPanel.saving}
-              isDisabled={
-                totalProduksiInput !== produksiPanel.volume ||
-                produksiPanel.loading
-              }
-              onClick={() => saveProduksiSumur(item.id)}
-              w={{ base: "full", md: "auto" }}
-            >
-              Simpan Produksi
-            </Button>
-          )}
-        </Flex>
-      </>
-    );
   };
 
   const resetFilter = () => {
@@ -1348,88 +1034,64 @@ const SuratJalan = () => {
                 </Stack>
               ) : dataSuratJalan?.length > 0 ? (
                 <Stack spacing={4}>
-                  {dataSuratJalan.map((item, index) => {
-                    const isProduksiExpanded = expandedProduksiId === item.id;
-
-                    return (
-                      <Box
-                        key={item.id}
-                        p={4}
-                        borderRadius="lg"
-                        border="1px solid"
-                        borderColor="gray.200"
-                        bg="white"
-                        boxShadow="sm"
+                  {dataSuratJalan.map((item, index) => (
+                    <Box
+                      key={item.id}
+                      p={4}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor="gray.200"
+                      bg="white"
+                      boxShadow="sm"
+                    >
+                      <HStack
+                        justify="space-between"
+                        align="start"
+                        mb={3}
+                        flexWrap="wrap"
+                        gap={2}
                       >
-                        <HStack
-                          justify="space-between"
-                          align="start"
-                          mb={3}
-                          flexWrap="wrap"
-                          gap={2}
-                        >
-                          <VStack align="start" spacing={0}>
-                            <Text fontSize="xs" color="gray.500">
-                              No. {page * limit + index + 1}
-                            </Text>
-                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {item.nomor || "-"}
-                            </Text>
-                          </VStack>
-                          <Badge colorScheme="blue" variant="subtle">
-                            {item.statusSuratJalan?.status || "-"}
-                          </Badge>
-                        </HStack>
-                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                          <MobileField label="Tanggal">
-                            {formatTanggal(item.tanggal)}
-                          </MobileField>
-                          <MobileField label="Mitra">
-                            {item.mitra?.nama || "-"}
-                          </MobileField>
-                          <MobileField label="Transportir">
-                            {item.transportir?.plat || "-"}
-                          </MobileField>
-                          <MobileField label="Stasiun Pengumpul Minyak">
-                            {item.stasiunPengumpulMinyak?.nama || "-"}
-                          </MobileField>
-                          <MobileField label="Asal Minyak">
-                            {formatAsalMinyakLabel(item.asalMinyak) || "-"}
-                          </MobileField>
-                          <MobileField label="Volume">
-                            <VolumeMultiSatuan
-                              volume={item.volume}
-                              satuan={item.satuanVolume?.satuan || "Barrel"}
-                            />
-                          </MobileField>
-                          <MobileField label="Supir">
-                            {item.supir?.nama || "-"}
-                          </MobileField>
-                        </SimpleGrid>
-                        <HStack mt={4} spacing={2} flexWrap="wrap">
-                          <Button
-                            size="sm"
-                            variant={isProduksiExpanded ? "solid" : "outline"}
-                            colorScheme="orange"
-                            onClick={() => toggleProduksiPanel(item)}
-                          >
-                            Produksi
-                          </Button>
-                          {renderAksi(item, true)}
-                        </HStack>
-                        <Collapse in={isProduksiExpanded} animateOpacity>
-                          <Box
-                            mt={4}
-                            pt={4}
-                            borderTopWidth="1px"
-                            borderColor="gray.100"
-                          >
-                            {renderProduksiPanelContent(item, "mobile")}
-                          </Box>
-                        </Collapse>
-                      </Box>
-                    );
-                  })}
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="xs" color="gray.500">
+                            No. {page * limit + index + 1}
+                          </Text>
+                          <Text fontWeight="bold" color="kpbpn" fontSize="sm">
+                            {item.nomor || "-"}
+                          </Text>
+                        </VStack>
+                        <Badge colorScheme="blue" variant="subtle">
+                          {item.statusSuratJalan?.status || "-"}
+                        </Badge>
+                      </HStack>
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                        <MobileField label="Tanggal">
+                          {formatTanggal(item.tanggal)}
+                        </MobileField>
+                        <MobileField label="Mitra">
+                          {item.mitra?.nama || "-"}
+                        </MobileField>
+                        <MobileField label="Transportir">
+                          {item.transportir?.plat || "-"}
+                        </MobileField>
+                        <MobileField label="Stasiun Pengumpul Minyak">
+                          {item.stasiunPengumpulMinyak?.nama || "-"}
+                        </MobileField>
+                        <MobileField label="Asal Minyak">
+                          {formatAsalMinyakLabel(item.asalMinyak) || "-"}
+                        </MobileField>
+                        <MobileField label="Volume">
+                          <VolumeMultiSatuan
+                            volume={item.volume}
+                            satuan={item.satuanVolume?.satuan || "Barrel"}
+                          />
+                        </MobileField>
+                        <MobileField label="Supir">
+                          {item.supir?.nama || "-"}
+                        </MobileField>
+                      </SimpleGrid>
+                      <Box mt={4}>{renderAksi(item, true)}</Box>
+                    </Box>
+                  ))}
                 </Stack>
               ) : (
                 <Box
@@ -1486,73 +1148,34 @@ const SuratJalan = () => {
                       </Tr>
                     ))
                   ) : dataSuratJalan?.length > 0 ? (
-                    dataSuratJalan.map((item, index) => {
-                      const isProduksiExpanded = expandedProduksiId === item.id;
-
-                      return (
-                        <React.Fragment key={item.id}>
-                          <Tr>
-                            <Td fontWeight="medium">
-                              {page * limit + index + 1}
-                            </Td>
-                            <Td fontWeight="medium">{item.nomor || "-"}</Td>
-                            <Td>{formatTanggal(item.tanggal)}</Td>
-                            <Td>{item.mitra?.nama || "-"}</Td>
-                            <Td>{item.transportir?.plat || "-"}</Td>
-                            <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
-                            <Td>
-                              {formatAsalMinyakLabel(item.asalMinyak) || "-"}
-                            </Td>
-                            <Td>
-                              <VolumeMultiSatuan
-                                volume={item.volume}
-                                satuan={item.satuanVolume?.satuan || "Barrel"}
-                              />
-                            </Td>
-                            <Td>{item.supir?.nama || "-"}</Td>
-                            <Td>
-                              <Badge colorScheme="blue" variant="subtle">
-                                {item.statusSuratJalan?.status || "-"}
-                              </Badge>
-                            </Td>
-
-                            <Td>
-                              <HStack spacing={2}>
-                                <Button
-                                  size="sm"
-                                  variant={
-                                    isProduksiExpanded ? "solid" : "outline"
-                                  }
-                                  colorScheme="orange"
-                                  onClick={() => toggleProduksiPanel(item)}
-                                >
-                                  Produksi
-                                </Button>
-                                {renderAksi(item) || null}
-                              </HStack>
-                            </Td>
-                          </Tr>
-                          <Tr>
-                            <Td
-                              colSpan={TABLE_COL_SPAN}
-                              p={0}
-                              borderBottom="none"
-                            >
-                              <Collapse in={isProduksiExpanded} animateOpacity>
-                                <Box
-                                  p={4}
-                                  bg="gray.50"
-                                  borderTopWidth="1px"
-                                  borderColor="gray.200"
-                                >
-                                  {renderProduksiPanelContent(item, "desktop")}
-                                </Box>
-                              </Collapse>
-                            </Td>
-                          </Tr>
-                        </React.Fragment>
-                      );
-                    })
+                    dataSuratJalan.map((item, index) => (
+                      <Tr key={item.id}>
+                        <Td fontWeight="medium">
+                          {page * limit + index + 1}
+                        </Td>
+                        <Td fontWeight="medium">{item.nomor || "-"}</Td>
+                        <Td>{formatTanggal(item.tanggal)}</Td>
+                        <Td>{item.mitra?.nama || "-"}</Td>
+                        <Td>{item.transportir?.plat || "-"}</Td>
+                        <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
+                        <Td>
+                          {formatAsalMinyakLabel(item.asalMinyak) || "-"}
+                        </Td>
+                        <Td>
+                          <VolumeMultiSatuan
+                            volume={item.volume}
+                            satuan={item.satuanVolume?.satuan || "Barrel"}
+                          />
+                        </Td>
+                        <Td>{item.supir?.nama || "-"}</Td>
+                        <Td>
+                          <Badge colorScheme="blue" variant="subtle">
+                            {item.statusSuratJalan?.status || "-"}
+                          </Badge>
+                        </Td>
+                        <Td>{renderAksi(item) || null}</Td>
+                      </Tr>
+                    ))
                   ) : (
                     <Tr>
                       <Td colSpan={11} textAlign="center" py={10}>
