@@ -51,6 +51,22 @@ import "../../Style/pagination.css";
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const ROLE_SUPER_ADMIN = 1;
 
+const getDownloadFileName = (contentDisposition, fallback) => {
+  if (!contentDisposition) return fallback;
+  const utf8Name = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Name?.[1]) {
+    try {
+      return decodeURIComponent(utf8Name[1]);
+    } catch {
+      return utf8Name[1];
+    }
+  }
+  const quotedName = contentDisposition.match(/filename="([^"]+)"/i);
+  if (quotedName?.[1]) return quotedName[1];
+  const plainName = contentDisposition.match(/filename=([^;]+)/i);
+  return plainName?.[1]?.trim() || fallback;
+};
+
 const suratJalanSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
   mitraId: Yup.mixed().nullable().required("Mitra wajib dipilih"),
@@ -404,14 +420,12 @@ const SuratJalanMitra = () => {
       );
       const link = document.createElement("a");
       link.href = url;
-      const safeNomor = String(item.nomor || item.id).replace(
-        /[\\/:*?"<>|]/g,
-        "-",
+      const fallbackName = `surat-jalan_${item.nomor || item.id}.${isDocx ? "docx" : "pdf"}`;
+      const headerName = getDownloadFileName(
+        res.headers?.["content-disposition"],
+        fallbackName,
       );
-      link.setAttribute(
-        "download",
-        `surat-jalan_${safeNomor}.${isDocx ? "docx" : "pdf"}`,
-      );
+      link.setAttribute("download", headerName);
       document.body.appendChild(link);
       link.click();
       link.remove();
