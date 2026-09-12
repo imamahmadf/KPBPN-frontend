@@ -38,6 +38,8 @@ import {
   ModalCloseButton,
   useDisclosure,
   FormHelperText,
+  Checkbox,
+  Image,
 } from "@chakra-ui/react";
 import {
   BsChevronDown,
@@ -49,6 +51,7 @@ import {
   BsDownload,
 } from "react-icons/bs";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import { formatVolumeNumber } from "../../lib/volumeSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -214,6 +217,68 @@ const emptyBak3sForm = () => ({
   file: null,
 });
 
+const getTodayInputDate = () => new Date().toISOString().split("T")[0];
+
+const emptyBaUkuran = () => ({ ukuranCairan: "", ukuranAir: "" });
+
+const emptyUjiLabForm = () => ({
+  tanggal: getTodayInputDate(),
+  api: "",
+  BSNW: "",
+  suhu: "",
+  sg: "",
+  kualitas: "",
+  pic: null,
+  picPreview: null,
+});
+
+const getTangkiId = (item) => item.tangkiId ?? item.tanki?.id;
+
+const getTangkiKode = (item) => item.tanki?.kode || "-";
+
+const getPengisianSatuan = (item) => {
+  if (item?.satuanVolume?.satuan) return item.satuanVolume.satuan;
+
+  for (const kp of item?.konfirmasiPenerimaans || []) {
+    const satuan = kp.suratJalan?.satuanVolume?.satuan;
+    if (satuan) return satuan;
+  }
+
+  return "";
+};
+
+const getPengisianSatuanOrDefault = (item) =>
+  getPengisianSatuan(item) || "Barrel";
+
+const getLatestUjiLab = (ujiLabs, tangkiId) =>
+  (ujiLabs || []).find((item) => item.tangkiId === tangkiId) || null;
+
+const isUjiLabSiapBA = (uji) =>
+  Boolean(uji && uji.kualitas === "ONSPEC" && !uji.BABongkarId);
+
+const groupPengisianByTangki = (items) => {
+  const map = new Map();
+
+  items.forEach((item) => {
+    const tangkiId = getTangkiId(item);
+    if (!tangkiId) return;
+
+    if (!map.has(tangkiId)) {
+      map.set(tangkiId, {
+        tangkiId,
+        kode: getTangkiKode(item),
+        items: [],
+      });
+    }
+
+    map.get(tangkiId).items.push(item);
+  });
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.kode.localeCompare(b.kode, "id"),
+  );
+};
+
 const BABongkar = () => {
   const toast = useToast();
   const [dataBA, setDataBA] = useState([]);
@@ -235,6 +300,16 @@ const BABongkar = () => {
   const [isSubmittingBak3s, setIsSubmittingBak3s] = useState(false);
   const [deleteBak3sTarget, setDeleteBak3sTarget] = useState(null);
   const [isDeletingBak3s, setIsDeletingBak3s] = useState(false);
+  const [modalPengisianData, setModalPengisianData] = useState([]);
+  const [isLoadingModal, setIsLoadingModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [baTanggal, setBaTanggal] = useState(getTodayInputDate());
+  const [baUkuranByTangki, setBaUkuranByTangki] = useState({});
+  const [ujiLabList, setUjiLabList] = useState([]);
+  const [ujiLabTarget, setUjiLabTarget] = useState(null);
+  const [ujiLabForm, setUjiLabForm] = useState(emptyUjiLabForm());
+  const [isSubmittingUjiLab, setIsSubmittingUjiLab] = useState(false);
+  const [isSubmittingBA, setIsSubmittingBA] = useState(false);
 
   const {
     isOpen: isBak3sOpen,
@@ -245,6 +320,16 @@ const BABongkar = () => {
     isOpen: isDeleteBak3sOpen,
     onOpen: onDeleteBak3sOpen,
     onClose: onDeleteBak3sClose,
+  } = useDisclosure();
+  const {
+    isOpen: isCreateBAOpen,
+    onOpen: onCreateBAOpen,
+    onClose: onCreateBAClose,
+  } = useDisclosure();
+  const {
+    isOpen: isUjiLabOpen,
+    onOpen: onUjiLabOpen,
+    onClose: onUjiLabClose,
   } = useDisclosure();
 
   const buildFilterParams = (extra = {}) => ({
@@ -713,6 +798,340 @@ const BABongkar = () => {
     }
   };
 
+  const fetchEligiblePengisianForBA = async () => {
+    setIsLoadingModal(true);
+    try {
+      const [pengisianRes, ujiRes] = await Promise.all([
+        axios.get(`${API_BASE}/tanki/get?page=0&limit=1000`),
+        axios.get(`${API_BASE}/tanki/get/uji-lab`),
+      ]);
+      const eligible = (pengisianRes.data.result || []).filter(
+        (item) => !item.BABongkarId,
+      );
+      setModalPengisianData(eligible);
+      setUjiLabList(ujiRes.data.result || []);
+      return eligible;
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal memuat data",
+        description: "Tidak dapat memuat data pengisian tanki",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+      return [];
+    } finally {
+      setIsLoadingModal(false);
+    }
+  };
+
+  const resetModalBA = () => {
+    setSelectedIds([]);
+    setBaTanggal(getTodayInputDate());
+    setBaUkuranByTangki({});
+    setModalPengisianData([]);
+    setUjiLabList([]);
+  };
+
+  const handleCloseModalBA = () => {
+    onUjiLabClose();
+    setUjiLabTarget(null);
+    setUjiLabForm(emptyUjiLabForm());
+    onCreateBAClose();
+    resetModalBA();
+  };
+
+  const handleOpenModalBA = async () => {
+    resetModalBA();
+    onCreateBAOpen();
+    const eligible = await fetchEligiblePengisianForBA();
+
+    if (!eligible.length) {
+      toast({
+        title: "Tidak ada data",
+        description:
+          "Semua pengisian tanki sudah memiliki BA Bongkar atau belum ada data",
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const toggleSelectModalItem = (item) => {
+    const latest = getLatestUjiLab(ujiLabList, getTangkiId(item));
+    if (!isUjiLabSiapBA(latest) && !selectedIds.includes(item.id)) {
+      toast({
+        title: "Uji lab belum ONSPEC",
+        description:
+          "Lakukan uji lab K3S sampai hasil terakhir ONSPEC sebelum memilih tanki ini",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setSelectedIds((prev) =>
+      prev.includes(item.id)
+        ? prev.filter((id) => id !== item.id)
+        : [...prev, item.id],
+    );
+  };
+
+  const toggleSelectTangkiGroup = (group, checked) => {
+    const latest = getLatestUjiLab(ujiLabList, group.tangkiId);
+    if (checked && !isUjiLabSiapBA(latest)) {
+      toast({
+        title: "Uji lab belum ONSPEC",
+        description: `Tanki ${group.kode} belum siap BA Bongkar`,
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const groupIds = group.items.map((item) => item.id);
+    setSelectedIds((prev) =>
+      checked
+        ? [...new Set([...prev, ...groupIds])]
+        : prev.filter((id) => !groupIds.includes(id)),
+    );
+  };
+
+  const getBaUkuran = (tangkiId) =>
+    baUkuranByTangki[tangkiId] || emptyBaUkuran();
+
+  const handleBaUkuranChange = (tangkiId, field, value) => {
+    setBaUkuranByTangki((prev) => ({
+      ...prev,
+      [tangkiId]: {
+        ...emptyBaUkuran(),
+        ...prev[tangkiId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCloseUjiLab = () => {
+    if (ujiLabForm.picPreview) {
+      URL.revokeObjectURL(ujiLabForm.picPreview);
+    }
+    setUjiLabTarget(null);
+    setUjiLabForm(emptyUjiLabForm());
+    onUjiLabClose();
+  };
+
+  const handleUjiLabFieldChange = (field, value) => {
+    setUjiLabForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleUjiLabFotoChange = (file) => {
+    setUjiLabForm((prev) => {
+      if (prev.picPreview) URL.revokeObjectURL(prev.picPreview);
+      return {
+        ...prev,
+        pic: file,
+        picPreview: file ? URL.createObjectURL(file) : null,
+      };
+    });
+  };
+
+  const handleSubmitUjiLab = async () => {
+    if (!ujiLabTarget?.tangkiId) return;
+
+    if (
+      !ujiLabForm.tanggal ||
+      ujiLabForm.api === "" ||
+      ujiLabForm.BSNW === "" ||
+      ujiLabForm.suhu === "" ||
+      ujiLabForm.sg === "" ||
+      !["ONSPEC", "OFFSPEC"].includes(ujiLabForm.kualitas)
+    ) {
+      toast({
+        title: "Data belum lengkap",
+        description: "API, BSNW, suhu, SG, dan kualitas wajib diisi",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSubmittingUjiLab(true);
+    try {
+      const formData = new FormData();
+      formData.append("tangkiId", ujiLabTarget.tangkiId);
+      formData.append("tanggal", ujiLabForm.tanggal);
+      formData.append("api", ujiLabForm.api);
+      formData.append("BSNW", ujiLabForm.BSNW);
+      formData.append("suhu", ujiLabForm.suhu);
+      formData.append("sg", ujiLabForm.sg);
+      formData.append("kualitas", ujiLabForm.kualitas);
+      if (ujiLabForm.pic) formData.append("pic", ujiLabForm.pic);
+
+      await axios.post(`${API_BASE}/tanki/post/uji-lab`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const ujiRes = await axios.get(`${API_BASE}/tanki/get/uji-lab`);
+      setUjiLabList(ujiRes.data.result || []);
+
+      toast({
+        title: "Berhasil",
+        description:
+          ujiLabForm.kualitas === "ONSPEC"
+            ? `Tanki ${ujiLabTarget.kode} ONSPEC dan siap untuk BA Bongkar`
+            : `Tanki ${ujiLabTarget.kode} OFFSPEC. Lakukan pencampuran bahan kimia, lalu uji ulang`,
+        status: ujiLabForm.kualitas === "ONSPEC" ? "success" : "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      handleCloseUjiLab();
+    } catch (err) {
+      toast({
+        title: "Gagal menyimpan uji lab",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmittingUjiLab(false);
+    }
+  };
+
+  const tangkiGroups = groupPengisianByTangki(modalPengisianData);
+  const selectedTangkiCount = new Set(
+    modalPengisianData
+      .filter((item) => selectedIds.includes(item.id))
+      .map((item) => getTangkiId(item)),
+  ).size;
+
+  const handleSubmitBABongkar = async () => {
+    if (!selectedIds.length) {
+      toast({
+        title: "Pilih data",
+        description: "Pilih minimal satu pengisian tanki",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const tankiBelumSiap = tangkiGroups.filter((group) => {
+      const hasSelected = group.items.some((item) =>
+        selectedIds.includes(item.id),
+      );
+      if (!hasSelected) return false;
+      return !isUjiLabSiapBA(getLatestUjiLab(ujiLabList, group.tangkiId));
+    });
+
+    if (tankiBelumSiap.length) {
+      toast({
+        title: "Uji lab belum lengkap",
+        description: `Tanki ${tankiBelumSiap
+          .map((group) => group.kode)
+          .join(", ")} belum ONSPEC`,
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!baTanggal) {
+      toast({
+        title: "Tanggal wajib diisi",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSubmittingBA(true);
+    try {
+      const tankiPayload = tangkiGroups
+        .map((group) => {
+          const ids = group.items
+            .filter((item) => selectedIds.includes(item.id))
+            .map((item) => item.id);
+          if (!ids.length) return null;
+
+          const ukuran = getBaUkuran(group.tangkiId);
+          return {
+            tangkiId: group.tangkiId,
+            ukuranCairan:
+              ukuran.ukuranCairan !== "" ? Number(ukuran.ukuranCairan) : null,
+            ukuranAir:
+              ukuran.ukuranAir !== "" ? Number(ukuran.ukuranAir) : null,
+            ids,
+          };
+        })
+        .filter(Boolean);
+
+      const res = await axios.post(
+        `${API_BASE}/tanki/post/ba-bongkar`,
+        {
+          tanggal: baTanggal,
+          tanki: tankiPayload,
+        },
+        { responseType: "blob" },
+      );
+
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `BA_Bongkar_${baTanggal}_${Date.now()}.docx`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Berhasil",
+        description: "BA Bongkar berhasil dibuat dan diunduh",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+
+      handleCloseModalBA();
+      fetchDataBA();
+    } catch (err) {
+      console.error(err);
+      let message = "Gagal membuat BA Bongkar";
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          message = parsed.message || parsed.error || message;
+        } catch {
+          // gunakan pesan default
+        }
+      } else if (err.response?.data?.message || err.response?.data?.error) {
+        message = err.response.data.message || err.response.data.error;
+      }
+
+      toast({
+        title: "Gagal",
+        description: message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmittingBA(false);
+    }
+  };
+
   useEffect(() => {
     fetchDataTanki();
   }, []);
@@ -738,6 +1157,12 @@ const BABongkar = () => {
               <Text fontSize="sm" color="gray.500">
                 Total: {rows} data
               </Text>
+              <Button
+                colorScheme="orange"
+                onClick={handleOpenModalBA}
+              >
+                Buat BA Bongkar
+              </Button>
               <Button
                 leftIcon={<BsFileEarmarkExcel />}
                 variant="outline"
@@ -1417,6 +1842,412 @@ const BABongkar = () => {
               isLoading={isDeletingBak3s}
             >
               Hapus
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isCreateBAOpen}
+        onClose={handleCloseModalBA}
+        size={{ base: "full", md: "4xl" }}
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />
+        <ModalContent maxW={{ base: "100%", md: "1100px" }} mx={{ base: 0, md: 4 }}>
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
+            Buat BA Bongkar
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody px={{ base: 4, md: 6 }}>
+            <VStack spacing={5} align="stretch">
+              <Text fontSize="sm" color="gray.600">
+                Uji lab K3S wajib ONSPEC per tanki sebelum BA Bongkar dibuat.
+                Jika OFFSPEC, lakukan pencampuran bahan kimia lalu uji ulang.
+                Setiap tanki menjadi satu baris terpisah dalam dokumen BA
+                Bongkar.
+              </Text>
+              {selectedIds.length > 0 && (
+                <Text fontSize="sm" color="kpbpn" fontWeight="medium">
+                  Terpilih: {selectedIds.length} pengisian dari{" "}
+                  {selectedTangkiCount} tanki
+                </Text>
+              )}
+
+              {isLoadingModal ? (
+                <Center py={8}>
+                  <Spinner color="kpbpn" />
+                </Center>
+              ) : tangkiGroups.length === 0 ? (
+                <Center py={8}>
+                  <Text color="gray.500">
+                    Tidak ada pengisian tanki yang belum memiliki BA Bongkar
+                  </Text>
+                </Center>
+              ) : (
+                <VStack spacing={4} align="stretch" maxH="420px" overflowY="auto">
+                  {tangkiGroups.map((group) => {
+                    const selectedInGroup = group.items.filter((item) =>
+                      selectedIds.includes(item.id),
+                    ).length;
+                    const allSelected =
+                      group.items.length > 0 &&
+                      selectedInGroup === group.items.length;
+                    const someSelected = selectedInGroup > 0 && !allSelected;
+                    const ukuran = getBaUkuran(group.tangkiId);
+                    const latestUji = getLatestUjiLab(
+                      ujiLabList,
+                      group.tangkiId,
+                    );
+                    const siapBA = isUjiLabSiapBA(latestUji);
+
+                    return (
+                      <Box
+                        key={group.tangkiId}
+                        borderWidth="1px"
+                        borderRadius="md"
+                        p={3}
+                      >
+                        <HStack
+                          justify="space-between"
+                          mb={3}
+                          align="start"
+                          flexWrap="wrap"
+                          gap={2}
+                        >
+                          <Checkbox
+                            isChecked={allSelected}
+                            isIndeterminate={someSelected}
+                            isDisabled={!siapBA}
+                            onChange={(e) =>
+                              toggleSelectTangkiGroup(group, e.target.checked)
+                            }
+                          >
+                            <Text fontWeight="semibold" fontSize="sm">
+                              Tanki {group.kode}
+                            </Text>
+                          </Checkbox>
+                          <HStack spacing={2} flexWrap="wrap">
+                            {latestUji ? (
+                              <Badge
+                                colorScheme={
+                                  latestUji.kualitas === "ONSPEC"
+                                    ? "green"
+                                    : "red"
+                                }
+                              >
+                                {latestUji.kualitas}
+                              </Badge>
+                            ) : (
+                              <Badge colorScheme="gray">Belum uji lab</Badge>
+                            )}
+                            <Text fontSize="xs" color="gray.500">
+                              {selectedInGroup}/{group.items.length} terpilih
+                            </Text>
+                          </HStack>
+                        </HStack>
+                        {latestUji && (
+                          <Text fontSize="xs" color="gray.600" mb={2}>
+                            {formatDate(latestUji.tanggal || latestUji.createdAt)}{" "}
+                            · API {latestUji.api} · BSNW {latestUji.BSNW} · Suhu{" "}
+                            {latestUji.suhu} · SG {latestUji.sg}
+                          </Text>
+                        )}
+                        {!siapBA && (
+                          <Text fontSize="sm" color="red.500" mb={3}>
+                            {latestUji?.kualitas === "OFFSPEC"
+                              ? "Hasil OFFSPEC. Lakukan pencampuran bahan kimia, lalu uji ulang."
+                              : latestUji?.BABongkarId
+                                ? "Uji lab terakhir sudah dipakai BA Bongkar. Lakukan uji lab baru."
+                                : "Belum ada uji lab K3S untuk tanki ini."}
+                          </Text>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="orange"
+                          mb={3}
+                          onClick={() => {
+                            setUjiLabTarget(group);
+                            setUjiLabForm(emptyUjiLabForm());
+                            onUjiLabOpen();
+                          }}
+                        >
+                          Tambah Uji Lab
+                        </Button>
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mb={3}>
+                          <FormControl>
+                            <FormLabel fontSize="sm">
+                              Ukuran Cairan (cm)
+                            </FormLabel>
+                            <Input
+                              type="number"
+                              min={0}
+                              size="sm"
+                              value={ukuran.ukuranCairan}
+                              onChange={(e) =>
+                                handleBaUkuranChange(
+                                  group.tangkiId,
+                                  "ukuranCairan",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Ukuran cairan tanki ini"
+                            />
+                          </FormControl>
+                          <FormControl>
+                            <FormLabel fontSize="sm">Ukuran Air (cm)</FormLabel>
+                            <Input
+                              type="number"
+                              min={0}
+                              size="sm"
+                              value={ukuran.ukuranAir}
+                              onChange={(e) =>
+                                handleBaUkuranChange(
+                                  group.tangkiId,
+                                  "ukuranAir",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Ukuran air tanki ini"
+                            />
+                          </FormControl>
+                        </SimpleGrid>
+                        <Box overflowX="auto">
+                          <Table size="sm" minW="520px">
+                            <Thead bg="gray.50">
+                              <Tr>
+                                <Th w="40px" />
+                                <Th>Tanggal</Th>
+                                <Th>Gross</Th>
+                                <Th>Net</Th>
+                                <Th>Nomor Surat BAST</Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {group.items.map((item) => {
+                                const isSelected = selectedIds.includes(item.id);
+
+                                return (
+                                  <Tr
+                                    key={item.id}
+                                    bg={isSelected ? "orange.50" : undefined}
+                                  >
+                                    <Td>
+                                      <Checkbox
+                                        isChecked={isSelected}
+                                        isDisabled={!siapBA}
+                                        onChange={() =>
+                                          toggleSelectModalItem(item)
+                                        }
+                                      />
+                                    </Td>
+                                    <Td>
+                                      {formatDate(
+                                        item.tanggal || item.createdAt,
+                                      )}
+                                    </Td>
+                                    <Td>
+                                      <VolumeMultiSatuan
+                                        volume={item.gross}
+                                        satuan={getPengisianSatuanOrDefault(
+                                          item,
+                                        )}
+                                      />
+                                    </Td>
+                                    <Td>
+                                      <VolumeMultiSatuan
+                                        volume={item.net}
+                                        satuan={getPengisianSatuanOrDefault(
+                                          item,
+                                        )}
+                                      />
+                                    </Td>
+                                    <Td>{item.nomorSurat || "-"}</Td>
+                                  </Tr>
+                                );
+                              })}
+                            </Tbody>
+                          </Table>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </VStack>
+              )}
+
+              <Divider />
+
+              <FormControl isRequired>
+                <FormLabel>Tanggal BA Bongkar</FormLabel>
+                <Input
+                  type="date"
+                  value={baTanggal}
+                  onChange={(e) => setBaTanggal(e.target.value)}
+                />
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseModalBA}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="orange"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleSubmitBABongkar}
+              isLoading={isSubmittingBA}
+              isDisabled={isLoadingModal || !tangkiGroups.length}
+            >
+              Simpan
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isUjiLabOpen}
+        onClose={handleCloseUjiLab}
+        size={{ base: "full", md: "lg" }}
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />
+        <ModalContent mx={{ base: 0, md: 4 }}>
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
+            Tambah Uji Lab K3S
+            {ujiLabTarget?.kode ? ` — Tanki ${ujiLabTarget.kode}` : ""}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody px={{ base: 4, md: 6 }}>
+            <VStack spacing={4} align="stretch">
+              <FormControl isRequired>
+                <FormLabel>Tanggal Uji</FormLabel>
+                <Input
+                  type="date"
+                  value={ujiLabForm.tanggal}
+                  onChange={(e) =>
+                    handleUjiLabFieldChange("tanggal", e.target.value)
+                  }
+                />
+              </FormControl>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                <FormControl isRequired>
+                  <FormLabel>API</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.api}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("api", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>BSNW</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.BSNW}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("BSNW", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Suhu</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.suhu}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("suhu", e.target.value)
+                    }
+                  />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>SG</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={ujiLabForm.sg}
+                    onChange={(e) =>
+                      handleUjiLabFieldChange("sg", e.target.value)
+                    }
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <FormControl isRequired>
+                <FormLabel>Kualitas</FormLabel>
+                <Select
+                  placeholder="Pilih kualitas"
+                  value={ujiLabForm.kualitas}
+                  onChange={(e) =>
+                    handleUjiLabFieldChange("kualitas", e.target.value)
+                  }
+                >
+                  <option value="ONSPEC">ONSPEC</option>
+                  <option value="OFFSPEC">OFFSPEC</option>
+                </Select>
+                {ujiLabForm.kualitas === "OFFSPEC" && (
+                  <FormHelperText color="red.500">
+                    Perlu pencampuran bahan kimia, lalu uji ulang
+                  </FormHelperText>
+                )}
+                {ujiLabForm.kualitas === "ONSPEC" && (
+                  <FormHelperText color="green.600">
+                    Tanki siap untuk pembuatan BA Bongkar
+                  </FormHelperText>
+                )}
+              </FormControl>
+              <FormControl>
+                <FormLabel>Foto Uji Lab</FormLabel>
+                <Input
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg"
+                  onChange={(e) =>
+                    handleUjiLabFotoChange(e.target.files?.[0] || null)
+                  }
+                />
+                {ujiLabForm.picPreview && (
+                  <Image
+                    src={ujiLabForm.picPreview}
+                    alt="Preview foto uji lab"
+                    mt={3}
+                    maxH="180px"
+                    objectFit="cover"
+                    borderRadius="md"
+                  />
+                )}
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseUjiLab}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="orange"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleSubmitUjiLab}
+              isLoading={isSubmittingUjiLab}
+            >
+              Simpan Uji Lab
             </Button>
           </ModalFooter>
         </ModalContent>

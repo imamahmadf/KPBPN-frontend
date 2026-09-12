@@ -3,6 +3,7 @@ import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import axios from "axios";
 import ReactPaginate from "react-paginate";
+import ExcelJS from "exceljs";
 import {
   Box,
   Button,
@@ -41,9 +42,18 @@ import {
   useDisclosure,
   Badge,
 } from "@chakra-ui/react";
-import { BsChevronDown, BsChevronUp, BsPencil, BsTrash } from "react-icons/bs";
+import {
+  BsChevronDown,
+  BsChevronUp,
+  BsPencil,
+  BsTrash,
+  BsFileEarmarkExcel,
+} from "react-icons/bs";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
-import { formatVolumeNumber } from "../../lib/volumeSatuan";
+import {
+  formatVolumeNumber,
+  convertVolumeToAllUnits,
+} from "../../lib/volumeSatuan";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -99,6 +109,24 @@ const getDefaultStartDate = () => {
 const getDefaultEndDate = () => toLocalInputDate(new Date());
 
 const getTodayInputDate = () => toLocalInputDate(new Date());
+
+const toDateKey = (date) => {
+  if (!date) return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    return date.slice(0, 10);
+  }
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return toLocalInputDate(parsed);
+};
+
+const isDateInRange = (tanggal, startDate, endDate) => {
+  const key = toDateKey(tanggal);
+  if (!key) return false;
+  if (startDate && key < startDate) return false;
+  if (endDate && key > endDate) return false;
+  return true;
+};
 
 const toInputDate = (date) => {
   if (!date) return getTodayInputDate();
@@ -189,6 +217,244 @@ const emptyFormValues = () => ({
   suhu: "",
 });
 
+const excelNumber = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  const num = Number(value);
+  return Number.isNaN(num) ? "-" : num;
+};
+
+const toBarrel = (value, satuan) => {
+  if (value === null || value === undefined || value === "") return 0;
+  const converted = convertVolumeToAllUnits(value, satuan);
+  if (!converted) return 0;
+  return roundBarrel(converted.barrel);
+};
+
+const pengisianBarrel = (masuk, field, barrelField) => {
+  if (masuk[barrelField] != null) {
+    return roundBarrel(Number(masuk[barrelField]) || 0);
+  }
+  return toBarrel(masuk[field], masuk.satuan);
+};
+
+const buildExportGroups = (items) => {
+  const dateMap = new Map();
+  const dateOrder = [];
+
+  for (const item of items) {
+    const tanggal = item.tanggal || "";
+    if (!dateMap.has(tanggal)) {
+      const dateGroup = { tanggal, tanks: [], tankMap: new Map() };
+      dateMap.set(tanggal, dateGroup);
+      dateOrder.push(dateGroup);
+    }
+
+    const dateGroup = dateMap.get(tanggal);
+    const tankKey = [
+      item.kode || item.tankiId || "",
+      roundBarrel(Number(item.volumeMinyak) || 0),
+      roundBarrel(Number(item.volumeAir) || 0),
+    ].join("|");
+
+    if (!dateGroup.tankMap.has(tankKey)) {
+      const tankGroup = {
+        kode: item.kode || "-",
+        volumeMinyak: item.volumeMinyak,
+        volumeAir: item.volumeAir,
+        details: [],
+      };
+      dateGroup.tankMap.set(tankKey, tankGroup);
+      dateGroup.tanks.push(tankGroup);
+    }
+
+    const tankGroup = dateGroup.tankMap.get(tankKey);
+    const pengisianList = item.detailMasuk || [];
+    for (const masuk of pengisianList) {
+      const suratJalans = masuk.suratJalans || [];
+      const grossBarrel = pengisianBarrel(masuk, "gross", "grossBarrel");
+      const kandunganAirBarrel = pengisianBarrel(
+        masuk,
+        "kandunganAir",
+        "kandunganAirBarrel",
+      );
+      const nomorSurat = masuk.nomorSurat || "-";
+      const pengisianKey = [
+        masuk.id || "",
+        grossBarrel,
+        kandunganAirBarrel,
+        nomorSurat,
+      ].join("|");
+      const detailBase = {
+        pengisianKey,
+        grossBarrel,
+        kandunganAirBarrel,
+        nomorSurat,
+      };
+
+      if (!suratJalans.length) {
+        tankGroup.details.push({
+          ...detailBase,
+          mitraNama: "-",
+          nomorSuratJalan: "-",
+        });
+        continue;
+      }
+
+      suratJalans.forEach((sj) => {
+        tankGroup.details.push({
+          ...detailBase,
+          mitraNama: sj.mitraNama || "-",
+          nomorSuratJalan: sj.nomor || "-",
+        });
+      });
+    }
+  }
+
+  return dateOrder.map((dateGroup) => ({
+    tanggal: dateGroup.tanggal,
+    tanks: dateGroup.tanks.map((tankGroup) => {
+      const details = tankGroup.details.length
+        ? [...tankGroup.details].sort((a, b) => {
+            const pengisianCompare = String(a.pengisianKey).localeCompare(
+              String(b.pengisianKey),
+            );
+            if (pengisianCompare !== 0) return pengisianCompare;
+            return String(a.nomorSuratJalan).localeCompare(
+              String(b.nomorSuratJalan),
+            );
+          })
+        : [
+            {
+              pengisianKey: "-",
+              grossBarrel: null,
+              kandunganAirBarrel: null,
+              nomorSurat: "-",
+              mitraNama: "-",
+              nomorSuratJalan: "-",
+            },
+          ];
+      return { ...tankGroup, details };
+    }),
+  }));
+};
+
+const isFirstConsecutive = (details, index, getKey) =>
+  index === 0 || getKey(details[index - 1]) !== getKey(details[index]);
+
+const collectConsecutiveMerges = (details, startRow, getKey) => {
+  const merges = [];
+  if (!details.length) return merges;
+
+  let rangeStart = startRow;
+  details.forEach((detail, index) => {
+    const isLast = index === details.length - 1;
+    const nextKey = isLast ? null : getKey(details[index + 1]);
+    if (isLast || nextKey !== getKey(detail)) {
+      merges.push({
+        startRow: rangeStart,
+        endRow: startRow + index,
+      });
+      rangeStart = startRow + index + 1;
+    }
+  });
+  return merges;
+};
+
+const EXCEL_BORDER = {
+  top: { style: "thin" },
+  left: { style: "thin" },
+  bottom: { style: "thin" },
+  right: { style: "thin" },
+};
+
+const mergeAndCenter = (worksheet, startRow, endRow, col, fillArgb) => {
+  if (endRow > startRow) {
+    worksheet.mergeCells(startRow, col, endRow, col);
+  }
+
+  for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+    const cell = worksheet.getCell(rowNumber, col);
+    cell.border = EXCEL_BORDER;
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: fillArgb },
+    };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true,
+    };
+    if (typeof cell.value === "number") {
+      cell.numFmt = Number.isInteger(cell.value) ? "#,##0" : "#,##0.000";
+    }
+  }
+};
+
+const EXCEL_HEADER_STYLE = {
+  font: { bold: true, color: { argb: "FFFFFF" } },
+  fill: {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "4472C4" },
+  },
+  alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+  border: {
+    top: { style: "thin" },
+    left: { style: "thin" },
+    bottom: { style: "thin" },
+    right: { style: "thin" },
+  },
+};
+
+const EXCEL_DATA_STYLE = {
+  border: {
+    top: { style: "thin" },
+    left: { style: "thin" },
+    bottom: { style: "thin" },
+    right: { style: "thin" },
+  },
+  alignment: { vertical: "middle", wrapText: true },
+};
+
+const EXCEL_MASUK_STYLE = {
+  ...EXCEL_DATA_STYLE,
+  fill: {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "E2EFDA" },
+  },
+};
+
+const applyExcelHeader = (row) => {
+  row.eachCell((cell) => {
+    cell.style = EXCEL_HEADER_STYLE;
+  });
+  row.height = 24;
+};
+
+const applyExcelRowStyle = (row, style = EXCEL_DATA_STYLE) => {
+  row.eachCell((cell) => {
+    cell.style = style;
+    if (typeof cell.value === "number") {
+      cell.numFmt = Number.isInteger(cell.value) ? "#,##0" : "#,##0.000";
+    }
+  });
+};
+
+const autoFitColumns = (worksheet) => {
+  worksheet.columns.forEach((column) => {
+    let maxLength = 12;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      const columnLength = cell.value ? cell.value.toString().length : 10;
+      if (columnLength > maxLength) {
+        maxLength = columnLength;
+      }
+    });
+    column.width = Math.min(maxLength + 2, 40);
+  });
+};
+
 const MobileField = ({ label, children }) => (
   <Box>
     <Text
@@ -221,6 +487,11 @@ const StokOpname = () => {
     onOpen: onDeleteOpen,
     onClose: onDeleteClose,
   } = useDisclosure();
+  const {
+    isOpen: isExportOpen,
+    onOpen: onExportOpen,
+    onClose: onExportClose,
+  } = useDisclosure();
 
   const [dataStok, setDataStok] = useState([]);
   const [dataTanki, setDataTanki] = useState([]);
@@ -241,6 +512,9 @@ const StokOpname = () => {
   const [tanggalAwal, setTanggalAwal] = useState(getDefaultStartDate);
   const [tanggalAkhir, setTanggalAkhir] = useState(getDefaultEndDate);
   const [tangkiFilterId, setTangkiFilterId] = useState("");
+  const [exportStartDate, setExportStartDate] = useState(getDefaultStartDate);
+  const [exportEndDate, setExportEndDate] = useState(getDefaultEndDate);
+  const [isExporting, setIsExporting] = useState(false);
 
   const hasActiveFilter =
     Boolean(tanggalAwal) || Boolean(tanggalAkhir) || Boolean(tangkiFilterId);
@@ -337,6 +611,311 @@ const StokOpname = () => {
   const closeDeleteModal = () => {
     setDeleteTarget(null);
     onDeleteClose();
+  };
+
+  const openExportModal = () => {
+    setExportStartDate(tanggalAwal || getDefaultStartDate());
+    setExportEndDate(tanggalAkhir || getDefaultEndDate());
+    onExportOpen();
+  };
+
+  const closeExportModal = () => {
+    if (isExporting) return;
+    onExportClose();
+  };
+
+  const fetchAllStokOpnameForExport = async (startDate, endDate) => {
+    const exportLimit = 200;
+    let currentPage = 0;
+    let totalPage = 1;
+    const allRows = [];
+
+    do {
+      const res = await axios.get(`${API_BASE}/stock-opname/get`, {
+        params: {
+          page: currentPage,
+          limit: exportLimit,
+          startDate,
+          endDate,
+        },
+      });
+      allRows.push(...(res.data.result || []));
+      totalPage = Math.max(res.data.totalPage || 1, 1);
+      currentPage += 1;
+    } while (currentPage < totalPage);
+
+    return allRows.filter((item) =>
+      isDateInRange(item.tanggal, startDate, endDate),
+    );
+  };
+
+  const downloadExcel = async () => {
+    if (!exportStartDate || !exportEndDate) {
+      toast({
+        title: "Tanggal wajib diisi",
+        description: "Pilih tanggal awal dan tanggal akhir terlebih dahulu",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (exportStartDate > exportEndDate) {
+      toast({
+        title: "Rentang tanggal tidak valid",
+        description: "Tanggal awal tidak boleh lebih besar dari tanggal akhir",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const exportData = await fetchAllStokOpnameForExport(
+        exportStartDate,
+        exportEndDate,
+      );
+
+      if (!exportData.length) {
+        toast({
+          title: "Tidak ada data",
+          description:
+            "Tidak ada data stok opname pada rentang tanggal tersebut",
+          status: "info",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      const sortedData = [...exportData].sort((a, b) => {
+        const dateCompare = String(a.tanggal || "").localeCompare(
+          String(b.tanggal || ""),
+        );
+        if (dateCompare !== 0) return dateCompare;
+        return String(a.kode || "").localeCompare(String(b.kode || ""));
+      });
+
+      const grouped = groupStokByTanggal(sortedData);
+      const tankiCodes = [
+        ...new Set(sortedData.map((item) => item.kode || "-")),
+      ].sort((a, b) => a.localeCompare(b));
+
+      const exportGroups = buildExportGroups(sortedData);
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "KPBPN";
+      workbook.created = new Date();
+
+      const detailSheet = workbook.addWorksheet("Stok Opname");
+      const detailColCount = 10;
+      const mergeDetailTitle = (rowNumber) => {
+        detailSheet.mergeCells(rowNumber, 1, rowNumber, detailColCount);
+      };
+
+      detailSheet.addRow(["Laporan Stok Opname Tanki"]);
+      mergeDetailTitle(1);
+      detailSheet.getCell("A1").font = { bold: true, size: 14 };
+      detailSheet.addRow([
+        `Periode: ${formatDate(exportStartDate)} s.d. ${formatDate(exportEndDate)}`,
+      ]);
+
+      mergeDetailTitle(4);
+      detailSheet.addRow([]);
+
+      const detailHeaders = [
+        "No",
+        "Tanggal",
+        "Tanki",
+        "Volume Minyak (Stok Opname) (barrel)",
+        "Volume Air (Stok Opname) (barrel)",
+        "Volume Minyak (Gross Pengisian) (barrel)",
+        "Volume Air (Kandungan Air Pengisian) (barrel)",
+        "Nomor Surat",
+        "Nama Mitra",
+        "Nomor Surat Jalan",
+      ];
+      applyExcelHeader(detailSheet.addRow(detailHeaders));
+
+      const dateMerges = [];
+      const tankMerges = [];
+      const pengisianMerges = [];
+      const suratJalanMerges = [];
+      let groupNumber = 1;
+      const getPengisianKey = (detail) => detail.pengisianKey;
+      const getSuratJalanKey = (detail) => detail.nomorSuratJalan;
+
+      exportGroups.forEach((dateGroup) => {
+        const dateStartRow = detailSheet.lastRow.number + 1;
+
+        dateGroup.tanks.forEach((tankGroup, tankIndex) => {
+          const tankStartRow = detailSheet.lastRow.number + 1;
+
+          tankGroup.details.forEach((detail, detailIndex) => {
+            const isFirstDateRow = tankIndex === 0 && detailIndex === 0;
+            const isFirstTankRow = detailIndex === 0;
+            const isFirstPengisianRow = isFirstConsecutive(
+              tankGroup.details,
+              detailIndex,
+              getPengisianKey,
+            );
+            const isFirstSjRow = isFirstConsecutive(
+              tankGroup.details,
+              detailIndex,
+              getSuratJalanKey,
+            );
+            const dataRow = detailSheet.addRow([
+              isFirstTankRow ? groupNumber : "",
+              isFirstDateRow ? formatDate(dateGroup.tanggal) : "",
+              isFirstTankRow ? tankGroup.kode || "-" : "",
+              isFirstTankRow ? excelNumber(tankGroup.volumeMinyak) : "",
+              isFirstTankRow ? excelNumber(tankGroup.volumeAir) : "",
+              isFirstPengisianRow
+                ? detail.grossBarrel == null
+                  ? "-"
+                  : excelNumber(detail.grossBarrel)
+                : "",
+              isFirstPengisianRow
+                ? detail.kandunganAirBarrel == null
+                  ? "-"
+                  : excelNumber(detail.kandunganAirBarrel)
+                : "",
+              isFirstPengisianRow ? detail.nomorSurat : "",
+              detail.mitraNama,
+              isFirstSjRow ? detail.nomorSuratJalan : "",
+            ]);
+            applyExcelRowStyle(dataRow, EXCEL_MASUK_STYLE);
+          });
+
+          const tankEndRow = detailSheet.lastRow.number;
+          tankMerges.push({
+            startRow: tankStartRow,
+            endRow: tankEndRow,
+          });
+          pengisianMerges.push(
+            ...collectConsecutiveMerges(
+              tankGroup.details,
+              tankStartRow,
+              getPengisianKey,
+            ),
+          );
+          suratJalanMerges.push(
+            ...collectConsecutiveMerges(
+              tankGroup.details,
+              tankStartRow,
+              getSuratJalanKey,
+            ),
+          );
+          groupNumber += 1;
+        });
+
+        dateMerges.push({
+          startRow: dateStartRow,
+          endRow: detailSheet.lastRow.number,
+        });
+      });
+
+      dateMerges.forEach(({ startRow, endRow }) => {
+        mergeAndCenter(detailSheet, startRow, endRow, 2, "D6EAF8");
+      });
+      tankMerges.forEach(({ startRow, endRow }) => {
+        [1, 3, 4, 5].forEach((col) => {
+          mergeAndCenter(detailSheet, startRow, endRow, col, "D6EAF8");
+        });
+      });
+      pengisianMerges.forEach(({ startRow, endRow }) => {
+        [6, 7, 8].forEach((col) => {
+          mergeAndCenter(detailSheet, startRow, endRow, col, "E2EFDA");
+        });
+      });
+      suratJalanMerges.forEach(({ startRow, endRow }) => {
+        mergeAndCenter(detailSheet, startRow, endRow, 10, "E2EFDA");
+      });
+
+      autoFitColumns(detailSheet);
+      detailSheet.views = [{ state: "frozen", ySplit: 6 }];
+
+      const rekapSheet = workbook.addWorksheet("Rekap per Tanggal");
+      rekapSheet.addRow(["Rekap Stok Opname per Tanggal — Semua Tanki"]);
+      rekapSheet.mergeCells(1, 1, 1, tankiCodes.length + 4);
+      rekapSheet.getCell("A1").font = { bold: true, size: 14 };
+      rekapSheet.addRow([
+        `Periode: ${formatDate(exportStartDate)} s.d. ${formatDate(exportEndDate)}`,
+      ]);
+      rekapSheet.mergeCells(2, 1, 2, tankiCodes.length + 4);
+      rekapSheet.addRow([`Satuan: ${SATUAN}`]);
+      rekapSheet.mergeCells(3, 1, 3, tankiCodes.length + 4);
+      rekapSheet.addRow([]);
+
+      const rekapHeaders = [
+        "Tanggal",
+        ...tankiCodes.map((kode) => `Stok ${kode}`),
+        "Total Stok (barrel)",
+        "Total Masuk (barrel)",
+        "Total Keluar (barrel)",
+      ];
+      applyExcelHeader(rekapSheet.addRow(rekapHeaders));
+
+      grouped.forEach((group) => {
+        const stokByTanki = new Map(
+          group.items.map((item) => [item.kode || "-", item.volumeBersih]),
+        );
+        const totalStokHari = roundBarrel(
+          group.items.reduce(
+            (sum, item) => sum + (Number(item.volumeBersih) || 0),
+            0,
+          ),
+        );
+        const dataRow = rekapSheet.addRow([
+          formatDate(group.tanggal),
+          ...tankiCodes.map((kode) => excelNumber(stokByTanki.get(kode))),
+          totalStokHari,
+          excelNumber(group.totalMasuk),
+          excelNumber(group.totalKeluar),
+        ]);
+        applyExcelRowStyle(dataRow);
+      });
+
+      autoFitColumns(rekapSheet);
+      rekapSheet.views = [{ state: "frozen", ySplit: 5, xSplit: 1 }];
+
+      const filename = `Stok_Opname_${exportStartDate}_sd_${exportEndDate}.xlsx`;
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Berhasil",
+        description: "File Excel stok opname berhasil diunduh",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      onExportClose();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description:
+          err.response?.data?.error ||
+          "Gagal mengekspor data stok opname ke Excel",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -573,9 +1152,29 @@ const StokOpname = () => {
               </Text>
             </VStack>
             <Spacer />
-            <Button variant="primary" onClick={openAddForm}>
-              + Tambah Stok Opname
-            </Button>
+            <HStack
+              spacing={3}
+              justify={{ base: "center", sm: "flex-end" }}
+              w={{ base: "full", sm: "auto" }}
+              flexWrap="wrap"
+            >
+              <Button
+                leftIcon={<BsFileEarmarkExcel />}
+                variant="outline"
+                colorScheme="green"
+                onClick={openExportModal}
+                w={{ base: "full", sm: "auto" }}
+              >
+                Export Excel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={openAddForm}
+                w={{ base: "full", sm: "auto" }}
+              >
+                + Tambah Stok Opname
+              </Button>
+            </HStack>
           </Flex>
 
           <HStack
@@ -720,7 +1319,11 @@ const StokOpname = () => {
                                 <HStack justify="space-between" mb={3}>
                                   <VStack align="start" spacing={0}>
                                     <Text fontSize="xs" color="gray.500">
-                                      No. {page * limit + startIndex + itemIndex + 1}
+                                      No.{" "}
+                                      {page * limit +
+                                        startIndex +
+                                        itemIndex +
+                                        1}
                                     </Text>
                                     <Text fontWeight="bold" color="kpbpn">
                                       {item.kode || "-"}
@@ -1123,7 +1726,9 @@ const StokOpname = () => {
           maxH={{ base: "100vh", md: "90vh" }}
         >
           <ModalHeader>
-            {editingItem ? "Edit Stok Opname Tanki" : "Tambah Stok Opname Tanki"}
+            {editingItem
+              ? "Edit Stok Opname Tanki"
+              : "Tambah Stok Opname Tanki"}
           </ModalHeader>
           <ModalCloseButton />
           <Formik
@@ -1174,7 +1779,9 @@ const StokOpname = () => {
                 <Form>
                   <ModalBody>
                     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                      <FormControl isInvalid={touched.tanggal && errors.tanggal}>
+                      <FormControl
+                        isInvalid={touched.tanggal && errors.tanggal}
+                      >
                         <FormLabel>Tanggal</FormLabel>
                         <Input
                           name="tanggal"
@@ -1186,7 +1793,9 @@ const StokOpname = () => {
                         />
                         <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
                       </FormControl>
-                      <FormControl isInvalid={touched.tankiId && errors.tankiId}>
+                      <FormControl
+                        isInvalid={touched.tankiId && errors.tankiId}
+                      >
                         <FormLabel>Tanki</FormLabel>
                         <Select
                           name="tankiId"
@@ -1346,6 +1955,73 @@ const StokOpname = () => {
               isLoading={isDeleting}
             >
               Hapus
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isExportOpen}
+        onClose={closeExportModal}
+        isCentered
+        size="lg"
+        closeOnOverlayClick={!isExporting}
+      >
+        <ModalOverlay />
+        <ModalContent mx={4}>
+          <ModalHeader>Export Stok Opname</ModalHeader>
+          <ModalCloseButton isDisabled={isExporting} />
+          <ModalBody>
+            <Text fontSize="sm" color="gray.600" mb={4}>
+              Filter berdasarkan tanggal stok opname. Hanya data dalam rentang
+              tanggal awal sampai tanggal akhir yang diunduh. Semua volume dalam
+              barrel.
+            </Text>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              <FormControl isRequired>
+                <FormLabel>Tanggal Awal</FormLabel>
+                <Input
+                  type="date"
+                  bgColor="terang"
+                  value={exportStartDate}
+                  onChange={(e) => setExportStartDate(e.target.value)}
+                  max={exportEndDate || undefined}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>Tanggal Akhir</FormLabel>
+                <Input
+                  type="date"
+                  bgColor="terang"
+                  value={exportEndDate}
+                  onChange={(e) => setExportEndDate(e.target.value)}
+                  min={exportStartDate || undefined}
+                />
+              </FormControl>
+            </SimpleGrid>
+          </ModalBody>
+          <ModalFooter
+            flexDirection={{ base: "column-reverse", sm: "row" }}
+            gap={{ base: 2, sm: 0 }}
+          >
+            <Button
+              variant="ghost"
+              mr={{ base: 0, sm: 3 }}
+              onClick={closeExportModal}
+              isDisabled={isExporting}
+              w={{ base: "full", sm: "auto" }}
+            >
+              Batal
+            </Button>
+            <Button
+              leftIcon={<BsFileEarmarkExcel />}
+              colorScheme="green"
+              onClick={downloadExcel}
+              isLoading={isExporting}
+              loadingText="Mengekspor..."
+              w={{ base: "full", sm: "auto" }}
+            >
+              Unduh Excel
             </Button>
           </ModalFooter>
         </ModalContent>
