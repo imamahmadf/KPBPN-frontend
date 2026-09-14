@@ -71,10 +71,17 @@ const pengisianSchema = Yup.object({
         return Number(value) <= Number(gross);
       },
     ),
-  BSW: Yup.number().typeError("BSW harus angka").required("BSW wajib diisi"),
+  BSW: Yup.number()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue === null || originalValue === undefined
+        ? null
+        : value,
+    )
+    .nullable()
+    .typeError("BSW harus angka"),
   satuanVolumeId: Yup.string().required("Satuan volume wajib dipilih"),
   catatan: Yup.string(),
-  saksi: Yup.string().required("Saksi wajib diisi"),
+  saksi: Yup.string(),
   ids: Yup.array()
     .of(Yup.string())
     .min(1, "Konfirmasi penerimaan wajib dipilih"),
@@ -155,7 +162,9 @@ const TambahPengisianTanki = () => {
     try {
       const [tankiRes, konfirmasiRes] = await Promise.all([
         axios.get(`${API_BASE}/tanki/get/tanki`),
-        axios.get(`${API_BASE}/tanki/get/konfirmasi-penerimaan`),
+        axios.get(`${API_BASE}/tanki/get/konfirmasi-penerimaan`, {
+          params: { availableForPengisian: 1 },
+        }),
       ]);
       setDataTanki(tankiRes.data.result || []);
       setDataSatuanVolume(tankiRes.data.resultSatuanVolume || []);
@@ -193,9 +202,12 @@ const TambahPengisianTanki = () => {
         penampilanVisual: values.penampilanVisual,
         warna: values.warna,
         kandunganAir,
-        BSW: parseInt(values.BSW, 10),
+        BSW:
+          values.BSW === "" || values.BSW === null || values.BSW === undefined
+            ? null
+            : parseInt(values.BSW, 10),
         catatan: values.catatan,
-        saksi: values.saksi,
+        saksi: values.saksi || null,
         satuanVolumeId: parseInt(values.satuanVolumeId, 10),
         ids: values.ids.map((id) => parseInt(id, 10)),
       });
@@ -454,9 +466,10 @@ const TambahPengisianTanki = () => {
                     <FormControl isInvalid={touched.ids && errors.ids}>
                       <FormLabel mb={3}>Konfirmasi Penerimaan</FormLabel>
                       <Text fontSize="sm" color="gray.500" mb={3}>
-                        Pilih minimal satu konfirmasi penerimaan. Konfirmasi
-                        yang sudah terhubung ke tanki lain tetap dapat dipilih
-                        untuk tanki berikutnya.
+                        Pilih minimal satu konfirmasi penerimaan. Hanya
+                        konfirmasi yang belum terhubung ke pengisian, atau yang
+                        terhubung paling lama 2 hari yang lalu, yang
+                        ditampilkan.
                       </Text>
                       {dataKonfirmasi.length === 0 ? (
                         <Text fontSize="sm" color="red.500">

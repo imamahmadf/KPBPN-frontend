@@ -39,9 +39,15 @@ import {
   Textarea,
   useDisclosure,
   Image,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
 } from "@chakra-ui/react";
 import { Select as Select2, AsyncSelect } from "chakra-react-select";
 import { Link as RouterLink } from "react-router-dom";
+import { BsChevronDown } from "react-icons/bs";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import { formatVolumeNumber } from "../../lib/volumeSatuan";
@@ -58,6 +64,11 @@ const parseDecimalInput = (value) => {
   const normalized = String(value).trim().replace(",", ".");
   const num = Number(normalized);
   return Number.isNaN(num) ? null : num;
+};
+
+const toDecimalInput = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value).replace(".", ",");
 };
 
 const decimalFieldSchema = (label) =>
@@ -80,8 +91,19 @@ const konfirmasiSchema = Yup.object({
   BSNW: decimalFieldSchema("BSNW"),
   foto: Yup.mixed()
     .nullable()
-    .required("Foto bukti penerimaan wajib diunggah")
-    .test("is-file", "Foto tidak valid", (value) => value instanceof File),
+    .test(
+      "foto-required",
+      "Foto bukti penerimaan wajib diunggah",
+      function (value) {
+        if (value instanceof File) return true;
+        if (this.parent.fotoPreview) return true;
+        return false;
+      },
+    )
+    .test("is-file", "Foto tidak valid", (value) => {
+      if (!value) return true;
+      return value instanceof File;
+    }),
 });
 
 const initialValuesKonfirmasi = {
@@ -96,17 +118,25 @@ const initialValuesKonfirmasi = {
   fotoPreview: "",
 };
 
-const FileUploadField = ({ label, preview, onChange, error, touched }) => {
+const FileUploadField = ({
+  label,
+  preview,
+  onChange,
+  error,
+  touched,
+  isRequired = true,
+}) => {
   const inputRef = useRef(null);
 
   return (
-    <FormControl isInvalid={touched && error} isRequired>
+    <FormControl isInvalid={touched && error} isRequired={isRequired}>
       <FormLabel>{label}</FormLabel>
       <Input
         ref={inputRef}
         type="file"
         accept="image/png, image/jpeg, image/jpg"
         display="none"
+        required={false}
         onChange={(e) => {
           const file = e.target.files?.[0] || null;
           onChange(file);
@@ -126,6 +156,7 @@ const FileUploadField = ({ label, preview, onChange, error, touched }) => {
         onClick={() => inputRef.current?.click()}
       />
       <Button
+        type="button"
         variant="secondary"
         w="100%"
         size="sm"
@@ -227,6 +258,14 @@ const formatMitraLabel = (val) => {
     : val.nama || `Mitra #${val.id}`;
 };
 
+const statusBadgeColor = (status) => {
+  const value = String(status || "").toUpperCase();
+  if (value === "TIBA") return "green";
+  if (value === "KIRIM") return "blue";
+  if (value === "BATAL") return "red";
+  return "gray";
+};
+
 const formatAsalMinyakLabel = (val) => {
   if (!val) return "";
   if (val.nomor && val.asal) return `${val.nomor} - ${val.asal}`;
@@ -276,13 +315,28 @@ const SuratJalan = () => {
     onOpen: onPreviewFotoOpen,
     onClose: onPreviewFotoClose,
   } = useDisclosure();
+  const {
+    isOpen: isDeleteOpen,
+    onOpen: onDeleteOpen,
+    onClose: onDeleteClose,
+  } = useDisclosure();
+  const {
+    isOpen: isBatalOpen,
+    onOpen: onBatalOpen,
+    onClose: onBatalClose,
+  } = useDisclosure();
   const [previewFoto, setPreviewFoto] = useState("");
   const [selectedSuratJalan, setSelectedSuratJalan] = useState(null);
   const [editingSuratJalan, setEditingSuratJalan] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [batalTarget, setBatalTarget] = useState(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [selectedSuratJalanDetail, setSelectedSuratJalanDetail] =
     useState(null);
   const [dataKonfirmasi, setDataKonfirmasi] = useState([]);
   const [loadingDetailKonfirmasi, setLoadingDetailKonfirmasi] = useState(false);
+  const [editingKonfirmasi, setEditingKonfirmasi] = useState(null);
 
   const [dataSuratJalan, setDataSuratJalan] = useState([]);
   const [dataSeed, setDataSeed] = useState(null);
@@ -301,7 +355,7 @@ const SuratJalan = () => {
   const [statusSuratJalanFilterId, setStatusSuratJalanFilterId] = useState(0);
   const [tanggalAwal, setTanggalAwal] = useState("");
   const [tanggalAkhir, setTanggalAkhir] = useState("");
-  const [sortBy, setSortBy] = useState("tanggal");
+  const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("DESC");
 
   const allSupir = (dataSeed?.resultMitra || []).flatMap((m) =>
@@ -351,6 +405,30 @@ const SuratJalan = () => {
       jamPergi: toDateTimeLocalInput(editingSuratJalan.jamPergi),
     };
   }, [editingSuratJalan]);
+
+  const initialValuesKonfirmasiForm = useMemo(() => {
+    if (editingKonfirmasi) {
+      return {
+        tanggal: toDateInput(editingKonfirmasi.tanggal),
+        volume: editingKonfirmasi.volume ?? "",
+        pegawaiId:
+          editingKonfirmasi.pegawaiId ??
+          editingKonfirmasi.pegawai?.id ??
+          null,
+        pegawaiLabel: editingKonfirmasi.pegawai?.nama || "",
+        catatan: editingKonfirmasi.catatan || "",
+        api: toDecimalInput(editingKonfirmasi.api),
+        BSNW: toDecimalInput(editingKonfirmasi.BSNW),
+        foto: null,
+        fotoPreview: getImageUrl(editingKonfirmasi.foto) || "",
+      };
+    }
+
+    return {
+      ...initialValuesKonfirmasi,
+      volume: selectedSuratJalan?.volume ?? "",
+    };
+  }, [editingKonfirmasi, selectedSuratJalan]);
 
   const formatTanggal = (d) =>
     d
@@ -448,16 +526,6 @@ const SuratJalan = () => {
   };
 
   const openEditModal = (item) => {
-    if (item.statusSuratJalanId === 3) {
-      toast({
-        title: "Tidak dapat diubah",
-        description: "Surat jalan yang sudah dikonfirmasi tidak dapat diubah",
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
     setEditingSuratJalan(item);
     onEditOpen();
   };
@@ -466,6 +534,118 @@ const SuratJalan = () => {
     formikRefEdit.current?.resetForm();
     setEditingSuratJalan(null);
     onEditClose();
+  };
+
+  const openDeleteModal = (item) => {
+    setDeleteTarget(item);
+    onDeleteOpen();
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+    onDeleteClose();
+  };
+
+  const openBatalModal = (item) => {
+    if (item.statusSuratJalanId === 4) {
+      toast({
+        title: "Tidak dapat dibatalkan",
+        description: "Surat jalan sudah berstatus BATAL",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+    if (item.statusSuratJalanId === 3) {
+      toast({
+        title: "Tidak dapat dibatalkan",
+        description: "Surat jalan yang sudah tiba tidak dapat dibatalkan",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+    setBatalTarget(item);
+    onBatalOpen();
+  };
+
+  const handleCloseBatalModal = () => {
+    if (isCancelling) return;
+    setBatalTarget(null);
+    onBatalClose();
+  };
+
+  const handleBatalSuratJalan = async () => {
+    if (!batalTarget?.id) return;
+
+    setIsCancelling(true);
+    try {
+      await axios.post(`${API_BASE}/pengiriman/batal/${batalTarget.id}`);
+      toast({
+        title: "Berhasil",
+        description: "Surat jalan berhasil dibatalkan",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+      setBatalTarget(null);
+      onBatalClose();
+      fetchDataSuratJalan();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal membatalkan",
+        description:
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          "Gagal membatalkan surat jalan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleDeleteSuratJalan = async () => {
+    if (!deleteTarget?.id) return;
+
+    setIsDeleting(true);
+    try {
+      await axios.post(`${API_BASE}/pengiriman/delete/${deleteTarget.id}`);
+      toast({
+        title: "Berhasil",
+        description: "Surat jalan berhasil dihapus",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+      setDeleteTarget(null);
+      onDeleteClose();
+      if (dataSuratJalan.length === 1 && page > 0) {
+        setPage((prev) => prev - 1);
+      } else {
+        fetchDataSuratJalan();
+      }
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal menghapus",
+        description:
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          "Gagal menghapus surat jalan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const submitEditSuratJalan = async (values, { setSubmitting, resetForm }) => {
@@ -513,14 +693,66 @@ const SuratJalan = () => {
   };
 
   const openKonfirmasiModal = (item) => {
+    setEditingKonfirmasi(null);
     setSelectedSuratJalan(item);
     onKonfirmasiOpen();
   };
 
   const handleCloseKonfirmasiModal = () => {
     formikRefKonfirmasi.current?.resetForm();
+    setEditingKonfirmasi(null);
     setSelectedSuratJalan(null);
     onKonfirmasiClose();
+  };
+
+  const refreshDataKonfirmasi = async (suratJalanId) => {
+    if (!suratJalanId) return;
+    const res = await axios.get(
+      `${API_BASE}/pengiriman/get/konfirmasi/${suratJalanId}`,
+    );
+    setDataKonfirmasi(res.data.result || []);
+  };
+
+  const openEditKonfirmasiModal = (kp, suratJalanItem) => {
+    const parentSuratJalan =
+      suratJalanItem || selectedSuratJalanDetail || kp?.suratJalan || null;
+    setEditingKonfirmasi(kp);
+    setSelectedSuratJalan(parentSuratJalan);
+    onKonfirmasiOpen();
+  };
+
+  const openEditKonfirmasiFromList = async (item) => {
+    try {
+      const res = await axios.get(
+        `${API_BASE}/pengiriman/get/konfirmasi/${item.id}`,
+      );
+      const list = res.data.result || [];
+      if (!list.length) {
+        toast({
+          title: "Tidak ada konfirmasi",
+          description:
+            "Belum ada data konfirmasi penerimaan untuk surat jalan ini",
+          status: "warning",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
+      setSelectedSuratJalanDetail(item);
+      setDataKonfirmasi(list);
+      openEditKonfirmasiModal(list[0], item);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error ||
+          "Gagal memuat data konfirmasi penerimaan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
   };
 
   const handleCloseDetailKonfirmasiModal = () => {
@@ -568,40 +800,76 @@ const SuratJalan = () => {
     values,
     { setSubmitting, resetForm },
   ) => {
-    if (!selectedSuratJalan?.id) return;
+    const isEdit = Boolean(editingKonfirmasi?.id);
+    const suratJalanId = isEdit
+      ? editingKonfirmasi.suratJalanId || selectedSuratJalan?.id
+      : selectedSuratJalan?.id;
+
+    if (!suratJalanId && !isEdit) {
+      setSubmitting(false);
+      toast({
+        title: "Error!",
+        description: "Surat jalan tidak ditemukan",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
 
     try {
       const formData = new FormData();
-      formData.append("suratJalanId", selectedSuratJalan.id);
       formData.append("tanggal", values.tanggal);
       formData.append("volume", values.volume);
       formData.append("pegawaiId", values.pegawaiId);
       formData.append("catatan", values.catatan || "");
       formData.append("api", parseDecimalInput(values.api) ?? "");
       formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
-      if (values.foto) formData.append("foto", values.foto);
+      if (values.foto instanceof File) formData.append("foto", values.foto);
 
-      await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      if (isEdit) {
+        await axios.post(
+          `${API_BASE}/pengiriman/edit/konfirmasi/${editingKonfirmasi.id}`,
+          formData,
+        );
+      } else {
+        formData.append("suratJalanId", suratJalanId);
+        await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
+      }
 
       toast({
         title: "Berhasil",
-        description: "Konfirmasi penerimaan berhasil disimpan",
+        description: isEdit
+          ? "Konfirmasi penerimaan berhasil diperbarui"
+          : "Konfirmasi penerimaan berhasil disimpan",
         status: "success",
         duration: 4000,
         isClosable: true,
       });
 
+      const detailSuratJalanId =
+        selectedSuratJalanDetail?.id || (isEdit ? suratJalanId : null);
+
       resetForm();
       handleCloseKonfirmasiModal();
       fetchDataSuratJalan();
+
+      if (isEdit && detailSuratJalanId) {
+        try {
+          await refreshDataKonfirmasi(detailSuratJalanId);
+        } catch (refreshErr) {
+          console.error(refreshErr);
+        }
+      }
     } catch (err) {
       console.error(err);
       toast({
         title: "Error!",
         description:
-          err.response?.data?.error || "Gagal menyimpan konfirmasi penerimaan",
+          err.response?.data?.error ||
+          (isEdit
+            ? "Gagal memperbarui konfirmasi penerimaan"
+            : "Gagal menyimpan konfirmasi penerimaan"),
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -620,7 +888,7 @@ const SuratJalan = () => {
     setStatusSuratJalanFilterId(0);
     setTanggalAwal("");
     setTanggalAkhir("");
-    setSortBy("tanggal");
+    setSortBy("id");
     setSortOrder("DESC");
   };
 
@@ -633,96 +901,100 @@ const SuratJalan = () => {
     statusSuratJalanFilterId ||
     tanggalAwal ||
     tanggalAkhir ||
-    sortBy !== "tanggal" ||
+    sortBy !== "id" ||
     sortOrder !== "DESC";
 
   const renderAksi = (item, fullWidth = false) => {
     const actions = [
-      <Button
-        key="detail"
-        as={RouterLink}
-        to={`/pengiriman-kpbpn/detail-surat-jalan/${item.id}`}
-        size="sm"
-        variant="outline"
-        colorScheme="purple"
-        w={fullWidth ? "full" : "auto"}
-      >
-        Detail
-      </Button>,
+      {
+        key: "detail",
+        label: "Detail",
+        to: `/pengiriman-kpbpn/detail-surat-jalan/${item.id}`,
+      },
+      {
+        key: "edit",
+        label: "Edit",
+        onClick: () => openEditModal(item),
+      },
     ];
 
-    if (item.statusSuratJalanId === 1 || item.statusSuratJalanId === 2) {
-      actions.push(
-        <Button
-          key="edit"
-          size="sm"
-          variant="outline"
-          colorScheme="yellow"
-          w={fullWidth ? "full" : "auto"}
-          onClick={() => openEditModal(item)}
-        >
-          Edit
-        </Button>,
-      );
+    if (item.statusSuratJalanId === 1) {
+      actions.push({
+        key: "verifikasi",
+        label: "Verifikasi",
+        onClick: () => verifikasiSuratJalan(item.id, item.mitraId),
+      });
     }
 
-    if (item.statusSuratJalanId === 1) {
-      actions.push(
-        <Button
-          key="verifikasi"
-          size="sm"
-          variant="outline"
-          colorScheme="teal"
-          w={fullWidth ? "full" : "auto"}
-          onClick={() => verifikasiSuratJalan(item.id, item.mitraId)}
-        >
-          Verifikasi
-        </Button>,
-      );
-    }
     if (item.statusSuratJalanId === 2) {
-      actions.push(
-        <Button
-          key="konfirmasi"
-          size="sm"
-          variant="outline"
-          colorScheme="orange"
-          w={fullWidth ? "full" : "auto"}
-          onClick={() => openKonfirmasiModal(item)}
-        >
-          Konfirmasi
-        </Button>,
-      );
+      actions.push({
+        key: "konfirmasi",
+        label: "Konfirmasi",
+        onClick: () => openKonfirmasiModal(item),
+      });
     }
+
     if (item.statusSuratJalanId === 3) {
       actions.push(
-        <Button
-          key="detail-konfirmasi"
-          size="sm"
-          variant="outline"
-          colorScheme="blue"
-          w={fullWidth ? "full" : "auto"}
-          onClick={() => openDetailKonfirmasiModal(item)}
-        >
-          Detail Konfirmasi
-        </Button>,
+        {
+          key: "detail-konfirmasi",
+          label: "Detail Konfirmasi",
+          onClick: () => openDetailKonfirmasiModal(item),
+        },
+        {
+          key: "edit-konfirmasi",
+          label: "Edit Konfirmasi",
+          onClick: () => openEditKonfirmasiFromList(item),
+        },
       );
     }
 
-    if (!actions.length) return null;
-
-    if (fullWidth) {
-      return (
-        <Stack spacing={2} w="full">
-          {actions}
-        </Stack>
-      );
+    if (item.statusSuratJalanId === 1 || item.statusSuratJalanId === 2) {
+      actions.push({
+        key: "batal",
+        label: "Batalkan",
+        onClick: () => openBatalModal(item),
+        destructive: true,
+      });
     }
+
+    actions.push({
+      key: "hapus",
+      label: "Hapus",
+      onClick: () => openDeleteModal(item),
+      destructive: true,
+    });
+
+    const destructiveIndex = actions.findIndex((action) => action.destructive);
 
     return (
-      <HStack spacing={2} flexWrap="wrap">
-        {actions}
-      </HStack>
+      <Menu isLazy placement="bottom-end" strategy="fixed">
+        <MenuButton
+          as={Button}
+          size="sm"
+          variant="outline"
+          rightIcon={<BsChevronDown />}
+          w={fullWidth ? "full" : "auto"}
+        >
+          Aksi
+        </MenuButton>
+        <MenuList minW="200px" zIndex={20}>
+          {actions.map((action, index) => (
+            <React.Fragment key={action.key}>
+              {destructiveIndex === index && index > 0 && <MenuDivider />}
+              <MenuItem
+                as={action.to ? RouterLink : undefined}
+                to={action.to}
+                onClick={action.onClick}
+                color={action.destructive ? "red.500" : undefined}
+                fontWeight={action.destructive ? "medium" : "normal"}
+              >
+                {action.label}
+              </MenuItem>
+            </React.Fragment>
+          ))}
+        </MenuList>
+      </Menu>
     );
   };
 
@@ -934,6 +1206,7 @@ const SuratJalan = () => {
                 </FormLabel>
                 <Select2
                   options={[
+                    { value: "id", label: "Index" },
                     { value: "tanggal", label: "Tanggal" },
                     { value: "nomor", label: "Nomor" },
                     { value: "volume", label: "Volume" },
@@ -945,9 +1218,11 @@ const SuratJalan = () => {
                         ? "Nomor"
                         : sortBy === "volume"
                           ? "Volume"
-                          : "Tanggal",
+                          : sortBy === "tanggal"
+                            ? "Tanggal"
+                            : "Index",
                   }}
-                  onChange={(opt) => setSortBy(opt?.value || "tanggal")}
+                  onChange={(opt) => setSortBy(opt?.value || "id")}
                   {...selectStyles}
                 />
               </FormControl>
@@ -968,10 +1243,15 @@ const SuratJalan = () => {
                             { value: "ASC", label: "Nomor A-Z" },
                             { value: "DESC", label: "Nomor Z-A" },
                           ]
-                        : [
-                            { value: "DESC", label: "Tanggal Terbaru" },
-                            { value: "ASC", label: "Tanggal Terlama" },
-                          ]
+                        : sortBy === "tanggal"
+                          ? [
+                              { value: "DESC", label: "Tanggal Terbaru" },
+                              { value: "ASC", label: "Tanggal Terlama" },
+                            ]
+                          : [
+                              { value: "DESC", label: "Index Terbesar" },
+                              { value: "ASC", label: "Index Terkecil" },
+                            ]
                   }
                   value={{
                     value: sortOrder,
@@ -984,9 +1264,13 @@ const SuratJalan = () => {
                           ? sortOrder === "ASC"
                             ? "Nomor A-Z"
                             : "Nomor Z-A"
-                          : sortOrder === "ASC"
-                            ? "Tanggal Terlama"
-                            : "Tanggal Terbaru",
+                          : sortBy === "tanggal"
+                            ? sortOrder === "ASC"
+                              ? "Tanggal Terlama"
+                              : "Tanggal Terbaru"
+                            : sortOrder === "ASC"
+                              ? "Index Terkecil"
+                              : "Index Terbesar",
                   }}
                   onChange={(opt) => setSortOrder(opt?.value || "DESC")}
                   {...selectStyles}
@@ -1059,7 +1343,12 @@ const SuratJalan = () => {
                             {item.nomor || "-"}
                           </Text>
                         </VStack>
-                        <Badge colorScheme="blue" variant="subtle">
+                        <Badge
+                          colorScheme={statusBadgeColor(
+                            item.statusSuratJalan?.status,
+                          )}
+                          variant="subtle"
+                        >
                           {item.statusSuratJalan?.status || "-"}
                         </Badge>
                       </HStack>
@@ -1169,11 +1458,16 @@ const SuratJalan = () => {
                         </Td>
                         <Td>{item.supir?.nama || "-"}</Td>
                         <Td>
-                          <Badge colorScheme="blue" variant="subtle">
+                          <Badge
+                            colorScheme={statusBadgeColor(
+                              item.statusSuratJalan?.status,
+                            )}
+                            variant="subtle"
+                          >
                             {item.statusSuratJalan?.status || "-"}
                           </Badge>
                         </Td>
-                        <Td>{renderAksi(item) || null}</Td>
+                        <Td whiteSpace="nowrap">{renderAksi(item)}</Td>
                       </Tr>
                     ))
                   ) : (
@@ -1623,7 +1917,11 @@ const SuratJalan = () => {
           borderRadius={{ base: 0, md: "md" }}
           maxH={{ base: "100vh", md: "90vh" }}
         >
-          <ModalHeader>Konfirmasi Penerimaan</ModalHeader>
+          <ModalHeader>
+            {editingKonfirmasi
+              ? "Edit Konfirmasi Penerimaan"
+              : "Konfirmasi Penerimaan"}
+          </ModalHeader>
           <ModalCloseButton />
           {selectedSuratJalan && (
             <Box px={6} pb={2}>
@@ -1634,10 +1932,7 @@ const SuratJalan = () => {
           )}
           <Formik
             innerRef={formikRefKonfirmasi}
-            initialValues={{
-              ...initialValuesKonfirmasi,
-              volume: selectedSuratJalan?.volume ?? "",
-            }}
+            initialValues={initialValuesKonfirmasiForm}
             enableReinitialize
             validationSchema={konfirmasiSchema}
             onSubmit={submitKonfirmasiPenerimaan}
@@ -1650,8 +1945,12 @@ const SuratJalan = () => {
               isSubmitting,
               handleChange,
               handleBlur,
+              submitForm,
+              validateForm,
+              setTouched,
+              setFieldTouched,
             }) => (
-              <Form>
+              <Form id="form-konfirmasi-penerimaan">
                 <ModalBody>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                     <FormControl isInvalid={touched.tanggal && errors.tanggal}>
@@ -1717,6 +2016,7 @@ const SuratJalan = () => {
                         onChange={(opt) => {
                           setFieldValue("pegawaiId", opt?.value || null);
                           setFieldValue("pegawaiLabel", opt?.label || "");
+                          setFieldTouched("pegawaiId", true);
                         }}
                         {...selectStyles}
                       />
@@ -1772,12 +2072,16 @@ const SuratJalan = () => {
                         preview={values.fotoPreview}
                         touched={touched.foto}
                         error={errors.foto}
+                        isRequired={!editingKonfirmasi}
                         onChange={(file) => {
                           setFieldValue("foto", file);
                           setFieldValue(
                             "fotoPreview",
-                            file ? URL.createObjectURL(file) : "",
+                            file
+                              ? URL.createObjectURL(file)
+                              : getImageUrl(editingKonfirmasi?.foto) || "",
                           );
+                          setFieldTouched("foto", true);
                         }}
                       />
                     </Box>
@@ -1788,6 +2092,7 @@ const SuratJalan = () => {
                   gap={{ base: 2, sm: 0 }}
                 >
                   <Button
+                    type="button"
                     variant="ghost"
                     mr={{ base: 0, sm: 3 }}
                     onClick={handleCloseKonfirmasiModal}
@@ -1798,10 +2103,35 @@ const SuratJalan = () => {
                   <Button
                     variant="primary"
                     type="submit"
+                    form="form-konfirmasi-penerimaan"
                     isLoading={isSubmitting}
                     w={{ base: "full", sm: "auto" }}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const formErrors = await validateForm();
+                      setTouched({
+                        tanggal: true,
+                        volume: true,
+                        pegawaiId: true,
+                        api: true,
+                        BSNW: true,
+                        foto: true,
+                      });
+                      if (Object.keys(formErrors || {}).length) {
+                        toast({
+                          title: "Form belum lengkap",
+                          description:
+                            "Periksa kembali isian yang wajib diisi",
+                          status: "warning",
+                          duration: 4000,
+                          isClosable: true,
+                        });
+                        return;
+                      }
+                      await submitForm();
+                    }}
                   >
-                    Simpan
+                    {editingKonfirmasi ? "Simpan Perubahan" : "Simpan"}
                   </Button>
                 </ModalFooter>
               </Form>
@@ -1854,6 +2184,21 @@ const SuratJalan = () => {
                     borderColor="gray.200"
                     bg="gray.50"
                   >
+                    <Flex justify="flex-end" mb={3}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorScheme="yellow"
+                        onClick={() =>
+                          openEditKonfirmasiModal(
+                            kp,
+                            selectedSuratJalanDetail,
+                          )
+                        }
+                      >
+                        Edit
+                      </Button>
+                    </Flex>
                     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
                       <MobileField label="Nomor Konfirmasi">
                         {kp.nomor || "-"}
@@ -1947,6 +2292,114 @@ const SuratJalan = () => {
               w={{ base: "full", sm: "auto" }}
             >
               Tutup
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isDeleteOpen}
+        onClose={handleCloseDeleteModal}
+        isCentered
+        closeOnOverlayClick={!isDeleting}
+        closeOnEsc={!isDeleting}
+      >
+        <ModalOverlay />
+        <ModalContent mx={4}>
+          <ModalHeader pr={12}>Hapus Surat Jalan</ModalHeader>
+          <ModalCloseButton isDisabled={isDeleting} />
+          <ModalBody>
+            <Text>
+              Apakah Anda yakin ingin menghapus surat jalan{" "}
+              <Text as="span" fontWeight="bold">
+                {deleteTarget?.nomor || `#${deleteTarget?.id || "-"}`}
+              </Text>{" "}
+              tanggal{" "}
+              <Text as="span" fontWeight="bold">
+                {formatTanggal(deleteTarget?.tanggal)}
+              </Text>
+              ?
+            </Text>
+            <Text fontSize="sm" color="gray.500" mt={2}>
+              Konfirmasi penerimaan dan data produksi sumur terkait juga akan
+              dihapus. Surat jalan yang sudah dipakai pada pengisian tanki
+              tidak dapat dihapus.
+            </Text>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseDeleteModal}
+              isDisabled={isDeleting}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleDeleteSuratJalan}
+              isLoading={isDeleting}
+            >
+              Hapus
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isBatalOpen}
+        onClose={handleCloseBatalModal}
+        isCentered
+        closeOnOverlayClick={!isCancelling}
+        closeOnEsc={!isCancelling}
+      >
+        <ModalOverlay />
+        <ModalContent mx={4}>
+          <ModalHeader pr={12}>Batalkan Surat Jalan</ModalHeader>
+          <ModalCloseButton isDisabled={isCancelling} />
+          <ModalBody>
+            <Text>
+              Apakah Anda yakin ingin membatalkan surat jalan{" "}
+              <Text as="span" fontWeight="bold">
+                {batalTarget?.nomor || `#${batalTarget?.id || "-"}`}
+              </Text>{" "}
+              tanggal{" "}
+              <Text as="span" fontWeight="bold">
+                {formatTanggal(batalTarget?.tanggal)}
+              </Text>
+              ?
+            </Text>
+            <Text fontSize="sm" color="gray.500" mt={2}>
+              Status surat jalan akan diubah menjadi BATAL. Surat jalan yang
+              sudah tiba atau dipakai pada pengisian tanki tidak dapat
+              dibatalkan.
+            </Text>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleCloseBatalModal}
+              isDisabled={isCancelling}
+            >
+              Tutup
+            </Button>
+            <Button
+              colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
+              onClick={handleBatalSuratJalan}
+              isLoading={isCancelling}
+            >
+              Batalkan
             </Button>
           </ModalFooter>
         </ModalContent>
