@@ -110,7 +110,18 @@ const Login = () => {
         isClosable: true,
         position: "top",
       });
-      history.push("/");
+      const currentRoles =
+        JSON.parse(localStorage.getItem("role") || "null") || [];
+      const roleIds = Array.isArray(currentRoles)
+        ? currentRoles.map(
+            (roleObj) => roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id,
+          )
+        : [];
+      if (roleIds.includes(4) && !roleIds.includes(1) && !roleIds.includes(2)) {
+        history.push("/keuangan/icp");
+      } else {
+        history.push("/");
+      }
     } catch (err) {
       console.error("Login error:", err);
 
@@ -152,6 +163,18 @@ const Login = () => {
       (currentRoles[0].roleKPBPNId === 10 || currentRoles[0].id === 10)
     ) {
       history.push("/aset/dashboard");
+    } else if (
+      Array.isArray(currentRoles) &&
+      currentRoles.some(
+        (roleObj) => (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 4,
+      ) &&
+      !currentRoles.some(
+        (roleObj) =>
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 1 ||
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 2,
+      )
+    ) {
+      history.push("/keuangan/icp");
     } else {
       history.push("/");
     }

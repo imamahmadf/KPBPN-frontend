@@ -103,6 +103,10 @@ const initialValuesTambahBase = {
 };
 
 const selectStyles = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : undefined,
+  styles: {
+    menuPortal: (base) => ({ ...base, zIndex: 2000 }),
+  },
   components: {
     DropdownIndicator: () => null,
     IndicatorSeparator: () => null,
@@ -126,6 +130,58 @@ const selectStyles = {
       color: state.isFocused ? "white" : "black",
     }),
   },
+};
+
+const fullModalContentProps = {
+  mx: { base: 0, md: 4 },
+  my: { base: 0, md: "auto" },
+  borderRadius: { base: 0, md: "md" },
+  w: { base: "100%", md: "100%" },
+  maxW: { base: "100vw", md: "xl" },
+  h: { base: "100dvh", md: "auto" },
+  minH: { base: "100dvh", md: "auto" },
+  maxH: { base: "100dvh", md: "90vh" },
+  minW: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  containerProps: {
+    p: 0,
+    alignItems: { base: "stretch", md: "center" },
+    justifyContent: { base: "flex-start", md: "center" },
+  },
+};
+
+const fullModalFormProps = {
+  display: "flex",
+  flexDirection: "column",
+  flex: "1",
+  minH: "0",
+  overflow: "hidden",
+};
+
+const fullModalHeaderProps = {
+  px: { base: 4, md: 6 },
+  pr: 12,
+  fontSize: { base: "lg", md: "xl" },
+  flexShrink: 0,
+};
+
+const fullModalBodyProps = {
+  px: { base: 4, md: 6 },
+  flex: "1",
+  overflowY: "auto",
+  overflowX: "hidden",
+  minH: "0",
+};
+
+const fullModalFooterProps = {
+  flexDirection: { base: "column-reverse", sm: "row" },
+  gap: { base: 2, sm: 3 },
+  px: { base: 4, md: 6 },
+  py: { base: 3, md: 4 },
+  pb: { base: "max(12px, env(safe-area-inset-bottom))", md: 4 },
+  flexShrink: 0,
 };
 
 const formatTransportirLabel = (val) => {
@@ -1112,18 +1168,13 @@ const SuratJalanMitra = () => {
       <Modal
         isOpen={isTambahOpen}
         onClose={handleCloseTambahModal}
-        size={{ base: "full", md: "xl" }}
+        size="xl"
         scrollBehavior="inside"
         isCentered
       >
         <ModalOverlay />
-        <ModalContent
-          mx={{ base: 0, md: 4 }}
-          my={{ base: 0, md: "auto" }}
-          borderRadius={{ base: 0, md: "md" }}
-          maxH={{ base: "100vh", md: "90vh" }}
-        >
-          <ModalHeader>Tambah Surat Jalan</ModalHeader>
+        <ModalContent {...fullModalContentProps}>
+          <ModalHeader {...fullModalHeaderProps}>Tambah Surat Jalan</ModalHeader>
           <ModalCloseButton />
           <Formik
             innerRef={formikRefTambah}
@@ -1141,8 +1192,8 @@ const SuratJalanMitra = () => {
               handleChange,
               handleBlur,
             }) => (
-              <Form>
-                <ModalBody>
+              <Box as={Form} {...fullModalFormProps}>
+                <ModalBody {...fullModalBodyProps}>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                     <FormControl isInvalid={touched.tanggal && errors.tanggal}>
                       <FormLabel>Tanggal</FormLabel>
@@ -1394,12 +1445,15 @@ const SuratJalanMitra = () => {
                     </FormControl>
                     <FormControl
                       isInvalid={touched.jamPergi && errors.jamPergi}
+                      minW={0}
                     >
                       <FormLabel>Jam Pergi</FormLabel>
                       <Input
                         name="jamPergi"
                         type="datetime-local"
                         bgColor="terang"
+                        w="100%"
+                        minW={0}
                         value={values.jamPergi}
                         onChange={handleChange}
                         onBlur={handleBlur}
@@ -1409,12 +1463,15 @@ const SuratJalanMitra = () => {
 
                     <FormControl
                       isInvalid={touched.jamDatang && errors.jamDatang}
+                      minW={0}
                     >
                       <FormLabel>Jam Datang</FormLabel>
                       <Input
                         name="jamDatang"
                         type="datetime-local"
                         bgColor="terang"
+                        w="100%"
+                        minW={0}
                         value={values.jamDatang}
                         onChange={handleChange}
                         onBlur={handleBlur}
@@ -1423,10 +1480,7 @@ const SuratJalanMitra = () => {
                     </FormControl>
                   </SimpleGrid>
                 </ModalBody>
-                <ModalFooter
-                  flexDirection={{ base: "column-reverse", sm: "row" }}
-                  gap={{ base: 2, sm: 0 }}
-                >
+                <ModalFooter {...fullModalFooterProps}>
                   <Button
                     variant="ghost"
                     mr={{ base: 0, sm: 3 }}
@@ -1444,7 +1498,7 @@ const SuratJalanMitra = () => {
                     Simpan
                   </Button>
                 </ModalFooter>
-              </Form>
+              </Box>
             )}
           </Formik>
         </ModalContent>

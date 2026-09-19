@@ -36,6 +36,34 @@ export const convertVolumeToAllUnits = (volume, satuan) => {
   return convertLiterToAllUnits(liter);
 };
 
+/** Volume dasar dalam barrel; konversi ke satuan tampilan. */
+export const convertVolumeFromBarrel = (volumeBarrel, satuan) => {
+  if (volumeBarrel === null || volumeBarrel === undefined || volumeBarrel === "") {
+    return null;
+  }
+  const value = Number(volumeBarrel);
+  if (Number.isNaN(value)) return null;
+
+  const unit = normalizeSatuan(satuan);
+  if (unit === "liter") return value * LITER_PER_BARREL;
+  if (unit === "drum") return (value * LITER_PER_BARREL) / LITER_PER_DRUM;
+  return value;
+};
+
+/** Tarif dasar dihitung per barrel; konversi ke satuan tampilan. */
+export const convertTarifFromBarrel = (tarifBarrel, satuan) => {
+  if (tarifBarrel === null || tarifBarrel === undefined || tarifBarrel === "") {
+    return null;
+  }
+  const value = Number(tarifBarrel);
+  if (Number.isNaN(value)) return null;
+
+  const unit = normalizeSatuan(satuan);
+  if (unit === "liter") return value / LITER_PER_BARREL;
+  if (unit === "drum") return value * (LITER_PER_DRUM / LITER_PER_BARREL);
+  return value;
+};
+
 export const formatVolumeNumber = (num, maxDecimals = 3) => {
   if (num === null || Number.isNaN(num)) return "-";
   return new Intl.NumberFormat("id-ID", {

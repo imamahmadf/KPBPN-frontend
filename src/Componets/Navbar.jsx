@@ -81,6 +81,7 @@ const ROLE_KPBPN = {
   SUPER_ADMIN: 1,
   ADMIN: 2,
   MITRA: 3,
+  KEUANGAN: 4,
 };
 
 const filterMenusByRole = (menus, userRoleIds) => {
@@ -229,6 +230,17 @@ const menuData = [
     items: [
       { label: "Sumur Minyak", path: "/sumur/sumur-minyak" },
       { label: "Peta Sumur", path: "/sumur/peta-sumur" },
+    ],
+  },
+  {
+    title: "Keuangan",
+    icon: BiWallet,
+    group: "Keuangan",
+    pathPrefix: "/keuangan",
+    allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.KEUANGAN],
+    items: [
+      { label: "ICP", path: "/keuangan/icp" },
+      { label: "Rekapitulasi", path: "/keuangan/rekapitulasi" },
     ],
   },
 

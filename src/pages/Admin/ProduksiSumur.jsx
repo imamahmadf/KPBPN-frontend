@@ -36,6 +36,11 @@ import {
 } from "@chakra-ui/react";
 import { Link as RouterLink, useHistory } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import {
+  downloadObjectUrl,
+  fetchSumurQrCode,
+  parseQrError,
+} from "../../lib/qrCodeSumur";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -130,6 +135,8 @@ function ProduksiSumur({ match }) {
   const [isSavingKlasifikasi, setIsSavingKlasifikasi] = useState(false);
   const [pemilikForm, setPemilikForm] = useState(emptyPemilik);
   const [isSavingPemilik, setIsSavingPemilik] = useState(false);
+  const [isGeneratingQr, setIsGeneratingQr] = useState(false);
+  const [qrPreview, setQrPreview] = useState(null);
   const {
     isOpen: isKlasifikasiOpen,
     onOpen: onKlasifikasiOpen,
@@ -139,6 +146,11 @@ function ProduksiSumur({ match }) {
     isOpen: isPemilikOpen,
     onOpen: onPemilikOpen,
     onClose: onPemilikClose,
+  } = useDisclosure();
+  const {
+    isOpen: isQrOpen,
+    onOpen: onQrOpen,
+    onClose: onQrClose,
   } = useDisclosure();
 
   const scrollToDataList = () => {
@@ -326,6 +338,42 @@ function ProduksiSumur({ match }) {
     savePemilik(emptyPemilik, "Data pemilik berhasil dikosongkan");
   };
 
+  const closeQrModal = () => {
+    if (qrPreview?.objectUrl?.startsWith("blob:")) {
+      window.URL.revokeObjectURL(qrPreview.objectUrl);
+    }
+    setQrPreview(null);
+    onQrClose();
+  };
+
+  const generateQrCode = async () => {
+    if (!sumurMinyakId) return;
+    setIsGeneratingQr(true);
+    try {
+      const fallbackName = `QR_Sumur_${sumurMinyak?.nama || sumurMinyakId}.png`;
+      const result = await fetchSumurQrCode(
+        API_BASE,
+        sumurMinyakId,
+        fallbackName,
+      );
+      if (qrPreview?.objectUrl?.startsWith("blob:")) {
+        window.URL.revokeObjectURL(qrPreview.objectUrl);
+      }
+      setQrPreview(result);
+      onQrOpen();
+    } catch (err) {
+      toast({
+        title: "Gagal generate QR Code",
+        description: parseQrError(err, "Gagal generate QR Code"),
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsGeneratingQr(false);
+    }
+  };
+
   const resetFilter = () => {
     setTanggalAwal("");
     setTanggalAkhir("");
@@ -379,14 +427,28 @@ function ProduksiSumur({ match }) {
               )}
             </Box>
             {sumurMinyak && (
-              <Button
-                variant="primary"
-                onClick={openKlasifikasiModal}
+              <Stack
+                direction={{ base: "column", sm: "row" }}
+                spacing={2}
                 w={{ base: "100%", md: "auto" }}
                 flexShrink={0}
               >
-                Klasifikasi Sumur
-              </Button>
+                <Button
+                  variant="secondary"
+                  onClick={generateQrCode}
+                  isLoading={isGeneratingQr}
+                  w={{ base: "100%", md: "auto" }}
+                >
+                  Generate QR Code
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={openKlasifikasiModal}
+                  w={{ base: "100%", md: "auto" }}
+                >
+                  Klasifikasi Sumur
+                </Button>
+              </Stack>
             )}
           </Stack>
 
@@ -658,6 +720,54 @@ function ProduksiSumur({ match }) {
                     Simpan
                   </Button>
                 </Stack>
+              </ModalFooter>
+            </ModalContent>
+          </Modal>
+
+          <Modal isOpen={isQrOpen} onClose={closeQrModal} size="md" isCentered>
+            <ModalOverlay />
+            <ModalContent>
+              <ModalHeader color="kpbpn">QR Code Sumur</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody>
+                <Stack spacing={3} align="stretch">
+                  <Box textAlign="center">
+                    <Text fontWeight="bold">{sumurMinyak?.nama || "-"}</Text>
+                    {sumurMinyak?.nomor && (
+                      <Text fontSize="sm" color="gray.600">
+                        No: {sumurMinyak.nomor}
+                      </Text>
+                    )}
+                    {qrPreview?.path && (
+                      <Text fontSize="sm" color="gray.500" mt={1}>
+                        {qrPreview.path}
+                      </Text>
+                    )}
+                  </Box>
+                  {qrPreview?.objectUrl && (
+                    <Image
+                      src={qrPreview.objectUrl}
+                      alt="QR Code Sumur"
+                      mx="auto"
+                      maxW="280px"
+                      w="100%"
+                    />
+                  )}
+                </Stack>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="ghost" mr={3} onClick={closeQrModal}>
+                  Tutup
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() =>
+                    downloadObjectUrl(qrPreview?.objectUrl, qrPreview?.fileName)
+                  }
+                  isDisabled={!qrPreview?.objectUrl}
+                >
+                  Unduh QR Code
+                </Button>
               </ModalFooter>
             </ModalContent>
           </Modal>

@@ -38,7 +38,7 @@ import {
   Spinner,
   Center,
 } from "@chakra-ui/react";
-import { BsPencil, BsTrash, BsEyeFill } from "react-icons/bs";
+import { BsPencil, BsTrash, BsEyeFill, BsQrCode } from "react-icons/bs";
 import { Link as RouterLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
@@ -47,6 +47,11 @@ import {
   selectMitra,
   selectScopedMitraId,
 } from "../../Redux/Reducers/auth";
+import {
+  downloadObjectUrl,
+  fetchSumurQrCode,
+  parseQrError,
+} from "../../lib/qrCodeSumur";
 import FotoPlaceholder from "../../assets/add_photo.png";
 import "../../Style/pagination.css";
 
@@ -163,6 +168,8 @@ function AdminSumurMinyak() {
   const [editingSumur, setEditingSumur] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [loadingQr, setLoadingQr] = useState({});
+  const [qrPreview, setQrPreview] = useState(null);
 
   const {
     isOpen: isFormOpen,
@@ -178,6 +185,11 @@ function AdminSumurMinyak() {
     isOpen: isDeleteOpen,
     onOpen: onDeleteOpen,
     onClose: onDeleteClose,
+  } = useDisclosure();
+  const {
+    isOpen: isQrOpen,
+    onOpen: onQrOpen,
+    onClose: onQrClose,
   } = useDisclosure();
 
   const scrollToDataList = () => {
@@ -285,6 +297,43 @@ function AdminSumurMinyak() {
   const closeDeleteModal = () => {
     setDeleteTarget(null);
     onDeleteClose();
+  };
+
+  const closeQrModal = () => {
+    if (qrPreview?.objectUrl?.startsWith("blob:")) {
+      window.URL.revokeObjectURL(qrPreview.objectUrl);
+    }
+    setQrPreview(null);
+    onQrClose();
+  };
+
+  const generateQrCode = async (item) => {
+    if (!item?.id) return;
+    setLoadingQr((prev) => ({ ...prev, [item.id]: true }));
+    try {
+      const fallbackName = `QR_Sumur_${item.nama || item.id}.png`;
+      const result = await fetchSumurQrCode(API_BASE, item.id, fallbackName);
+      if (qrPreview?.objectUrl?.startsWith("blob:")) {
+        window.URL.revokeObjectURL(qrPreview.objectUrl);
+      }
+      setQrPreview({
+        ...result,
+        nama: item.nama,
+        nomor: item.nomor,
+        id: item.id,
+      });
+      onQrOpen();
+    } catch (err) {
+      toast({
+        title: "Gagal generate QR Code",
+        description: parseQrError(err, "Gagal generate QR Code"),
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingQr((prev) => ({ ...prev, [item.id]: false }));
+    }
   };
 
   const handleDelete = async () => {
@@ -473,6 +522,15 @@ function AdminSumurMinyak() {
                                 size="sm"
                                 variant="ghost"
                                 colorScheme="teal"
+                              />
+                              <IconButton
+                                aria-label="Generate QR Code"
+                                icon={<BsQrCode />}
+                                size="sm"
+                                variant="ghost"
+                                colorScheme="purple"
+                                isLoading={!!loadingQr[item.id]}
+                                onClick={() => generateQrCode(item)}
                               />
                               <IconButton
                                 aria-label="Edit sumur minyak"
@@ -862,6 +920,54 @@ function AdminSumurMinyak() {
               isLoading={isDeleting}
             >
               Hapus
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={isQrOpen} onClose={closeQrModal} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>QR Code Sumur</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={3} align="stretch">
+              <Box textAlign="center">
+                <Text fontWeight="bold">{qrPreview?.nama || "-"}</Text>
+                {qrPreview?.nomor && (
+                  <Text fontSize="sm" color="gray.600">
+                    No: {qrPreview.nomor}
+                  </Text>
+                )}
+                {qrPreview?.path && (
+                  <Text fontSize="sm" color="gray.500" mt={1}>
+                    {qrPreview.path}
+                  </Text>
+                )}
+              </Box>
+              {qrPreview?.objectUrl && (
+                <Image
+                  src={qrPreview.objectUrl}
+                  alt="QR Code Sumur"
+                  mx="auto"
+                  maxW="280px"
+                  w="100%"
+                />
+              )}
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closeQrModal}>
+              Tutup
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() =>
+                downloadObjectUrl(qrPreview?.objectUrl, qrPreview?.fileName)
+              }
+              isDisabled={!qrPreview?.objectUrl}
+            >
+              Unduh QR Code
             </Button>
           </ModalFooter>
         </ModalContent>

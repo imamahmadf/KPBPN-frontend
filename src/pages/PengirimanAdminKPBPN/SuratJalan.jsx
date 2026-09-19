@@ -58,11 +58,23 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
 
+const DECIMAL_INPUT_PATTERN = /^\d*[.,]?\d*$/;
+
 const parseDecimalInput = (value) => {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
-  const normalized = String(value).trim().replace(",", ".");
-  const num = Number(normalized);
+  let normalized = String(value).trim().replace(/\s/g, "");
+  if (!normalized) return null;
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else {
+    normalized = normalized.replace(",", ".");
+  }
+  if (normalized === "." || normalized.endsWith(".")) {
+    normalized = normalized.replace(/\.$/, "");
+    if (!normalized) return null;
+  }
+  const num = parseFloat(normalized);
   return Number.isNaN(num) ? null : num;
 };
 
@@ -71,12 +83,22 @@ const toDecimalInput = (value) => {
   return String(value).replace(".", ",");
 };
 
+const handleDecimalFieldChange = (setFieldValue, name) => (e) => {
+  const raw = e.target.value;
+  if (raw === "" || DECIMAL_INPUT_PATTERN.test(raw)) {
+    setFieldValue(name, raw.replace(".", ","));
+  }
+};
+
 const decimalFieldSchema = (label) =>
   Yup.string()
     .required(`${label} wajib diisi`)
     .test("is-decimal", `${label} harus angka valid`, (value) => {
-      const num = parseDecimalInput(value);
-      return num !== null && num > 0;
+      const str = String(value ?? "").trim();
+      if (!str) return false;
+      if (/^\d+[.,]$/.test(str)) return true;
+      const num = parseDecimalInput(str);
+      return num !== null && num >= 0;
     });
 
 const konfirmasiSchema = Yup.object({
@@ -85,7 +107,7 @@ const konfirmasiSchema = Yup.object({
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
     .required("Volume wajib diisi"),
-  pegawaiId: Yup.mixed().nullable().required("Pegawai wajib dipilih"),
+
   catatan: Yup.string().nullable(),
   api: decimalFieldSchema("API"),
   BSNW: decimalFieldSchema("BSNW"),
@@ -109,8 +131,7 @@ const konfirmasiSchema = Yup.object({
 const initialValuesKonfirmasi = {
   tanggal: "",
   volume: "",
-  pegawaiId: null,
-  pegawaiLabel: "",
+
   catatan: "",
   api: "",
   BSNW: "",
@@ -170,6 +191,10 @@ const FileUploadField = ({
 };
 
 const selectStyles = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : undefined,
+  styles: {
+    menuPortal: (base) => ({ ...base, zIndex: 2000 }),
+  },
   components: {
     DropdownIndicator: () => null,
     IndicatorSeparator: () => null,
@@ -195,6 +220,58 @@ const selectStyles = {
   },
 };
 
+const fullModalContentProps = {
+  mx: { base: 0, md: 4 },
+  my: { base: 0, md: "auto" },
+  borderRadius: { base: 0, md: "md" },
+  w: { base: "100%", md: "100%" },
+  maxW: { base: "100vw", md: "xl" },
+  h: { base: "100dvh", md: "auto" },
+  minH: { base: "100dvh", md: "auto" },
+  maxH: { base: "100dvh", md: "90vh" },
+  minW: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  containerProps: {
+    p: 0,
+    alignItems: { base: "stretch", md: "center" },
+    justifyContent: { base: "flex-start", md: "center" },
+  },
+};
+
+const fullModalFormProps = {
+  display: "flex",
+  flexDirection: "column",
+  flex: "1",
+  minH: "0",
+  overflow: "hidden",
+};
+
+const fullModalHeaderProps = {
+  px: { base: 4, md: 6 },
+  pr: 12,
+  fontSize: { base: "lg", md: "xl" },
+  flexShrink: 0,
+};
+
+const fullModalBodyProps = {
+  px: { base: 4, md: 6 },
+  flex: "1",
+  overflowY: "auto",
+  overflowX: "hidden",
+  minH: "0",
+};
+
+const fullModalFooterProps = {
+  flexDirection: { base: "column-reverse", sm: "row" },
+  gap: { base: 2, sm: 3 },
+  px: { base: 4, md: 6 },
+  py: { base: 3, md: 4 },
+  pb: { base: "max(12px, env(safe-area-inset-bottom))", md: 4 },
+  flexShrink: 0,
+};
+
 const suratJalanSchema = Yup.object({
   nomor: Yup.string().nullable(),
   tanggal: Yup.string().required("Tanggal wajib diisi"),
@@ -203,9 +280,7 @@ const suratJalanSchema = Yup.object({
   stasiunPengumpulMinyakId: Yup.mixed()
     .nullable()
     .required("Stasiun pengumpul minyak wajib dipilih"),
-  asalMinyakId: Yup.mixed()
-    .nullable()
-    .required("Asal minyak wajib dipilih"),
+  asalMinyakId: Yup.mixed().nullable().required("Asal minyak wajib dipilih"),
   volume: Yup.number()
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
@@ -411,11 +486,7 @@ const SuratJalan = () => {
       return {
         tanggal: toDateInput(editingKonfirmasi.tanggal),
         volume: editingKonfirmasi.volume ?? "",
-        pegawaiId:
-          editingKonfirmasi.pegawaiId ??
-          editingKonfirmasi.pegawai?.id ??
-          null,
-        pegawaiLabel: editingKonfirmasi.pegawai?.nama || "",
+
         catatan: editingKonfirmasi.catatan || "",
         api: toDecimalInput(editingKonfirmasi.api),
         BSNW: toDecimalInput(editingKonfirmasi.BSNW),
@@ -821,7 +892,7 @@ const SuratJalan = () => {
       const formData = new FormData();
       formData.append("tanggal", values.tanggal);
       formData.append("volume", values.volume);
-      formData.append("pegawaiId", values.pegawaiId);
+
       formData.append("catatan", values.catatan || "");
       formData.append("api", parseDecimalInput(values.api) ?? "");
       formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
@@ -1439,17 +1510,13 @@ const SuratJalan = () => {
                   ) : dataSuratJalan?.length > 0 ? (
                     dataSuratJalan.map((item, index) => (
                       <Tr key={item.id}>
-                        <Td fontWeight="medium">
-                          {page * limit + index + 1}
-                        </Td>
+                        <Td fontWeight="medium">{page * limit + index + 1}</Td>
                         <Td fontWeight="medium">{item.nomor || "-"}</Td>
                         <Td>{formatTanggal(item.tanggal)}</Td>
                         <Td>{item.mitra?.nama || "-"}</Td>
                         <Td>{item.transportir?.plat || "-"}</Td>
                         <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
-                        <Td>
-                          {formatAsalMinyakLabel(item.asalMinyak) || "-"}
-                        </Td>
+                        <Td>{formatAsalMinyakLabel(item.asalMinyak) || "-"}</Td>
                         <Td>
                           <VolumeMultiSatuan
                             volume={item.volume}
@@ -1553,18 +1620,13 @@ const SuratJalan = () => {
       <Modal
         isOpen={isEditOpen}
         onClose={handleCloseEditModal}
-        size={{ base: "full", md: "xl" }}
+        size="xl"
         scrollBehavior="inside"
         isCentered
       >
         <ModalOverlay />
-        <ModalContent
-          mx={{ base: 0, md: 4 }}
-          my={{ base: 0, md: "auto" }}
-          borderRadius={{ base: 0, md: "md" }}
-          maxH={{ base: "100vh", md: "90vh" }}
-        >
-          <ModalHeader>Edit Surat Jalan</ModalHeader>
+        <ModalContent {...fullModalContentProps}>
+          <ModalHeader {...fullModalHeaderProps}>Edit Surat Jalan</ModalHeader>
           <ModalCloseButton />
           <Formik
             innerRef={formikRefEdit}
@@ -1582,8 +1644,8 @@ const SuratJalan = () => {
               handleChange,
               handleBlur,
             }) => (
-              <Form>
-                <ModalBody>
+              <Box as={Form} {...fullModalFormProps}>
+                <ModalBody {...fullModalBodyProps}>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                     <FormControl
                       isInvalid={touched.nomor && errors.nomor}
@@ -1758,9 +1820,7 @@ const SuratJalan = () => {
                         }
                         {...selectStyles}
                       />
-                      <FormErrorMessage>
-                        {errors.asalMinyakId}
-                      </FormErrorMessage>
+                      <FormErrorMessage>{errors.asalMinyakId}</FormErrorMessage>
                     </FormControl>
 
                     <FormControl isInvalid={touched.volume && errors.volume}>
@@ -1847,12 +1907,15 @@ const SuratJalan = () => {
 
                     <FormControl
                       isInvalid={touched.jamPergi && errors.jamPergi}
+                      minW={0}
                     >
                       <FormLabel>Jam Pergi</FormLabel>
                       <Input
                         name="jamPergi"
                         type="datetime-local"
                         bgColor="terang"
+                        w="100%"
+                        minW={0}
                         value={values.jamPergi}
                         onChange={handleChange}
                         onBlur={handleBlur}
@@ -1862,12 +1925,15 @@ const SuratJalan = () => {
 
                     <FormControl
                       isInvalid={touched.jamDatang && errors.jamDatang}
+                      minW={0}
                     >
                       <FormLabel>Jam Datang</FormLabel>
                       <Input
                         name="jamDatang"
                         type="datetime-local"
                         bgColor="terang"
+                        w="100%"
+                        minW={0}
                         value={values.jamDatang}
                         onChange={handleChange}
                         onBlur={handleBlur}
@@ -1876,10 +1942,7 @@ const SuratJalan = () => {
                     </FormControl>
                   </SimpleGrid>
                 </ModalBody>
-                <ModalFooter
-                  flexDirection={{ base: "column-reverse", sm: "row" }}
-                  gap={{ base: 2, sm: 0 }}
-                >
+                <ModalFooter {...fullModalFooterProps}>
                   <Button
                     variant="ghost"
                     mr={{ base: 0, sm: 3 }}
@@ -1897,7 +1960,7 @@ const SuratJalan = () => {
                     Simpan Perubahan
                   </Button>
                 </ModalFooter>
-              </Form>
+              </Box>
             )}
           </Formik>
         </ModalContent>
@@ -1906,25 +1969,20 @@ const SuratJalan = () => {
       <Modal
         isOpen={isKonfirmasiOpen}
         onClose={handleCloseKonfirmasiModal}
-        size={{ base: "full", md: "xl" }}
+        size="xl"
         scrollBehavior="inside"
         isCentered
       >
         <ModalOverlay />
-        <ModalContent
-          mx={{ base: 0, md: 4 }}
-          my={{ base: 0, md: "auto" }}
-          borderRadius={{ base: 0, md: "md" }}
-          maxH={{ base: "100vh", md: "90vh" }}
-        >
-          <ModalHeader>
+        <ModalContent {...fullModalContentProps}>
+          <ModalHeader {...fullModalHeaderProps}>
             {editingKonfirmasi
               ? "Edit Konfirmasi Penerimaan"
               : "Konfirmasi Penerimaan"}
           </ModalHeader>
           <ModalCloseButton />
           {selectedSuratJalan && (
-            <Box px={6} pb={2}>
+            <Box px={{ base: 4, md: 6 }} pb={2} flexShrink={0}>
               <Text fontSize="sm" color="gray.500">
                 Surat Jalan: {selectedSuratJalan.nomor || "-"}
               </Text>
@@ -1950,8 +2008,12 @@ const SuratJalan = () => {
               setTouched,
               setFieldTouched,
             }) => (
-              <Form id="form-konfirmasi-penerimaan">
-                <ModalBody>
+              <Box
+                as={Form}
+                id="form-konfirmasi-penerimaan"
+                {...fullModalFormProps}
+              >
+                <ModalBody {...fullModalBodyProps}>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                     <FormControl isInvalid={touched.tanggal && errors.tanggal}>
                       <FormLabel>Tanggal</FormLabel>
@@ -1980,60 +2042,22 @@ const SuratJalan = () => {
                       <FormErrorMessage>{errors.volume}</FormErrorMessage>
                     </FormControl>
 
-                    <FormControl
-                      isInvalid={touched.pegawaiId && errors.pegawaiId}
-                    >
-                      <FormLabel>Pegawai</FormLabel>
-                      <AsyncSelect
-                        loadOptions={async (inputValue) => {
-                          if (!inputValue) return [];
-                          try {
-                            const res = await axios.get(
-                              `${API_BASE}/pegawai/search?q=${encodeURIComponent(inputValue)}`,
-                            );
-                            return (res.data.result || []).map((val) => ({
-                              value: val.id,
-                              label:
-                                val.nama || val.name || `Pegawai #${val.id}`,
-                            }));
-                          } catch (err) {
-                            console.error(
-                              "Failed to load pegawai:",
-                              err.message,
-                            );
-                            return [];
-                          }
-                        }}
-                        placeholder="Ketik Nama Pegawai"
-                        value={
-                          values.pegawaiId
-                            ? {
-                                value: values.pegawaiId,
-                                label: values.pegawaiLabel,
-                              }
-                            : null
-                        }
-                        onChange={(opt) => {
-                          setFieldValue("pegawaiId", opt?.value || null);
-                          setFieldValue("pegawaiLabel", opt?.label || "");
-                          setFieldTouched("pegawaiId", true);
-                        }}
-                        {...selectStyles}
-                      />
-                      <FormErrorMessage>{errors.pegawaiId}</FormErrorMessage>
-                    </FormControl>
-
                     <FormControl isInvalid={touched.api && errors.api}>
                       <FormLabel>API</FormLabel>
                       <Input
                         name="api"
                         type="text"
                         inputMode="decimal"
+                        lang="id-ID"
+                        autoComplete="off"
                         bgColor="terang"
                         value={values.api}
-                        onChange={handleChange}
+                        onChange={handleDecimalFieldChange(
+                          setFieldValue,
+                          "api",
+                        )}
                         onBlur={handleBlur}
-                        placeholder="Contoh: 3,553"
+                        placeholder="Contoh: 0,5"
                       />
                       <FormErrorMessage>{errors.api}</FormErrorMessage>
                     </FormControl>
@@ -2044,11 +2068,16 @@ const SuratJalan = () => {
                         name="BSNW"
                         type="text"
                         inputMode="decimal"
+                        lang="id-ID"
+                        autoComplete="off"
                         bgColor="terang"
                         value={values.BSNW}
-                        onChange={handleChange}
+                        onChange={handleDecimalFieldChange(
+                          setFieldValue,
+                          "BSNW",
+                        )}
                         onBlur={handleBlur}
-                        placeholder="Contoh: 3,553"
+                        placeholder="Contoh: 0,5"
                       />
                       <FormErrorMessage>{errors.BSNW}</FormErrorMessage>
                     </FormControl>
@@ -2087,10 +2116,7 @@ const SuratJalan = () => {
                     </Box>
                   </SimpleGrid>
                 </ModalBody>
-                <ModalFooter
-                  flexDirection={{ base: "column-reverse", sm: "row" }}
-                  gap={{ base: 2, sm: 0 }}
-                >
+                <ModalFooter {...fullModalFooterProps}>
                   <Button
                     type="button"
                     variant="ghost"
@@ -2112,7 +2138,7 @@ const SuratJalan = () => {
                       setTouched({
                         tanggal: true,
                         volume: true,
-                        pegawaiId: true,
+
                         api: true,
                         BSNW: true,
                         foto: true,
@@ -2120,8 +2146,7 @@ const SuratJalan = () => {
                       if (Object.keys(formErrors || {}).length) {
                         toast({
                           title: "Form belum lengkap",
-                          description:
-                            "Periksa kembali isian yang wajib diisi",
+                          description: "Periksa kembali isian yang wajib diisi",
                           status: "warning",
                           duration: 4000,
                           isClosable: true,
@@ -2134,7 +2159,7 @@ const SuratJalan = () => {
                     {editingKonfirmasi ? "Simpan Perubahan" : "Simpan"}
                   </Button>
                 </ModalFooter>
-              </Form>
+              </Box>
             )}
           </Formik>
         </ModalContent>
@@ -2143,27 +2168,24 @@ const SuratJalan = () => {
       <Modal
         isOpen={isDetailKonfirmasiOpen}
         onClose={handleCloseDetailKonfirmasiModal}
-        size={{ base: "full", md: "xl" }}
+        size="xl"
         scrollBehavior="inside"
         isCentered
       >
         <ModalOverlay />
-        <ModalContent
-          mx={{ base: 0, md: 4 }}
-          my={{ base: 0, md: "auto" }}
-          borderRadius={{ base: 0, md: "md" }}
-          maxH={{ base: "100vh", md: "90vh" }}
-        >
-          <ModalHeader>Detail Konfirmasi Penerimaan</ModalHeader>
+        <ModalContent {...fullModalContentProps}>
+          <ModalHeader {...fullModalHeaderProps}>
+            Detail Konfirmasi Penerimaan
+          </ModalHeader>
           <ModalCloseButton />
           {selectedSuratJalanDetail && (
-            <Box px={6} pb={2}>
+            <Box px={{ base: 4, md: 6 }} pb={2} flexShrink={0}>
               <Text fontSize="sm" color="gray.500">
                 Surat Jalan: {selectedSuratJalanDetail.nomor || "-"}
               </Text>
             </Box>
           )}
-          <ModalBody>
+          <ModalBody {...fullModalBodyProps}>
             {loadingDetailKonfirmasi ? (
               <Stack spacing={4}>
                 <Skeleton height="24px" width="50%" />
@@ -2190,10 +2212,7 @@ const SuratJalan = () => {
                         variant="outline"
                         colorScheme="yellow"
                         onClick={() =>
-                          openEditKonfirmasiModal(
-                            kp,
-                            selectedSuratJalanDetail,
-                          )
+                          openEditKonfirmasiModal(kp, selectedSuratJalanDetail)
                         }
                       >
                         Edit
@@ -2216,9 +2235,7 @@ const SuratJalan = () => {
                           }
                         />
                       </MobileField>
-                      <MobileField label="Pegawai">
-                        {kp.pegawai?.nama || "-"}
-                      </MobileField>
+
                       <MobileField label="API">
                         {kp.api != null && kp.api !== ""
                           ? formatVolumeNumber(Number(kp.api))
@@ -2285,7 +2302,7 @@ const SuratJalan = () => {
               </Box>
             )}
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter {...fullModalFooterProps}>
             <Button
               variant="primary"
               onClick={handleCloseDetailKonfirmasiModal}
@@ -2305,8 +2322,14 @@ const SuratJalan = () => {
         closeOnEsc={!isDeleting}
       >
         <ModalOverlay />
-        <ModalContent mx={4}>
-          <ModalHeader pr={12}>Hapus Surat Jalan</ModalHeader>
+        <ModalContent
+          mx={4}
+          w="auto"
+          maxW={{ base: "calc(100vw - 2rem)", md: "md" }}
+        >
+          <ModalHeader pr={12} fontSize={{ base: "lg", md: "xl" }}>
+            Hapus Surat Jalan
+          </ModalHeader>
           <ModalCloseButton isDisabled={isDeleting} />
           <ModalBody>
             <Text>
@@ -2322,8 +2345,8 @@ const SuratJalan = () => {
             </Text>
             <Text fontSize="sm" color="gray.500" mt={2}>
               Konfirmasi penerimaan dan data produksi sumur terkait juga akan
-              dihapus. Surat jalan yang sudah dipakai pada pengisian tanki
-              tidak dapat dihapus.
+              dihapus. Surat jalan yang sudah dipakai pada pengisian tanki tidak
+              dapat dihapus.
             </Text>
           </ModalBody>
           <ModalFooter
@@ -2359,8 +2382,14 @@ const SuratJalan = () => {
         closeOnEsc={!isCancelling}
       >
         <ModalOverlay />
-        <ModalContent mx={4}>
-          <ModalHeader pr={12}>Batalkan Surat Jalan</ModalHeader>
+        <ModalContent
+          mx={4}
+          w="auto"
+          maxW={{ base: "calc(100vw - 2rem)", md: "md" }}
+        >
+          <ModalHeader pr={12} fontSize={{ base: "lg", md: "xl" }}>
+            Batalkan Surat Jalan
+          </ModalHeader>
           <ModalCloseButton isDisabled={isCancelling} />
           <ModalBody>
             <Text>
@@ -2412,10 +2441,32 @@ const SuratJalan = () => {
         isCentered
       >
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Foto Bukti Penerimaan</ModalHeader>
+        <ModalContent
+          mx={{ base: 0, md: 4 }}
+          my={{ base: 0, md: "auto" }}
+          borderRadius={{ base: 0, md: "md" }}
+          w={{ base: "100%", md: "100%" }}
+          maxW={{ base: "100vw", md: "xl" }}
+          h={{ base: "100dvh", md: "auto" }}
+          maxH={{ base: "100dvh", md: "90vh" }}
+          overflow="hidden"
+          display="flex"
+          flexDirection="column"
+          containerProps={{
+            p: 0,
+            alignItems: { base: "stretch", md: "center" },
+          }}
+        >
+          <ModalHeader {...fullModalHeaderProps}>
+            Foto Bukti Penerimaan
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody pb={6}>
+          <ModalBody
+            {...fullModalBodyProps}
+            pb={{ base: "max(24px, env(safe-area-inset-bottom))", md: 6 }}
+            display="flex"
+            alignItems="center"
+          >
             {previewFoto ? (
               <Image
                 src={previewFoto}
@@ -2423,7 +2474,7 @@ const SuratJalan = () => {
                 w="100%"
                 borderRadius="md"
                 objectFit="contain"
-                maxH="70vh"
+                maxH={{ base: "calc(100dvh - 140px)", md: "70vh" }}
               />
             ) : null}
           </ModalBody>

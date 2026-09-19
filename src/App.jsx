@@ -2,7 +2,7 @@ import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
 import { useState, useEffect } from "react";
-import { BrowserRouter, Route, Switch } from "react-router-dom";
+import { BrowserRouter, Route, Switch, Redirect } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/login";
 import Register from "./pages/Register.jsx";
@@ -35,10 +35,14 @@ import ProduksiSumur from "./pages/Admin/ProduksiSumur.jsx";
 import PetaSumur from "./pages/Admin/PetaSumur.jsx";
 import StasiunPengumpulMinyak from "./pages/Admin/StasiunPengumpulMinyak.jsx";
 import AsalMinyak from "./pages/Admin/AsalMinyak.jsx";
+import AdminICP from "./pages/Admin/AdminICP.jsx";
+import Rekapitulasi from "./pages/Keuangan/Rekapitulasi.jsx";
 import AdminData from "./pages/Admin/AdminData.jsx";
 import AdminNomorUrut from "./pages/Admin/AdminNomorUrut.jsx";
 import DetailSuratJalan from "./pages/SuratJalan/DetailSuratJalan.jsx";
 import DetailSuratJalanMitra from "./pages/PengirimanMitraKPBPN/DetailSuratJalanMitra.jsx";
+import QRCodeSumur from "./pages/QRCodeSumur.jsx";
+import QRCodeSuratJalan from "./pages/QRCodeSuratJalan.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -208,6 +212,19 @@ function App() {
             roleRoute={[1, 2]}
           />
           <ProtectedRoute
+            component={AdminICP}
+            path="/keuangan/icp"
+            exact
+            roleRoute={[1, 4]}
+          />
+          <ProtectedRoute
+            component={Rekapitulasi}
+            path="/keuangan/rekapitulasi"
+            exact
+            roleRoute={[1, 4]}
+          />
+          <Redirect from="/admin/icp" to="/keuangan/icp" exact />
+          <ProtectedRoute
             component={AdminData}
             path="/admin/data"
             exact
@@ -232,6 +249,8 @@ function App() {
             exact
             roleRoute={[1, 2, 3]}
           />
+          <Route component={QRCodeSumur} path="/qr-sumur/:kode" />
+          <Route component={QRCodeSuratJalan} path="/qr-surat-jalan/:kode" />
           <Route component={verifikasi} path="/verifikasi/:id" />
           <Route component={DeveloperProfile} path="/developer-profile" />
           <Route component={Home} path="/" />
