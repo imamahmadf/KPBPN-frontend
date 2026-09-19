@@ -99,6 +99,15 @@ const getMitraNamesFromPengisian = (item) => {
   return Array.from(names);
 };
 
+const getSupirNamesFromPengisian = (item) => {
+  const names = new Set();
+  (item.konfirmasiPenerimaans || []).forEach((kp) => {
+    const nama = kp.suratJalan?.supir?.nama;
+    if (nama) names.add(nama);
+  });
+  return Array.from(names);
+};
+
 const getPengisianSatuan = (item) => {
   if (item?.satuanVolume?.satuan) return item.satuanVolume.satuan;
 
@@ -124,7 +133,7 @@ const getLinkedTankiKode = (kp) =>
     ),
   );
 
-const PENGISIAN_TANKI_COL_COUNT = 16;
+const PENGISIAN_TANKI_COL_COUNT = 17;
 
 const MobileField = ({ label, children }) => (
   <Box>
@@ -209,7 +218,9 @@ const PengisianTanki = () => {
     try {
       const [tankiRes, konfirmasiRes] = await Promise.all([
         axios.get(`${API_BASE}/tanki/get/tanki`),
-        axios.get(`${API_BASE}/tanki/get/konfirmasi-penerimaan`),
+        axios.get(`${API_BASE}/tanki/get/konfirmasi-penerimaan`, {
+          params: { availableForPengisian: 1 },
+        }),
       ]);
 
       setDataTanki(tankiRes.data.result || []);
@@ -601,6 +612,7 @@ const PengisianTanki = () => {
                   </Text>
                   <Text fontSize="xs" color="gray.500">
                     {sj?.mitra?.nama || "-"} · {formatDate(sj?.tanggal)}
+                    {sj?.supir?.nama ? ` · Supir: ${sj.supir.nama}` : ""}
                   </Text>
                   <HStack spacing={1} align="start" mt={0.5}>
                     <Text fontSize="xs" color="gray.500">
@@ -734,12 +746,12 @@ const PengisianTanki = () => {
     );
   };
 
-  const renderMitraCell = (mitraNames) =>
-    mitraNames.length === 0 ? (
+  const renderNameListCell = (names) =>
+    names.length === 0 ? (
       "-"
     ) : (
       <Box>
-        {mitraNames.map((nama) => (
+        {names.map((nama) => (
           <Text key={nama} fontSize="xs">
             {nama}
           </Text>
@@ -854,6 +866,7 @@ const PengisianTanki = () => {
                   {dataPengisian.map((item, index) => {
                     const sudahAdaBA = Boolean(item.BABongkarId);
                     const mitraNames = getMitraNamesFromPengisian(item);
+                    const supirNames = getSupirNamesFromPengisian(item);
                     const isProduksiExpanded = expandedProduksiId === item.id;
 
                     return (
@@ -889,7 +902,10 @@ const PengisianTanki = () => {
 
                         <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
                           <MobileField label="Mitra">
-                            {renderMitraCell(mitraNames)}
+                            {renderNameListCell(mitraNames)}
+                          </MobileField>
+                          <MobileField label="Supir">
+                            {renderNameListCell(supirNames)}
                           </MobileField>
                           <MobileField label="No. Plat">
                             {renderPlatCell(item)}
@@ -991,6 +1007,7 @@ const PengisianTanki = () => {
                       <Th>Tanggal</Th>
                       <Th>Tangki</Th>
                       <Th>Mitra</Th>
+                      <Th>Supir</Th>
                       <Th>Gross</Th>
                       <Th>Net</Th>
                       <Th>Penampilan Visual</Th>
@@ -1017,6 +1034,7 @@ const PengisianTanki = () => {
                       dataPengisian.map((item, index) => {
                         const sudahAdaBA = Boolean(item.BABongkarId);
                         const mitraNames = getMitraNamesFromPengisian(item);
+                        const supirNames = getSupirNamesFromPengisian(item);
                         const isProduksiExpanded =
                           expandedProduksiId === item.id;
 
@@ -1028,7 +1046,8 @@ const PengisianTanki = () => {
                                 {formatDate(item.tanggal || item.createdAt)}
                               </Td>
                               <Td>{item.tanki?.kode || "-"}</Td>
-                              <Td>{renderMitraCell(mitraNames)}</Td>
+                              <Td>{renderNameListCell(mitraNames)}</Td>
+                              <Td>{renderNameListCell(supirNames)}</Td>
                               <Td>
                                 <VolumeMultiSatuan
                                   volume={item.gross}
@@ -1326,8 +1345,9 @@ const PengisianTanki = () => {
                 <Box>
                   <FormLabel mb={3}>Konfirmasi Penerimaan (opsional)</FormLabel>
                   <Text fontSize="sm" color="gray.500" mb={3}>
-                    Konfirmasi yang sudah terhubung ke tanki lain tetap dapat
-                    dipilih.
+                    Hanya surat jalan berstatus BONGKAR yang ditampilkan.
+                    Konfirmasi yang sudah terhubung ke pengisian ini tetap
+                    dapat dipilih.
                   </Text>
                   {editKonfirmasiOptions.length === 0 ? (
                     <Text fontSize="sm" color="gray.500">
@@ -1360,6 +1380,12 @@ const PengisianTanki = () => {
                                 {formatDate(kp.tanggal)}
                                 {" — "}
                                 {kp.suratJalan?.transportir?.plat || "-"}
+                                {" — Supir: "}
+                                {kp.suratJalan?.supir?.nama || "-"}
+                                {" — PK: "}
+                                {kp.userPK?.nama || "-"}
+                                {" — Lab: "}
+                                {kp.userLab?.nama || "-"}
                                 {" — Vol: "}
                                 <VolumeMultiSatuan
                                   volume={kp.volume ?? kp.suratJalan?.volume}

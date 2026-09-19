@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import ExcelJS from "exceljs";
 import {
   Badge,
   Box,
   Button,
   Center,
   Container,
+  Flex,
   Heading,
   HStack,
   SimpleGrid,
@@ -16,6 +18,7 @@ import {
   useToast,
   VStack,
 } from "@chakra-ui/react";
+import { BsFileEarmarkExcel } from "react-icons/bs";
 import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import {
@@ -29,6 +32,7 @@ import {
   isVolumeEqual,
   isVolumeOver,
   parseProduksiNumber,
+  roundVolumeNumber,
 } from "../../lib/volumeSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -74,7 +78,13 @@ const InfoField = ({ label, children }) => (
   </Box>
 );
 
-const SectionCard = ({ title, children, ...rest }) => (
+const excelNumber = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const angka = Number(value);
+  return Number.isNaN(angka) ? String(value) : angka;
+};
+
+const SectionCard = ({ title, action, children, ...rest }) => (
   <Box
     p={{ base: 3, sm: 4, md: 5 }}
     borderWidth="1px"
@@ -85,9 +95,18 @@ const SectionCard = ({ title, children, ...rest }) => (
     minW={0}
     {...rest}
   >
-    <Heading size="sm" color="kpbpn" mb={{ base: 3, md: 4 }}>
-      {title}
-    </Heading>
+    <Flex
+      justify="space-between"
+      align={{ base: "stretch", sm: "center" }}
+      gap={2}
+      mb={{ base: 3, md: 4 }}
+      wrap="wrap"
+    >
+      <Heading size="sm" color="kpbpn" mb={0}>
+        {title}
+      </Heading>
+      {action}
+    </Flex>
     {children}
   </Box>
 );
@@ -117,6 +136,7 @@ function DetailBAK3S({ match }) {
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editSnapshot, setEditSnapshot] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const fetchDetail = async () => {
     setIsLoading(true);
@@ -266,9 +286,10 @@ function DetailBAK3S({ match }) {
   };
 
   const totalProduksiInput = useMemo(() => {
-    return Object.values(produksiPanel.inputs).reduce((sum, val) => {
+    const total = Object.values(produksiPanel.inputs).reduce((sum, val) => {
       return sum + parseProduksiNumber(val);
     }, 0);
+    return roundVolumeNumber(total, 3) ?? 0;
   }, [produksiPanel.inputs]);
 
   const produksiSatuanLabel = useMemo(() => {
@@ -421,6 +442,131 @@ function DetailBAK3S({ match }) {
     }
   };
 
+  const exportProduksiExcel = async () => {
+    const rows = produksiPanel.sumurList.map((sumur) => ({
+      sumur,
+      produksi: parseProduksiNumber(produksiPanel.inputs[sumur.id]),
+    }));
+
+    if (!rows.length) {
+      toast({
+        title: "Tidak ada data",
+        description: "Tidak ada data produksi sumur K3S untuk diekspor",
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Produksi Sumur K3S");
+      const satuanLabel = produksiSatuanLabel || "Barrel";
+
+      const headerStyle = {
+        font: { bold: true, color: { argb: "FFFFFF" } },
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "4472C4" },
+        },
+        alignment: { horizontal: "center", vertical: "middle" },
+        border: {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        },
+      };
+
+      const dataStyle = {
+        border: {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        },
+        alignment: { vertical: "middle" },
+      };
+
+      const headerRow = worksheet.addRow([
+        "No",
+        "Nama Sumur",
+        "Koordinat X",
+        "Koordinat Y",
+        `Produksi (${satuanLabel})`,
+      ]);
+      headerRow.eachCell((cell) => {
+        cell.style = headerStyle;
+      });
+
+      rows.forEach((item, index) => {
+        const dataRow = worksheet.addRow([
+          index + 1,
+          item.sumur.nama || "-",
+          excelNumber(item.sumur.longitude),
+          excelNumber(item.sumur.latitude),
+          item.produksi,
+        ]);
+        dataRow.eachCell((cell) => {
+          cell.style = dataStyle;
+        });
+        [3, 4].forEach((col) => {
+          if (typeof dataRow.getCell(col).value === "number") {
+            dataRow.getCell(col).numFmt = "0.00000000";
+          }
+        });
+        if (typeof dataRow.getCell(5).value === "number") {
+          dataRow.getCell(5).numFmt = "#,##0.000";
+        }
+      });
+
+      worksheet.columns.forEach((column) => {
+        let maxLength = 14;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const columnLength = cell.value ? String(cell.value).length : 14;
+          if (columnLength > maxLength) maxLength = columnLength;
+        });
+        column.width = Math.min(maxLength + 2, 40);
+      });
+
+      const filename = `Produksi_Sumur_K3S_BAK3S_${bak3sId}_${
+        new Date().toISOString().split("T")[0]
+      }.xlsx`;
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Berhasil",
+        description: "File Excel produksi sumur K3S berhasil diunduh",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description: err.message || "Gagal mengekspor data ke Excel",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const ba = data?.BABongkar;
   const tankiList = ba?.BABongkarTankis || [];
   const pengisianList = ba?.pengisianTankis || [];
@@ -562,6 +708,23 @@ function DetailBAK3S({ match }) {
                 title="Input Produksi Sumur"
                 overflow="visible"
                 minW={0}
+                action={
+                  produksiPanel.sumurList.length > 0 ? (
+                    <Button
+                      leftIcon={<BsFileEarmarkExcel />}
+                      variant="outline"
+                      colorScheme="green"
+                      size="sm"
+                      onClick={exportProduksiExcel}
+                      isLoading={isExporting}
+                      loadingText="Mengekspor..."
+                      isDisabled={produksiPanel.loading}
+                      w={{ base: "full", sm: "auto" }}
+                    >
+                      Export Excel
+                    </Button>
+                  ) : null
+                }
               >
                 {produksiPanel.loading ? (
                   <Stack spacing={3}>

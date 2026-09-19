@@ -117,7 +117,13 @@ const Login = () => {
             (roleObj) => roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id,
           )
         : [];
-      if (roleIds.includes(4) && !roleIds.includes(1) && !roleIds.includes(2)) {
+      if (roleIds.includes(5) && !roleIds.includes(1) && !roleIds.includes(2)) {
+        history.push("/pengiriman-kpbpn/surat-jalan");
+      } else if (
+        roleIds.includes(4) &&
+        !roleIds.includes(1) &&
+        !roleIds.includes(2)
+      ) {
         history.push("/keuangan/icp");
       } else {
         history.push("/");
@@ -163,6 +169,18 @@ const Login = () => {
       (currentRoles[0].roleKPBPNId === 10 || currentRoles[0].id === 10)
     ) {
       history.push("/aset/dashboard");
+    } else if (
+      Array.isArray(currentRoles) &&
+      currentRoles.some(
+        (roleObj) => (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 5,
+      ) &&
+      !currentRoles.some(
+        (roleObj) =>
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 1 ||
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 2,
+      )
+    ) {
+      history.push("/pengiriman-kpbpn/surat-jalan");
     } else if (
       Array.isArray(currentRoles) &&
       currentRoles.some(

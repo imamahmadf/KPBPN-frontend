@@ -82,13 +82,24 @@ const ROLE_KPBPN = {
   ADMIN: 2,
   MITRA: 3,
   KEUANGAN: 4,
+  PETUGAS_KEAMANAN: 5,
 };
 
 const filterMenusByRole = (menus, userRoleIds) => {
   if (!userRoleIds?.length) return [];
-  return menus.filter((menu) =>
-    menu.allowedRoles?.some((roleId) => userRoleIds.includes(roleId)),
-  );
+  return menus
+    .filter((menu) =>
+      menu.allowedRoles?.some((roleId) => userRoleIds.includes(roleId)),
+    )
+    .map((menu) => ({
+      ...menu,
+      items: (menu.items || []).filter(
+        (item) =>
+          !item.allowedRoles ||
+          item.allowedRoles.some((roleId) => userRoleIds.includes(roleId)),
+      ),
+    }))
+    .filter((menu) => menu.items.length > 0);
 };
 
 const buildMenuGroups = (menus) =>
@@ -195,7 +206,11 @@ const menuData = [
     icon: FaRoute,
     group: "Pengiriman",
     pathPrefix: "/pengiriman-kpbpn",
-    allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
+    allowedRoles: [
+      ROLE_KPBPN.SUPER_ADMIN,
+      ROLE_KPBPN.ADMIN,
+      ROLE_KPBPN.PETUGAS_KEAMANAN,
+    ],
     items: [{ label: "Surat Jalan", path: "/pengiriman-kpbpn/surat-jalan" }],
   },
   {
@@ -241,6 +256,68 @@ const menuData = [
     items: [
       { label: "ICP", path: "/keuangan/icp" },
       { label: "Rekapitulasi", path: "/keuangan/rekapitulasi" },
+    ],
+  },
+  {
+    title: "Laporan",
+    icon: BsFileEarmarkText,
+    group: "Laporan",
+    pathPrefix: "/laporan",
+    allowedRoles: [
+      ROLE_KPBPN.SUPER_ADMIN,
+      ROLE_KPBPN.ADMIN,
+      ROLE_KPBPN.MITRA,
+      ROLE_KPBPN.KEUANGAN,
+      ROLE_KPBPN.PETUGAS_KEAMANAN,
+    ],
+    items: [
+      {
+        label: "Petugas Keamanan",
+        path: "/laporan/petugas-keamanan",
+        allowedRoles: [
+          ROLE_KPBPN.SUPER_ADMIN,
+          ROLE_KPBPN.ADMIN,
+          ROLE_KPBPN.PETUGAS_KEAMANAN,
+        ],
+      },
+      {
+        label: "BAST",
+        path: "/laporan/bast",
+        allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
+      },
+      {
+        label: "Surat Jalan",
+        path: "/laporan/surat-jalan",
+        allowedRoles: [
+          ROLE_KPBPN.SUPER_ADMIN,
+          ROLE_KPBPN.ADMIN,
+          ROLE_KPBPN.MITRA,
+          ROLE_KPBPN.PETUGAS_KEAMANAN,
+        ],
+      },
+      {
+        label: "BA Bongkar",
+        path: "/laporan/ba-bongkar",
+        allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN],
+      },
+      {
+        label: "Konfirmasi Penerimaan",
+        path: "/laporan/konfirmasi-penerimaan",
+        allowedRoles: [
+          ROLE_KPBPN.SUPER_ADMIN,
+          ROLE_KPBPN.ADMIN,
+          ROLE_KPBPN.PETUGAS_KEAMANAN,
+        ],
+      },
+      {
+        label: "Keuangan",
+        path: "/laporan/keuangan",
+        allowedRoles: [
+          ROLE_KPBPN.SUPER_ADMIN,
+          ROLE_KPBPN.ADMIN,
+          ROLE_KPBPN.KEUANGAN,
+        ],
+      },
     ],
   },
 

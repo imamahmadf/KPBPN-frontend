@@ -44,6 +44,12 @@ import DetailSuratJalan from "./pages/SuratJalan/DetailSuratJalan.jsx";
 import DetailSuratJalanMitra from "./pages/PengirimanMitraKPBPN/DetailSuratJalanMitra.jsx";
 import QRCodeSumur from "./pages/QRCodeSumur.jsx";
 import QRCodeSuratJalan from "./pages/QRCodeSuratJalan.jsx";
+import LaporanPetugasKeamanan from "./pages/Laporan/LaporanPetugasKeamanan.jsx";
+import LaporanBAST from "./pages/Laporan/LaporanBAST.jsx";
+import LaporanSuratJalan from "./pages/Laporan/LaporanSuratJalan.jsx";
+import LaporanBABongkar from "./pages/Laporan/LaporanBABongkar.jsx";
+import LaporanKonfirmasiPenerimaan from "./pages/Laporan/LaporanKonfirmasiPenerimaan.jsx";
+import LaporanKeuangan from "./pages/Laporan/LaporanKeuangan.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -58,7 +64,7 @@ function App() {
             component={Profile}
             path="/profile"
             exact
-            roleRoute={[1, 2, 3]}
+            roleRoute={[1, 2, 3, 5]}
           />
 
           <Route component={Login} path="/login" />
@@ -114,7 +120,7 @@ function App() {
             component={SuratJalan}
             path="/pengiriman-kpbpn/surat-jalan"
             exact
-            roleRoute={[1, 2]}
+            roleRoute={[1, 2, 5]}
           />
 
           <ProtectedRoute
@@ -230,6 +236,42 @@ function App() {
             path="/keuangan/rekapitulasi"
             exact
             roleRoute={[1, 4]}
+          />
+          <ProtectedRoute
+            component={LaporanPetugasKeamanan}
+            path="/laporan/petugas-keamanan"
+            exact
+            roleRoute={[1, 2, 5]}
+          />
+          <ProtectedRoute
+            component={LaporanBAST}
+            path="/laporan/bast"
+            exact
+            roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={LaporanSuratJalan}
+            path="/laporan/surat-jalan"
+            exact
+            roleRoute={[1, 2, 3, 5]}
+          />
+          <ProtectedRoute
+            component={LaporanBABongkar}
+            path="/laporan/ba-bongkar"
+            exact
+            roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={LaporanKonfirmasiPenerimaan}
+            path="/laporan/konfirmasi-penerimaan"
+            exact
+            roleRoute={[1, 2, 5]}
+          />
+          <ProtectedRoute
+            component={LaporanKeuangan}
+            path="/laporan/keuangan"
+            exact
+            roleRoute={[1, 2, 4]}
           />
           <Redirect from="/admin/icp" to="/keuangan/icp" exact />
           <ProtectedRoute

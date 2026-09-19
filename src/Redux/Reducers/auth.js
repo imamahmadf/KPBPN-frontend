@@ -208,12 +208,29 @@ export const performLogout = () => (dispatch) => {
 
 export default authSlice.reducer;
 
+export const ROLE_KPBPN = {
+  SUPER_ADMIN: 1,
+  ADMIN: 2,
+  MITRA: 3,
+  KEUANGAN: 4,
+  PETUGAS_KEAMANAN: 5,
+};
+
 export const selectIsAuthenticated = (state) => !!state.auth.token;
 export const selectUser = (state) => state.auth.user;
 export const selectMitra = (state) => state.auth.mitra;
 export const selectIsKpbpnAdmin = (state) => {
   const roleIds = selectRoleIds(state);
   return roleIds.includes(1) || roleIds.includes(2);
+};
+
+export const selectIsPetugasKeamananOnly = (state) => {
+  const roleIds = selectRoleIds(state);
+  return (
+    roleIds.includes(ROLE_KPBPN.PETUGAS_KEAMANAN) &&
+    !roleIds.includes(ROLE_KPBPN.SUPER_ADMIN) &&
+    !roleIds.includes(ROLE_KPBPN.ADMIN)
+  );
 };
 export const selectScopedMitraId = (state) => {
   if (selectIsKpbpnAdmin(state)) return null;

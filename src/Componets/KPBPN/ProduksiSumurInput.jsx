@@ -299,26 +299,23 @@ export const ProduksiSumurList = ({
       );
     }
 
-    if (
-      inputs[sumur.id] !== "" &&
-      inputs[sumur.id] != null &&
-      Number(inputs[sumur.id]) > 0
-    ) {
-      return compact ? (
-        <VolumeSummary
-          volume={inputs[sumur.id]}
-          satuan={produksiSatuanLabel}
-          compact
-        />
-      ) : (
-        <VolumeMultiSatuan
-          volume={inputs[sumur.id]}
-          satuan={produksiSatuanLabel}
-        />
-      );
-    }
+    const produksiValue =
+      inputs[sumur.id] === "" || inputs[sumur.id] == null
+        ? 0
+        : inputs[sumur.id];
 
-    return "-";
+    return compact ? (
+      <VolumeSummary
+        volume={produksiValue}
+        satuan={produksiSatuanLabel}
+        compact
+      />
+    ) : (
+      <VolumeMultiSatuan
+        volume={produksiValue}
+        satuan={produksiSatuanLabel}
+      />
+    );
   };
 
   return (

@@ -479,15 +479,15 @@ const TambahPengisianTanki = () => {
                       <FormLabel mb={3}>Konfirmasi Penerimaan</FormLabel>
                       <Text fontSize="sm" color="gray.500" mb={3}>
                         Pilih minimal satu konfirmasi penerimaan. Hanya
-                        konfirmasi yang belum terhubung ke pengisian, atau yang
-                        terhubung paling lama 2 hari yang lalu, yang
-                        ditampilkan.
+                        surat jalan berstatus BONGKAR yang belum terhubung ke
+                        pengisian, atau yang terhubung paling lama 2 hari yang
+                        lalu, yang ditampilkan.
                       </Text>
                       {dataKonfirmasi.length === 0 ? (
                         <Text fontSize="sm" color="red.500">
-                          Tidak ada konfirmasi penerimaan tersedia. Tambah
-                          konfirmasi terlebih dahulu sebelum menyimpan pengisian
-                          tanki.
+                          Tidak ada konfirmasi penerimaan berstatus BONGKAR
+                          yang tersedia. Lakukan konfirmasi bongkar terlebih
+                          dahulu sebelum menyimpan pengisian tanki.
                         </Text>
                       ) : (
                         <Box>
@@ -541,11 +541,13 @@ const TambahPengisianTanki = () => {
                                   <Th textTransform="capitalize">Tanggal</Th>
                                   <Th textTransform="capitalize">Surat Jalan</Th>
                                   <Th textTransform="capitalize">Mitra</Th>
+                                  <Th textTransform="capitalize">Supir</Th>
                                   <Th textTransform="capitalize">Transportir</Th>
                                   <Th textTransform="capitalize">Volume</Th>
                                   <Th textTransform="capitalize">API</Th>
                                   <Th textTransform="capitalize">BSNW</Th>
-                                  <Th textTransform="capitalize">Petugas</Th>
+                                  <Th textTransform="capitalize">Petugas PK</Th>
+                                  <Th textTransform="capitalize">Petugas Lab</Th>
                                   <Th textTransform="capitalize">Tanki terkait</Th>
                                 </Tr>
                               </Thead>
@@ -596,6 +598,9 @@ const TambahPengisianTanki = () => {
                                         {item.suratJalan?.mitra?.nama || "-"}
                                       </Td>
                                       <Td>
+                                        {item.suratJalan?.supir?.nama || "-"}
+                                      </Td>
+                                      <Td>
                                         {item.suratJalan?.transportir?.plat ||
                                           "-"}
                                       </Td>
@@ -613,7 +618,8 @@ const TambahPengisianTanki = () => {
                                       </Td>
                                       <Td>{formatAngka(item.api)}</Td>
                                       <Td>{formatAngka(item.BSNW)}</Td>
-                                      <Td>{item.pegawai?.nama || "-"}</Td>
+                                      <Td>{item.userPK?.nama || "-"}</Td>
+                                      <Td>{item.userLab?.nama || "-"}</Td>
                                       <Td>
                                         {linkedTanki.length === 0 ? (
                                           <Text fontSize="sm" color="gray.500">

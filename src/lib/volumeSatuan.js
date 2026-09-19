@@ -110,11 +110,12 @@ export const parseProduksiNumber = (value) => {
 };
 
 export const formatVolumeNumber = (num, maxDecimals = 3) => {
-  if (num === null || Number.isNaN(num)) return "-";
+  const rounded = roundVolumeNumber(num, maxDecimals);
+  if (rounded === null) return "-";
   return new Intl.NumberFormat("id-ID", {
     maximumFractionDigits: maxDecimals,
     minimumFractionDigits: 0,
-  }).format(num);
+  }).format(rounded);
 };
 
 export const getVolumeAllSatuanLines = (volume, satuan) => {
@@ -124,22 +125,31 @@ export const getVolumeAllSatuanLines = (volume, satuan) => {
   if (!all) return null;
 
   return [
-    { key: "barrel", label: `${formatVolumeNumber(all.barrel)} Barrel` },
+    {
+      key: "barrel",
+      label: `${formatVolumeNumber(all.barrel)} Barrel`,
+    },
     { key: "liter", label: `${formatVolumeNumber(all.liter)} Liter` },
     { key: "drum", label: `${formatVolumeNumber(all.drum)} Drum` },
   ];
 };
 
+const toRoundedBarrel = (volume, satuan) => {
+  const all = convertVolumeToAllUnits(volume, satuan);
+  if (!all) return null;
+  return roundVolumeNumber(all.barrel, 3);
+};
+
 export const isVolumeEqual = (volumeA, satuanA, volumeB, satuanB) => {
-  const literA = convertVolumeToLiter(volumeA, satuanA);
-  const literB = convertVolumeToLiter(volumeB, satuanB);
-  if (literA === null || literB === null) return false;
-  return Math.abs(literA - literB) < 0.001;
+  const barrelA = toRoundedBarrel(volumeA, satuanA);
+  const barrelB = toRoundedBarrel(volumeB, satuanB);
+  if (barrelA === null || barrelB === null) return false;
+  return barrelA === barrelB;
 };
 
 export const isVolumeOver = (volumeA, satuanA, volumeB, satuanB) => {
-  const literA = convertVolumeToLiter(volumeA, satuanA);
-  const literB = convertVolumeToLiter(volumeB, satuanB);
-  if (literA === null || literB === null) return false;
-  return literA - literB > 0.001;
+  const barrelA = toRoundedBarrel(volumeA, satuanA);
+  const barrelB = toRoundedBarrel(volumeB, satuanB);
+  if (barrelA === null || barrelB === null) return false;
+  return barrelA > barrelB;
 };

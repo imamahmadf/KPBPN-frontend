@@ -31,6 +31,7 @@ import {
   isVolumeEqual,
   isVolumeOver,
   parseProduksiNumber,
+  roundVolumeNumber,
 } from "../../lib/volumeSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -76,6 +77,7 @@ const formatAngka = (value) => {
 const statusColor = (status) => {
   const value = String(status || "").toUpperCase();
   if (value === "TIBA") return "green";
+  if (value === "BONGKAR") return "orange";
   if (value === "KIRIM") return "blue";
   if (value === "BATAL") return "red";
   return "gray";
@@ -298,9 +300,10 @@ function DetailSuratJalan({
   };
 
   const totalProduksiInput = useMemo(() => {
-    return Object.values(produksiPanel.inputs).reduce((sum, val) => {
+    const total = Object.values(produksiPanel.inputs).reduce((sum, val) => {
       return sum + parseProduksiNumber(val);
     }, 0);
+    return roundVolumeNumber(total, 3) ?? 0;
   }, [produksiPanel.inputs]);
 
   const produksiSatuanLabel = useMemo(() => {
@@ -772,11 +775,11 @@ function DetailSuratJalan({
                               satuan={satuanSurat}
                             />
                           </InfoField>
-                          <InfoField label="Pegawai">
-                            {kp.pegawai?.nama || "-"}
-                            {kp.pegawai?.jabatan
-                              ? ` · ${kp.pegawai.jabatan}`
-                              : ""}
+                          <InfoField label="Petugas Penerima (PK)">
+                            {kp.userPK?.nama || "-"}
+                          </InfoField>
+                          <InfoField label="Petugas Lab">
+                            {kp.userLab?.nama || "-"}
                           </InfoField>
                           <InfoField label="API">{formatAngka(kp.api)}</InfoField>
                           <InfoField label="BSNW">
@@ -787,11 +790,19 @@ function DetailSuratJalan({
                               {kp.catatan || "-"}
                             </InfoField>
                           </Box>
-                          <Box gridColumn={{ sm: "span 2" }}>
+                          <Box>
                             <InfoField label="Foto Bukti Penerimaan">
                               <FotoThumb
                                 src={kp.foto}
                                 alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                              />
+                            </InfoField>
+                          </Box>
+                          <Box>
+                            <InfoField label="Foto Lab">
+                              <FotoThumb
+                                src={kp.fotoLab}
+                                alt={`Foto lab ${kp.nomor || kp.id}`}
                               />
                             </InfoField>
                           </Box>

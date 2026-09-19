@@ -49,6 +49,7 @@ const formatJam = (value) => {
 const statusColor = (status) => {
   const value = String(status || "").toUpperCase();
   if (value === "TIBA") return "green";
+  if (value === "BONGKAR") return "orange";
   if (value === "KIRIM") return "blue";
   if (value === "BATAL") return "red";
   return "gray";
@@ -346,21 +347,47 @@ function QRCodeSuratJalan({ match }) {
                         <InfoItem label="VOLUME">
                           {item.volume != null ? item.volume : "-"}
                         </InfoItem>
-                        <InfoItem label="PENERIMA">
-                          {item.pegawai?.nama || "-"}
+                        <InfoItem label="PETUGAS PENERIMA (PK)">
+                          {item.userPK?.nama || "-"}
+                        </InfoItem>
+                        <InfoItem label="PETUGAS LAB">
+                          {item.userLab?.nama || "-"}
                         </InfoItem>
                         <InfoItem label="CATATAN">{item.catatan || "-"}</InfoItem>
                       </SimpleGrid>
-                      {item.foto && (
-                        <Image
-                          src={getImageUrl(item.foto)}
-                          alt="Bukti penerimaan"
-                          mt={3}
-                          maxH="180px"
-                          w="100%"
-                          objectFit="cover"
-                          borderRadius="md"
-                        />
+                      {(item.foto || item.fotoLab) && (
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+                          {item.foto && (
+                            <Box>
+                              <Text fontSize="xs" color="gray.500" mb={1}>
+                                Foto Bukti Penerimaan
+                              </Text>
+                              <Image
+                                src={getImageUrl(item.foto)}
+                                alt="Bukti penerimaan"
+                                maxH="180px"
+                                w="100%"
+                                objectFit="cover"
+                                borderRadius="md"
+                              />
+                            </Box>
+                          )}
+                          {item.fotoLab && (
+                            <Box>
+                              <Text fontSize="xs" color="gray.500" mb={1}>
+                                Foto Lab
+                              </Text>
+                              <Image
+                                src={getImageUrl(item.fotoLab)}
+                                alt="Foto lab"
+                                maxH="180px"
+                                w="100%"
+                                objectFit="cover"
+                                borderRadius="md"
+                              />
+                            </Box>
+                          )}
+                        </SimpleGrid>
                       )}
                     </Box>
                   ))}

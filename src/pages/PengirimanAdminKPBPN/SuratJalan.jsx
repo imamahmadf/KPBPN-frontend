@@ -48,9 +48,14 @@ import {
 import { Select as Select2, AsyncSelect } from "chakra-react-select";
 import { Link as RouterLink } from "react-router-dom";
 import { BsChevronDown } from "react-icons/bs";
+import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import { formatVolumeNumber } from "../../lib/volumeSatuan";
+import {
+  userRedux,
+  selectIsPetugasKeamananOnly,
+} from "../../Redux/Reducers/auth";
 import FotoPlaceholder from "../../assets/add_photo.png";
 import "../../Style/pagination.css";
 
@@ -101,31 +106,41 @@ const decimalFieldSchema = (label) =>
       return num !== null && num >= 0;
     });
 
-const konfirmasiSchema = Yup.object({
+const fotoFieldSchema = (name, requiredMessage, invalidMessage) =>
+  Yup.mixed()
+    .nullable()
+    .test("foto-required", requiredMessage, function (value) {
+      if (value instanceof File) return true;
+      if (this.parent[name]) return true;
+      return false;
+    })
+    .test("is-file", invalidMessage, (value) => {
+      if (!value) return true;
+      return value instanceof File;
+    });
+
+const konfirmasiTibaSchema = Yup.object({
+  foto: fotoFieldSchema(
+    "fotoPreview",
+    "Foto bukti penerimaan wajib diunggah",
+    "Foto tidak valid",
+  ),
+});
+
+const konfirmasiBongkarSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
   volume: Yup.number()
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
     .required("Volume wajib diisi"),
-
   catatan: Yup.string().nullable(),
   api: decimalFieldSchema("API"),
   BSNW: decimalFieldSchema("BSNW"),
-  foto: Yup.mixed()
-    .nullable()
-    .test(
-      "foto-required",
-      "Foto bukti penerimaan wajib diunggah",
-      function (value) {
-        if (value instanceof File) return true;
-        if (this.parent.fotoPreview) return true;
-        return false;
-      },
-    )
-    .test("is-file", "Foto tidak valid", (value) => {
-      if (!value) return true;
-      return value instanceof File;
-    }),
+  fotoLab: fotoFieldSchema(
+    "fotoLabPreview",
+    "Foto lab wajib diunggah",
+    "Foto lab tidak valid",
+  ),
 });
 
 const initialValuesKonfirmasi = {
@@ -137,6 +152,8 @@ const initialValuesKonfirmasi = {
   BSNW: "",
   foto: null,
   fotoPreview: "",
+  fotoLab: null,
+  fotoLabPreview: "",
 };
 
 const FileUploadField = ({
@@ -336,6 +353,7 @@ const formatMitraLabel = (val) => {
 const statusBadgeColor = (status) => {
   const value = String(status || "").toUpperCase();
   if (value === "TIBA") return "green";
+  if (value === "BONGKAR") return "orange";
   if (value === "KIRIM") return "blue";
   if (value === "BATAL") return "red";
   return "gray";
@@ -367,6 +385,8 @@ const MobileField = ({ label, children }) => (
 
 const SuratJalan = () => {
   const toast = useToast();
+  const user = useSelector(userRedux);
+  const isPetugasKeamanan = useSelector(selectIsPetugasKeamananOnly);
   const dataListRef = useRef(null);
   const formikRefKonfirmasi = useRef(null);
   const formikRefEdit = useRef(null);
@@ -401,6 +421,9 @@ const SuratJalan = () => {
     onClose: onBatalClose,
   } = useDisclosure();
   const [previewFoto, setPreviewFoto] = useState("");
+  const [previewFotoTitle, setPreviewFotoTitle] = useState(
+    "Foto Bukti Penerimaan",
+  );
   const [selectedSuratJalan, setSelectedSuratJalan] = useState(null);
   const [editingSuratJalan, setEditingSuratJalan] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -412,6 +435,7 @@ const SuratJalan = () => {
   const [dataKonfirmasi, setDataKonfirmasi] = useState([]);
   const [loadingDetailKonfirmasi, setLoadingDetailKonfirmasi] = useState(false);
   const [editingKonfirmasi, setEditingKonfirmasi] = useState(null);
+  const [konfirmasiMode, setKonfirmasiMode] = useState("tiba");
 
   const [dataSuratJalan, setDataSuratJalan] = useState([]);
   const [dataSeed, setDataSeed] = useState(null);
@@ -484,14 +508,17 @@ const SuratJalan = () => {
   const initialValuesKonfirmasiForm = useMemo(() => {
     if (editingKonfirmasi) {
       return {
-        tanggal: toDateInput(editingKonfirmasi.tanggal),
-        volume: editingKonfirmasi.volume ?? "",
-
+        tanggal:
+          toDateInput(editingKonfirmasi.tanggal) || toDateInput(new Date()),
+        volume:
+          editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
         catatan: editingKonfirmasi.catatan || "",
         api: toDecimalInput(editingKonfirmasi.api),
         BSNW: toDecimalInput(editingKonfirmasi.BSNW),
         foto: null,
         fotoPreview: getImageUrl(editingKonfirmasi.foto) || "",
+        fotoLab: null,
+        fotoLabPreview: getImageUrl(editingKonfirmasi.fotoLab) || "",
       };
     }
 
@@ -596,7 +623,22 @@ const SuratJalan = () => {
     }
   };
 
+  const denyPetugasKeamanan = (description) => {
+    if (!isPetugasKeamanan) return false;
+    toast({
+      title: "Akses ditolak",
+      description,
+      status: "error",
+      duration: 4000,
+      isClosable: true,
+    });
+    return true;
+  };
+
   const openEditModal = (item) => {
+    if (denyPetugasKeamanan("Petugas Keamanan tidak dapat mengubah surat jalan")) {
+      return;
+    }
     setEditingSuratJalan(item);
     onEditOpen();
   };
@@ -608,6 +650,9 @@ const SuratJalan = () => {
   };
 
   const openDeleteModal = (item) => {
+    if (denyPetugasKeamanan("Petugas Keamanan tidak dapat menghapus surat jalan")) {
+      return;
+    }
     setDeleteTarget(item);
     onDeleteOpen();
   };
@@ -619,6 +664,11 @@ const SuratJalan = () => {
   };
 
   const openBatalModal = (item) => {
+    if (
+      denyPetugasKeamanan("Petugas Keamanan tidak dapat membatalkan surat jalan")
+    ) {
+      return;
+    }
     if (item.statusSuratJalanId === 4) {
       toast({
         title: "Tidak dapat dibatalkan",
@@ -629,10 +679,11 @@ const SuratJalan = () => {
       });
       return;
     }
-    if (item.statusSuratJalanId === 3) {
+    if (item.statusSuratJalanId === 3 || item.statusSuratJalanId === 5) {
       toast({
         title: "Tidak dapat dibatalkan",
-        description: "Surat jalan yang sudah tiba tidak dapat dibatalkan",
+        description:
+          "Surat jalan yang sudah tiba atau dibongkar tidak dapat dibatalkan",
         status: "warning",
         duration: 4000,
         isClosable: true,
@@ -650,6 +701,11 @@ const SuratJalan = () => {
   };
 
   const handleBatalSuratJalan = async () => {
+    if (
+      denyPetugasKeamanan("Petugas Keamanan tidak dapat membatalkan surat jalan")
+    ) {
+      return;
+    }
     if (!batalTarget?.id) return;
 
     setIsCancelling(true);
@@ -683,6 +739,11 @@ const SuratJalan = () => {
   };
 
   const handleDeleteSuratJalan = async () => {
+    if (
+      denyPetugasKeamanan("Petugas Keamanan tidak dapat menghapus surat jalan")
+    ) {
+      return;
+    }
     if (!deleteTarget?.id) return;
 
     setIsDeleting(true);
@@ -764,6 +825,13 @@ const SuratJalan = () => {
   };
 
   const openKonfirmasiModal = (item) => {
+    if (isPetugasKeamanan && item.statusSuratJalanId !== 2) {
+      denyPetugasKeamanan(
+        "Petugas Keamanan hanya dapat melakukan konfirmasi kedatangan",
+      );
+      return;
+    }
+    setKonfirmasiMode("tiba");
     setEditingKonfirmasi(null);
     setSelectedSuratJalan(item);
     onKonfirmasiOpen();
@@ -773,6 +841,7 @@ const SuratJalan = () => {
     formikRefKonfirmasi.current?.resetForm();
     setEditingKonfirmasi(null);
     setSelectedSuratJalan(null);
+    setKonfirmasiMode("tiba");
     onKonfirmasiClose();
   };
 
@@ -784,34 +853,74 @@ const SuratJalan = () => {
     setDataKonfirmasi(res.data.result || []);
   };
 
-  const openEditKonfirmasiModal = (kp, suratJalanItem) => {
+  const openEditKonfirmasiModal = (kp, suratJalanItem, mode = "edit") => {
     const parentSuratJalan =
       suratJalanItem || selectedSuratJalanDetail || kp?.suratJalan || null;
+    setKonfirmasiMode(mode);
     setEditingKonfirmasi(kp);
     setSelectedSuratJalan(parentSuratJalan);
     onKonfirmasiOpen();
   };
 
-  const openEditKonfirmasiFromList = async (item) => {
+  const loadKonfirmasiForSuratJalan = async (item) => {
+    const res = await axios.get(
+      `${API_BASE}/pengiriman/get/konfirmasi/${item.id}`,
+    );
+    const list = res.data.result || [];
+    if (!list.length) {
+      toast({
+        title: "Tidak ada konfirmasi",
+        description:
+          "Belum ada data konfirmasi penerimaan untuk surat jalan ini",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return null;
+    }
+    setSelectedSuratJalanDetail(item);
+    setDataKonfirmasi(list);
+    return list[0];
+  };
+
+  const openKonfirmasiBongkarFromList = async (item) => {
+    if (
+      denyPetugasKeamanan(
+        "Petugas Keamanan tidak dapat melakukan konfirmasi bongkar",
+      )
+    ) {
+      return;
+    }
     try {
-      const res = await axios.get(
-        `${API_BASE}/pengiriman/get/konfirmasi/${item.id}`,
-      );
-      const list = res.data.result || [];
-      if (!list.length) {
-        toast({
-          title: "Tidak ada konfirmasi",
-          description:
-            "Belum ada data konfirmasi penerimaan untuk surat jalan ini",
-          status: "warning",
-          duration: 4000,
-          isClosable: true,
-        });
-        return;
-      }
-      setSelectedSuratJalanDetail(item);
-      setDataKonfirmasi(list);
-      openEditKonfirmasiModal(list[0], item);
+      const kp = await loadKonfirmasiForSuratJalan(item);
+      if (!kp) return;
+      openEditKonfirmasiModal(kp, item, "bongkar");
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error ||
+          "Gagal memuat data konfirmasi penerimaan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const openEditKonfirmasiFromList = async (item) => {
+    if (
+      denyPetugasKeamanan(
+        "Petugas Keamanan tidak dapat mengubah konfirmasi bongkar",
+      )
+    ) {
+      return;
+    }
+    try {
+      const kp = await loadKonfirmasiForSuratJalan(item);
+      if (!kp) return;
+      openEditKonfirmasiModal(kp, item, "edit");
     } catch (err) {
       console.error(err);
       toast({
@@ -830,13 +939,15 @@ const SuratJalan = () => {
     setSelectedSuratJalanDetail(null);
     setDataKonfirmasi([]);
     setPreviewFoto("");
+    setPreviewFotoTitle("Foto Bukti Penerimaan");
     onDetailKonfirmasiClose();
   };
 
-  const showPreviewFoto = (path) => {
+  const showPreviewFoto = (path, title = "Foto Bukti Penerimaan") => {
     const url = getImageUrl(path);
     if (!url) return;
     setPreviewFoto(url);
+    setPreviewFotoTitle(title);
     onPreviewFotoOpen();
   };
 
@@ -888,31 +999,67 @@ const SuratJalan = () => {
       return;
     }
 
+    if (konfirmasiMode !== "tiba" && !editingKonfirmasi?.id) {
+      setSubmitting(false);
+      toast({
+        title: "Error!",
+        description: "Data konfirmasi penerimaan tidak ditemukan",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
     try {
       const formData = new FormData();
-      formData.append("tanggal", values.tanggal);
-      formData.append("volume", values.volume);
+      const isTiba = konfirmasiMode === "tiba";
+      const isBongkar = konfirmasiMode === "bongkar";
 
-      formData.append("catatan", values.catatan || "");
-      formData.append("api", parseDecimalInput(values.api) ?? "");
-      formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
-      if (values.foto instanceof File) formData.append("foto", values.foto);
+      if (isPetugasKeamanan && !isTiba) {
+        setSubmitting(false);
+        toast({
+          title: "Akses ditolak",
+          description:
+            "Petugas Keamanan hanya dapat melakukan konfirmasi kedatangan",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
 
-      if (isEdit) {
+      if (isTiba) {
+        if (values.foto instanceof File) formData.append("foto", values.foto);
+        formData.append("suratJalanId", suratJalanId);
+        if (user?.id) formData.append("userPKId", user.id);
+        await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
+      } else {
+        formData.append("tahap", isBongkar ? "bongkar" : "edit");
+        formData.append("tanggal", values.tanggal);
+        formData.append("volume", values.volume);
+        formData.append("catatan", values.catatan || "");
+        formData.append("api", parseDecimalInput(values.api) ?? "");
+        formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
+        if (isBongkar && user?.id) formData.append("userLabId", user.id);
+        if (values.foto instanceof File) formData.append("foto", values.foto);
+        if (values.fotoLab instanceof File) {
+          formData.append("fotoLab", values.fotoLab);
+        }
+
         await axios.post(
           `${API_BASE}/pengiriman/edit/konfirmasi/${editingKonfirmasi.id}`,
           formData,
         );
-      } else {
-        formData.append("suratJalanId", suratJalanId);
-        await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
       }
 
       toast({
         title: "Berhasil",
-        description: isEdit
-          ? "Konfirmasi penerimaan berhasil diperbarui"
-          : "Konfirmasi penerimaan berhasil disimpan",
+        description: isTiba
+          ? "Konfirmasi kedatangan berhasil disimpan"
+          : isBongkar
+            ? "Konfirmasi bongkar berhasil disimpan"
+            : "Konfirmasi penerimaan berhasil diperbarui",
         status: "success",
         duration: 4000,
         isClosable: true,
@@ -938,9 +1085,11 @@ const SuratJalan = () => {
         title: "Error!",
         description:
           err.response?.data?.error ||
-          (isEdit
-            ? "Gagal memperbarui konfirmasi penerimaan"
-            : "Gagal menyimpan konfirmasi penerimaan"),
+          (konfirmasiMode === "tiba"
+            ? "Gagal menyimpan konfirmasi kedatangan"
+            : konfirmasiMode === "bongkar"
+              ? "Gagal menyimpan konfirmasi bongkar"
+              : "Gagal memperbarui konfirmasi penerimaan"),
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -976,6 +1125,35 @@ const SuratJalan = () => {
     sortOrder !== "DESC";
 
   const renderAksi = (item, fullWidth = false) => {
+    if (isPetugasKeamanan) {
+      if (item.statusSuratJalanId !== 2) {
+        return (
+          <Text fontSize="sm" color="gray.400">
+            -
+          </Text>
+        );
+      }
+
+      return (
+        <Menu isLazy placement="bottom-end" strategy="fixed">
+          <MenuButton
+            as={Button}
+            size="sm"
+            variant="outline"
+            rightIcon={<BsChevronDown />}
+            w={fullWidth ? "full" : "auto"}
+          >
+            Aksi
+          </MenuButton>
+          <MenuList minW="200px" zIndex={20}>
+            <MenuItem onClick={() => openKonfirmasiModal(item)}>
+              Konfirmasi
+            </MenuItem>
+          </MenuList>
+        </Menu>
+      );
+    }
+
     const actions = [
       {
         key: "detail",
@@ -1006,6 +1184,21 @@ const SuratJalan = () => {
     }
 
     if (item.statusSuratJalanId === 3) {
+      actions.push(
+        {
+          key: "konfirmasi-bongkar",
+          label: "Konfirmasi Bongkar",
+          onClick: () => openKonfirmasiBongkarFromList(item),
+        },
+        {
+          key: "detail-konfirmasi",
+          label: "Detail Konfirmasi",
+          onClick: () => openDetailKonfirmasiModal(item),
+        },
+      );
+    }
+
+    if (item.statusSuratJalanId === 5) {
       actions.push(
         {
           key: "detail-konfirmasi",
@@ -1976,9 +2169,11 @@ const SuratJalan = () => {
         <ModalOverlay />
         <ModalContent {...fullModalContentProps}>
           <ModalHeader {...fullModalHeaderProps}>
-            {editingKonfirmasi
-              ? "Edit Konfirmasi Penerimaan"
-              : "Konfirmasi Penerimaan"}
+            {konfirmasiMode === "tiba"
+              ? "Konfirmasi Penerimaan"
+              : konfirmasiMode === "bongkar"
+                ? "Konfirmasi Bongkar"
+                : "Edit Konfirmasi Penerimaan"}
           </ModalHeader>
           <ModalCloseButton />
           {selectedSuratJalan && (
@@ -1986,13 +2181,34 @@ const SuratJalan = () => {
               <Text fontSize="sm" color="gray.500">
                 Surat Jalan: {selectedSuratJalan.nomor || "-"}
               </Text>
+              <Text fontSize="xs" color="gray.400" mt={1}>
+                {konfirmasiMode === "tiba"
+                  ? "Langkah 1 dari 2: unggah foto bukti penerimaan"
+                  : konfirmasiMode === "bongkar"
+                    ? "Langkah 2 dari 2: isi data bongkar dan foto lab"
+                    : "Perbarui data konfirmasi bongkar"}
+              </Text>
+              {(konfirmasiMode === "tiba" || konfirmasiMode === "bongkar") && (
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {konfirmasiMode === "tiba"
+                    ? "Dicatat sebagai petugas penerima (PK): "
+                    : "Dicatat sebagai petugas lab: "}
+                  <Text as="span" fontWeight="semibold" color="gray.700">
+                    {user?.nama || "-"}
+                  </Text>
+                </Text>
+              )}
             </Box>
           )}
           <Formik
             innerRef={formikRefKonfirmasi}
             initialValues={initialValuesKonfirmasiForm}
             enableReinitialize
-            validationSchema={konfirmasiSchema}
+            validationSchema={
+              konfirmasiMode === "tiba"
+                ? konfirmasiTibaSchema
+                : konfirmasiBongkarSchema
+            }
             onSubmit={submitKonfirmasiPenerimaan}
           >
             {({
@@ -2015,105 +2231,135 @@ const SuratJalan = () => {
               >
                 <ModalBody {...fullModalBodyProps}>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                    <FormControl isInvalid={touched.tanggal && errors.tanggal}>
-                      <FormLabel>Tanggal</FormLabel>
-                      <Input
-                        name="tanggal"
-                        type="date"
-                        bgColor="terang"
-                        value={values.tanggal}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                      />
-                      <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
-                    </FormControl>
+                    {konfirmasiMode !== "tiba" && (
+                      <>
+                        <FormControl
+                          isInvalid={touched.tanggal && errors.tanggal}
+                        >
+                          <FormLabel>Tanggal</FormLabel>
+                          <Input
+                            name="tanggal"
+                            type="date"
+                            bgColor="terang"
+                            value={values.tanggal}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                          />
+                          <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
+                        </FormControl>
 
-                    <FormControl isInvalid={touched.volume && errors.volume}>
-                      <FormLabel>Volume</FormLabel>
-                      <Input
-                        name="volume"
-                        type="number"
-                        bgColor="terang"
-                        value={values.volume}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        placeholder="Masukkan volume diterima"
-                      />
-                      <FormErrorMessage>{errors.volume}</FormErrorMessage>
-                    </FormControl>
+                        <FormControl
+                          isInvalid={touched.volume && errors.volume}
+                        >
+                          <FormLabel>Volume</FormLabel>
+                          <Input
+                            name="volume"
+                            type="number"
+                            bgColor="terang"
+                            value={values.volume}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            placeholder="Masukkan volume diterima"
+                          />
+                          <FormErrorMessage>{errors.volume}</FormErrorMessage>
+                        </FormControl>
 
-                    <FormControl isInvalid={touched.api && errors.api}>
-                      <FormLabel>API</FormLabel>
-                      <Input
-                        name="api"
-                        type="text"
-                        inputMode="decimal"
-                        lang="id-ID"
-                        autoComplete="off"
-                        bgColor="terang"
-                        value={values.api}
-                        onChange={handleDecimalFieldChange(
-                          setFieldValue,
-                          "api",
-                        )}
-                        onBlur={handleBlur}
-                        placeholder="Contoh: 0,5"
-                      />
-                      <FormErrorMessage>{errors.api}</FormErrorMessage>
-                    </FormControl>
+                        <FormControl isInvalid={touched.api && errors.api}>
+                          <FormLabel>API</FormLabel>
+                          <Input
+                            name="api"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.api}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "api",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Contoh: 0,5"
+                          />
+                          <FormErrorMessage>{errors.api}</FormErrorMessage>
+                        </FormControl>
 
-                    <FormControl isInvalid={touched.BSNW && errors.BSNW}>
-                      <FormLabel>BSNW</FormLabel>
-                      <Input
-                        name="BSNW"
-                        type="text"
-                        inputMode="decimal"
-                        lang="id-ID"
-                        autoComplete="off"
-                        bgColor="terang"
-                        value={values.BSNW}
-                        onChange={handleDecimalFieldChange(
-                          setFieldValue,
-                          "BSNW",
-                        )}
-                        onBlur={handleBlur}
-                        placeholder="Contoh: 0,5"
-                      />
-                      <FormErrorMessage>{errors.BSNW}</FormErrorMessage>
-                    </FormControl>
+                        <FormControl isInvalid={touched.BSNW && errors.BSNW}>
+                          <FormLabel>BSNW</FormLabel>
+                          <Input
+                            name="BSNW"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.BSNW}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "BSNW",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Contoh: 0,5"
+                          />
+                          <FormErrorMessage>{errors.BSNW}</FormErrorMessage>
+                        </FormControl>
 
-                    <FormControl gridColumn={{ md: "span 2" }}>
-                      <FormLabel>Catatan</FormLabel>
-                      <Textarea
-                        name="catatan"
-                        bgColor="terang"
-                        value={values.catatan}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        placeholder="Catatan tambahan (opsional)"
-                        rows={3}
-                      />
-                    </FormControl>
+                        <FormControl gridColumn={{ md: "span 2" }}>
+                          <FormLabel>Catatan</FormLabel>
+                          <Textarea
+                            name="catatan"
+                            bgColor="terang"
+                            value={values.catatan}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            placeholder="Catatan tambahan (opsional)"
+                            rows={3}
+                          />
+                        </FormControl>
+                      </>
+                    )}
 
-                    <Box gridColumn={{ md: "span 2" }}>
-                      <FileUploadField
-                        label="Foto Bukti Penerimaan"
-                        preview={values.fotoPreview}
-                        touched={touched.foto}
-                        error={errors.foto}
-                        isRequired={!editingKonfirmasi}
-                        onChange={(file) => {
-                          setFieldValue("foto", file);
-                          setFieldValue(
-                            "fotoPreview",
-                            file
-                              ? URL.createObjectURL(file)
-                              : getImageUrl(editingKonfirmasi?.foto) || "",
-                          );
-                          setFieldTouched("foto", true);
-                        }}
-                      />
-                    </Box>
+                    {konfirmasiMode === "tiba" && (
+                      <Box gridColumn={{ md: "span 2" }}>
+                        <FileUploadField
+                          label="Foto Bukti Penerimaan"
+                          preview={values.fotoPreview}
+                          touched={touched.foto}
+                          error={errors.foto}
+                          isRequired
+                          onChange={(file) => {
+                            setFieldValue("foto", file);
+                            setFieldValue(
+                              "fotoPreview",
+                              file ? URL.createObjectURL(file) : "",
+                            );
+                            setFieldTouched("foto", true);
+                          }}
+                        />
+                      </Box>
+                    )}
+
+                    {konfirmasiMode !== "tiba" && (
+                      <Box gridColumn={{ md: "span 2" }}>
+                        <FileUploadField
+                          label="Foto Lab"
+                          preview={values.fotoLabPreview}
+                          touched={touched.fotoLab}
+                          error={errors.fotoLab}
+                          isRequired={konfirmasiMode === "bongkar"}
+                          onChange={(file) => {
+                            setFieldValue("fotoLab", file);
+                            setFieldValue(
+                              "fotoLabPreview",
+                              file
+                                ? URL.createObjectURL(file)
+                                : getImageUrl(editingKonfirmasi?.fotoLab) || "",
+                            );
+                            setFieldTouched("fotoLab", true);
+                          }}
+                        />
+                      </Box>
+                    )}
                   </SimpleGrid>
                 </ModalBody>
                 <ModalFooter {...fullModalFooterProps}>
@@ -2135,14 +2381,17 @@ const SuratJalan = () => {
                     onClick={async (e) => {
                       e.preventDefault();
                       const formErrors = await validateForm();
-                      setTouched({
-                        tanggal: true,
-                        volume: true,
-
-                        api: true,
-                        BSNW: true,
-                        foto: true,
-                      });
+                      setTouched(
+                        konfirmasiMode === "tiba"
+                          ? { foto: true }
+                          : {
+                              tanggal: true,
+                              volume: true,
+                              api: true,
+                              BSNW: true,
+                              fotoLab: true,
+                            },
+                      );
                       if (Object.keys(formErrors || {}).length) {
                         toast({
                           title: "Form belum lengkap",
@@ -2156,7 +2405,9 @@ const SuratJalan = () => {
                       await submitForm();
                     }}
                   >
-                    {editingKonfirmasi ? "Simpan Perubahan" : "Simpan"}
+                    {konfirmasiMode === "edit"
+                      ? "Simpan Perubahan"
+                      : "Simpan"}
                   </Button>
                 </ModalFooter>
               </Box>
@@ -2206,18 +2457,44 @@ const SuratJalan = () => {
                     borderColor="gray.200"
                     bg="gray.50"
                   >
-                    <Flex justify="flex-end" mb={3}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        colorScheme="yellow"
-                        onClick={() =>
-                          openEditKonfirmasiModal(kp, selectedSuratJalanDetail)
-                        }
-                      >
-                        Edit
-                      </Button>
-                    </Flex>
+                    {selectedSuratJalanDetail?.statusSuratJalanId === 5 &&
+                      !isPetugasKeamanan && (
+                      <Flex justify="flex-end" mb={3}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="yellow"
+                          onClick={() =>
+                            openEditKonfirmasiModal(
+                              kp,
+                              selectedSuratJalanDetail,
+                              "edit",
+                            )
+                          }
+                        >
+                          Edit
+                        </Button>
+                      </Flex>
+                    )}
+                    {selectedSuratJalanDetail?.statusSuratJalanId === 3 &&
+                      !isPetugasKeamanan && (
+                      <Flex justify="flex-end" mb={3}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="orange"
+                          onClick={() =>
+                            openEditKonfirmasiModal(
+                              kp,
+                              selectedSuratJalanDetail,
+                              "bongkar",
+                            )
+                          }
+                        >
+                          Konfirmasi Bongkar
+                        </Button>
+                      </Flex>
+                    )}
                     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
                       <MobileField label="Nomor Konfirmasi">
                         {kp.nomor || "-"}
@@ -2251,6 +2528,12 @@ const SuratJalan = () => {
                           selectedSuratJalanDetail?.mitra?.nama ||
                           "-"}
                       </MobileField>
+                      <MobileField label="Petugas Penerima (PK)">
+                        {kp.userPK?.nama || "-"}
+                      </MobileField>
+                      <MobileField label="Petugas Lab">
+                        {kp.userLab?.nama || "-"}
+                      </MobileField>
                       <MobileField label="Status Pengisian Tanki">
                         {(kp.pengisianTankis || []).length > 0
                           ? `Sudah diisi (${
@@ -2270,7 +2553,7 @@ const SuratJalan = () => {
                           {kp.catatan || "-"}
                         </MobileField>
                       </Box>
-                      <Box gridColumn={{ sm: "span 2" }}>
+                      <Box>
                         <MobileField label="Foto Bukti Penerimaan">
                           {kp.foto ? (
                             <Image
@@ -2283,7 +2566,34 @@ const SuratJalan = () => {
                               border="1px solid"
                               borderColor="gray.200"
                               cursor="pointer"
-                              onClick={() => showPreviewFoto(kp.foto)}
+                              onClick={() =>
+                                showPreviewFoto(
+                                  kp.foto,
+                                  "Foto Bukti Penerimaan",
+                                )
+                              }
+                            />
+                          ) : (
+                            "-"
+                          )}
+                        </MobileField>
+                      </Box>
+                      <Box>
+                        <MobileField label="Foto Lab">
+                          {kp.fotoLab ? (
+                            <Image
+                              src={getImageUrl(kp.fotoLab)}
+                              alt={`Foto lab ${kp.nomor || kp.id}`}
+                              w="100%"
+                              maxH="220px"
+                              objectFit="cover"
+                              borderRadius="md"
+                              border="1px solid"
+                              borderColor="gray.200"
+                              cursor="pointer"
+                              onClick={() =>
+                                showPreviewFoto(kp.fotoLab, "Foto Lab")
+                              }
                             />
                           ) : (
                             "-"
@@ -2405,8 +2715,8 @@ const SuratJalan = () => {
             </Text>
             <Text fontSize="sm" color="gray.500" mt={2}>
               Status surat jalan akan diubah menjadi BATAL. Surat jalan yang
-              sudah tiba atau dipakai pada pengisian tanki tidak dapat
-              dibatalkan.
+              sudah tiba, dibongkar, atau dipakai pada pengisian tanki tidak
+              dapat dibatalkan.
             </Text>
           </ModalBody>
           <ModalFooter
@@ -2458,7 +2768,7 @@ const SuratJalan = () => {
           }}
         >
           <ModalHeader {...fullModalHeaderProps}>
-            Foto Bukti Penerimaan
+            {previewFotoTitle}
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody
@@ -2470,7 +2780,7 @@ const SuratJalan = () => {
             {previewFoto ? (
               <Image
                 src={previewFoto}
-                alt="Foto bukti penerimaan"
+                alt={previewFotoTitle}
                 w="100%"
                 borderRadius="md"
                 objectFit="contain"
