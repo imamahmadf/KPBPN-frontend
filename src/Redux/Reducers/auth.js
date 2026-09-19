@@ -113,10 +113,17 @@ const authSlice = createSlice({
       state.role = null;
       state.mitra = null;
     },
+    updateUser: (state, action) => {
+      if (!action.payload) return;
+      state.user = {
+        ...(state.user || {}),
+        ...action.payload,
+      };
+    },
   },
 });
 
-export const { loginSuccess, logout } = authSlice.actions;
+export const { loginSuccess, logout, updateUser } = authSlice.actions;
 
 export const login = (namaPengguna, password) => async (dispatch) => {
   try {
@@ -185,6 +192,13 @@ export const register =
       throw error;
     }
   };
+
+export const persistUpdatedUser = (userPatch) => (dispatch, getState) => {
+  const currentUser = getState().auth.user || {};
+  const nextUser = { ...currentUser, ...userPatch };
+  localStorage.setItem("user", JSON.stringify(nextUser));
+  dispatch(updateUser(nextUser));
+};
 
 export const performLogout = () => (dispatch) => {
   clearAuthStorage();

@@ -6,12 +6,6 @@ import {
   Text,
   useToast,
   Container,
-  Thead,
-  Table,
-  Tr,
-  Th,
-  Td,
-  Tbody,
   Heading,
   HStack,
   Badge,
@@ -22,16 +16,22 @@ import {
   Image,
   VStack,
   Stack,
-  FormControl,
-  FormLabel,
-  Input,
-  Select,
   Skeleton,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
-import { formatVolumeNumber, isVolumeEqual } from "../../lib/volumeSatuan";
+import {
+  ProduksiStickyBar,
+  ProduksiSumurList,
+} from "../../Componets/KPBPN/ProduksiSumurInput";
+import {
+  convertProduksiInputsBySatuan,
+  formatVolumeNumber,
+  isVolumeEqual,
+  isVolumeOver,
+  parseProduksiNumber,
+} from "../../lib/volumeSatuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -159,6 +159,7 @@ function DetailSuratJalan({
   match,
   backTo = "/pengiriman-kpbpn/surat-jalan",
   showExtendedSections = true,
+  allowEditProduksiAnytime = false,
 }) {
   const suratJalanId = match.params.id;
   const toast = useToast();
@@ -175,6 +176,8 @@ function DetailSuratJalan({
     satuanVolumeId: null,
     satuanVolumeOptions: [],
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSnapshot, setEditSnapshot] = useState(null);
 
   const fetchDetail = async () => {
     setIsLoading(true);
@@ -241,6 +244,8 @@ function DetailSuratJalan({
         satuanVolumeId: defaultSatuanVolumeId,
         satuanVolumeOptions,
       }));
+      setIsEditing(existingProduksi.length === 0);
+      setEditSnapshot(null);
     } catch (err) {
       console.error(err);
       setProduksiPanel((prev) => ({ ...prev, loading: false }));
@@ -270,10 +275,31 @@ function DetailSuratJalan({
     }));
   };
 
+  const handleSatuanChange = (e) => {
+    const nextId = e.target.value ? Number(e.target.value) : null;
+    setProduksiPanel((prev) => {
+      const fromSatuan = prev.satuanVolumeOptions.find(
+        (opt) => opt.id === prev.satuanVolumeId,
+      )?.satuan;
+      const toSatuan = prev.satuanVolumeOptions.find(
+        (opt) => opt.id === nextId,
+      )?.satuan;
+
+      return {
+        ...prev,
+        satuanVolumeId: nextId,
+        inputs: convertProduksiInputsBySatuan(
+          prev.inputs,
+          fromSatuan,
+          toSatuan,
+        ),
+      };
+    });
+  };
+
   const totalProduksiInput = useMemo(() => {
     return Object.values(produksiPanel.inputs).reduce((sum, val) => {
-      const num = parseInt(val, 10);
-      return sum + (Number.isNaN(num) ? 0 : num);
+      return sum + parseProduksiNumber(val);
     }, 0);
   }, [produksiPanel.inputs]);
 
@@ -304,11 +330,53 @@ function DetailSuratJalan({
     ],
   );
 
+  const isProduksiOverLimit = useMemo(
+    () =>
+      isVolumeOver(
+        totalProduksiInput,
+        produksiSatuanLabel,
+        produksiPanel.volume,
+        produksiPanel.satuan || "Barrel",
+      ),
+    [
+      totalProduksiInput,
+      produksiSatuanLabel,
+      produksiPanel.volume,
+      produksiPanel.satuan,
+    ],
+  );
+
+  const produksiComparison = isProduksiOverLimit
+    ? "over"
+    : isProduksiTotalValid
+      ? "equal"
+      : "under";
+
+  const startEditProduksi = () => {
+    setEditSnapshot({
+      inputs: { ...produksiPanel.inputs },
+      satuanVolumeId: produksiPanel.satuanVolumeId,
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEditProduksi = () => {
+    if (editSnapshot) {
+      setProduksiPanel((prev) => ({
+        ...prev,
+        inputs: editSnapshot.inputs,
+        satuanVolumeId: editSnapshot.satuanVolumeId,
+      }));
+    }
+    setIsEditing(false);
+    setEditSnapshot(null);
+  };
+
   const saveProduksiSumur = async () => {
     const items = Object.entries(produksiPanel.inputs)
       .map(([sumurMinyakId, produksi]) => ({
         sumurMinyakId: parseInt(sumurMinyakId, 10),
-        produksi: parseInt(produksi, 10) || 0,
+        produksi: parseProduksiNumber(produksi),
       }))
       .filter((item) => item.produksi > 0);
 
@@ -352,6 +420,8 @@ function DetailSuratJalan({
       });
 
       await Promise.all([fetchDetail(), fetchProduksiPanel()]);
+      setIsEditing(false);
+      setEditSnapshot(null);
     } catch (err) {
       console.error(err);
       toast({
@@ -369,7 +439,9 @@ function DetailSuratJalan({
 
   const konfirmasiList = data?.konfirmasiPenerimaans || [];
   const satuanSurat = data?.satuanVolume?.satuan || "Barrel";
-  const canEditProduksi = data?.statusSuratJalanId === 1;
+  const canEditProduksi =
+    allowEditProduksiAnytime || data?.statusSuratJalanId === 1;
+  const isProduksiEditing = canEditProduksi && isEditing;
   const displayedSumurList = canEditProduksi
     ? produksiPanel.sumurList
     : produksiPanel.sumurList.filter((sumur) => {
@@ -452,7 +524,7 @@ function DetailSuratJalan({
         pb={{ base: 6, md: "40px" }}
         px={{ base: 3, sm: 4, md: 6, lg: "30px" }}
         minH="90vh"
-        overflowX="hidden"
+        maxW="100%"
       >
         <Container
           variant="primary"
@@ -617,11 +689,9 @@ function DetailSuratJalan({
               </SimpleGrid>
 
               <SectionCard
-                title={
-                  canEditProduksi
-                    ? "Input Produksi Sumur"
-                    : "Produksi Sumur"
-                }
+                title="Input Produksi Sumur"
+                overflow="visible"
+                minW={0}
               >
                 {produksiPanel.loading ? (
                   <Stack spacing={3}>
@@ -637,201 +707,40 @@ function DetailSuratJalan({
                   </EmptyText>
                 ) : (
                   <>
-                    <FormControl maxW={{ md: "280px" }} mb={4}>
-                      <FormLabel
-                        fontSize="xs"
-                        color="gray.500"
-                        fontWeight="semibold"
-                        textTransform="uppercase"
-                        letterSpacing="wide"
-                      >
-                        Satuan Produksi
-                      </FormLabel>
-                      {canEditProduksi ? (
-                        <Select
-                          size="sm"
-                          bg="white"
-                          value={produksiPanel.satuanVolumeId || ""}
-                          onChange={(e) =>
-                            setProduksiPanel((prev) => ({
-                              ...prev,
-                              satuanVolumeId: e.target.value
-                                ? Number(e.target.value)
-                                : null,
-                            }))
-                          }
-                        >
-                          <option value="">Pilih satuan</option>
-                          {produksiPanel.satuanVolumeOptions.map((opt) => (
-                            <option key={opt.id} value={opt.id}>
-                              {opt.satuan || `Satuan #${opt.id}`}
-                            </option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <Text fontSize="sm">{produksiSatuanLabel}</Text>
-                      )}
-                    </FormControl>
+                    <ProduksiStickyBar
+                      totalProduksiInput={totalProduksiInput}
+                      produksiSatuanLabel={produksiSatuanLabel}
+                      acuanVolume={produksiPanel.volume}
+                      acuanSatuan={produksiPanel.satuan || satuanSurat}
+                      acuanLabel="Volume Surat Jalan"
+                      comparison={produksiComparison}
+                      statusHintOver="Total produksi harus sama dengan volume surat jalan"
+                      statusHintUnder="Total produksi harus sama dengan volume surat jalan"
+                      satuanVolumeId={produksiPanel.satuanVolumeId}
+                      satuanVolumeOptions={produksiPanel.satuanVolumeOptions}
+                      onSatuanChange={handleSatuanChange}
+                      isEditing={isProduksiEditing}
+                      saving={produksiPanel.saving}
+                      canSave={
+                        isProduksiEditing &&
+                        isProduksiTotalValid &&
+                        Boolean(produksiPanel.satuanVolumeId) &&
+                        !produksiPanel.loading
+                      }
+                      onEdit={startEditProduksi}
+                      onCancel={cancelEditProduksi}
+                      onSave={saveProduksiSumur}
+                      showEditButton={canEditProduksi}
+                      showSaveButton={canEditProduksi}
+                    />
 
-                    <Stack
-                      spacing={3}
-                      mb={4}
-                      display={{ base: "flex", lg: "none" }}
-                    >
-                      {displayedSumurList.map((sumur, index) => (
-                        <NestedCard key={sumur.id}>
-                          <HStack justify="space-between" mb={3} align="start">
-                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {sumur.nama || "-"}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500">
-                              No. {index + 1}
-                            </Text>
-                          </HStack>
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                            <InfoField label="Nomor Sumur">
-                              {sumur.nomor || "-"}
-                            </InfoField>
-                            <InfoField label={`Produksi (${produksiSatuanLabel})`}>
-                              {canEditProduksi ? (
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  size="sm"
-                                  bg="white"
-                                  value={produksiPanel.inputs[sumur.id] ?? ""}
-                                  onChange={(e) =>
-                                    handleProduksiInputChange(
-                                      sumur.id,
-                                      e.target.value,
-                                    )
-                                  }
-                                  placeholder="0"
-                                />
-                              ) : produksiPanel.inputs[sumur.id] !== "" &&
-                                produksiPanel.inputs[sumur.id] != null ? (
-                                <VolumeMultiSatuan
-                                  volume={produksiPanel.inputs[sumur.id]}
-                                  satuan={produksiSatuanLabel}
-                                />
-                              ) : (
-                                "-"
-                              )}
-                            </InfoField>
-                          </SimpleGrid>
-                        </NestedCard>
-                      ))}
-                    </Stack>
-
-                    <Box
-                      display={{ base: "none", lg: "block" }}
-                      overflowX="auto"
-                      borderWidth="1px"
-                      borderRadius="md"
-                      bg="white"
-                      mb={4}
-                    >
-                      <Table variant="simple" size="sm">
-                        <Thead bg="white">
-                          <Tr>
-                            <Th textTransform="capitalize">No.</Th>
-                            <Th textTransform="capitalize">Sumur</Th>
-                            <Th textTransform="capitalize">Nomor Sumur</Th>
-                            <Th textTransform="capitalize" isNumeric>
-                              Produksi ({produksiSatuanLabel})
-                            </Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {displayedSumurList.map((sumur, index) => (
-                            <Tr key={sumur.id}>
-                              <Td>{index + 1}</Td>
-                              <Td>{sumur.nama || "-"}</Td>
-                              <Td>{sumur.nomor || "-"}</Td>
-                              <Td isNumeric>
-                                {canEditProduksi ? (
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    size="sm"
-                                    w="140px"
-                                    ml="auto"
-                                    bg="white"
-                                    value={produksiPanel.inputs[sumur.id] ?? ""}
-                                    onChange={(e) =>
-                                      handleProduksiInputChange(
-                                        sumur.id,
-                                        e.target.value,
-                                      )
-                                    }
-                                    placeholder="0"
-                                  />
-                                ) : produksiPanel.inputs[sumur.id] !== "" &&
-                                  produksiPanel.inputs[sumur.id] != null ? (
-                                  <VolumeMultiSatuan
-                                    volume={produksiPanel.inputs[sumur.id]}
-                                    satuan={produksiSatuanLabel}
-                                  />
-                                ) : (
-                                  "-"
-                                )}
-                              </Td>
-                            </Tr>
-                          ))}
-                        </Tbody>
-                      </Table>
-                    </Box>
-
-                    <Flex
-                      align={{ base: "stretch", md: "center" }}
-                      direction={{ base: "column", md: "row" }}
-                      gap={3}
-                      justify="space-between"
-                    >
-                      <Box>
-                        <HStack spacing={1} align="start" mb={1}>
-                          <Text fontSize="sm" color="gray.600">
-                            Total Produksi:
-                          </Text>
-                          <VolumeMultiSatuan
-                            volume={totalProduksiInput}
-                            satuan={produksiSatuanLabel}
-                            fontSize="sm"
-                          />
-                        </HStack>
-                        <HStack spacing={1} align="start">
-                          <Text fontSize="sm" color="gray.600">
-                            Volume Surat Jalan:
-                          </Text>
-                          <VolumeMultiSatuan
-                            volume={produksiPanel.volume}
-                            satuan={produksiPanel.satuan || satuanSurat}
-                            fontSize="sm"
-                          />
-                        </HStack>
-                        {canEditProduksi && !isProduksiTotalValid && (
-                          <Text fontSize="xs" color="red.500" mt={1}>
-                            Total produksi harus sama dengan volume surat jalan
-                          </Text>
-                        )}
-                      </Box>
-                      {canEditProduksi && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          isLoading={produksiPanel.saving}
-                          isDisabled={
-                            !isProduksiTotalValid ||
-                            !produksiPanel.satuanVolumeId ||
-                            produksiPanel.loading
-                          }
-                          onClick={saveProduksiSumur}
-                          w={{ base: "full", md: "auto" }}
-                        >
-                          Simpan Produksi
-                        </Button>
-                      )}
-                    </Flex>
+                    <ProduksiSumurList
+                      sumurList={displayedSumurList}
+                      inputs={produksiPanel.inputs}
+                      isEditing={isProduksiEditing}
+                      produksiSatuanLabel={produksiSatuanLabel}
+                      onInputChange={handleProduksiInputChange}
+                    />
                   </>
                 )}
               </SectionCard>

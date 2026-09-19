@@ -64,6 +64,51 @@ export const convertTarifFromBarrel = (tarifBarrel, satuan) => {
   return value;
 };
 
+export const roundVolumeNumber = (value, maxDecimals = 3) => {
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+  const factor = 10 ** maxDecimals;
+  return Math.round((num + Number.EPSILON) * factor) / factor;
+};
+
+export const convertVolumeBetweenSatuan = (volume, fromSatuan, toSatuan) => {
+  if (volume === null || volume === undefined || volume === "") return volume;
+  const all = convertVolumeToAllUnits(volume, fromSatuan);
+  if (!all) return null;
+  return roundVolumeNumber(all[normalizeSatuan(toSatuan)], 3);
+};
+
+export const convertProduksiInputsBySatuan = (
+  inputs,
+  fromSatuan,
+  toSatuan,
+) => {
+  if (!fromSatuan || !toSatuan) return inputs;
+  if (normalizeSatuan(fromSatuan) === normalizeSatuan(toSatuan)) return inputs;
+
+  const next = {};
+  Object.entries(inputs || {}).forEach(([key, val]) => {
+    if (val === "" || val == null) {
+      next[key] = val;
+      return;
+    }
+    const converted = convertVolumeBetweenSatuan(val, fromSatuan, toSatuan);
+    next[key] = converted == null ? val : converted;
+  });
+  return next;
+};
+
+export const parseProduksiNumber = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
+  const raw = String(value).trim();
+  const normalized = raw.includes(".")
+    ? raw.replace(/,/g, "")
+    : raw.replace(",", ".");
+  const rounded = roundVolumeNumber(normalized, 3);
+  if (rounded === null || rounded <= 0) return 0;
+  return rounded;
+};
+
 export const formatVolumeNumber = (num, maxDecimals = 3) => {
   if (num === null || Number.isNaN(num)) return "-";
   return new Intl.NumberFormat("id-ID", {
@@ -90,4 +135,11 @@ export const isVolumeEqual = (volumeA, satuanA, volumeB, satuanB) => {
   const literB = convertVolumeToLiter(volumeB, satuanB);
   if (literA === null || literB === null) return false;
   return Math.abs(literA - literB) < 0.001;
+};
+
+export const isVolumeOver = (volumeA, satuanA, volumeB, satuanB) => {
+  const literA = convertVolumeToLiter(volumeA, satuanA);
+  const literB = convertVolumeToLiter(volumeB, satuanB);
+  if (literA === null || literB === null) return false;
+  return literA - literB > 0.001;
 };

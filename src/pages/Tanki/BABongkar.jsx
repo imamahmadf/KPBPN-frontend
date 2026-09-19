@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { useSelector } from "react-redux";
+import { userRedux } from "../../Redux/Reducers/auth";
 import ReactPaginate from "react-paginate";
 import ExcelJS from "exceljs";
 import "../../Style/pagination.css";
@@ -50,6 +52,7 @@ import {
   BsPencil,
   BsDownload,
 } from "react-icons/bs";
+import { Link as RouterLink, useHistory } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import { formatVolumeNumber } from "../../lib/volumeSatuan";
@@ -279,8 +282,12 @@ const groupPengisianByTangki = (items) => {
   );
 };
 
+const getPembuatNama = (item) => item?.userKPBPN?.nama || "-";
+
 const BABongkar = () => {
   const toast = useToast();
+  const history = useHistory();
+  const user = useSelector(userRedux);
   const [dataBA, setDataBA] = useState([]);
   const [dataTanki, setDataTanki] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -453,6 +460,7 @@ const BABongkar = () => {
         "No",
         "ID BA",
         "Tanggal BA",
+        "Dibuat oleh",
         "Ukuran Cairan (cm)",
         "Ukuran Air (cm)",
         "Factor Tank",
@@ -485,6 +493,7 @@ const BABongkar = () => {
             rowNumber,
             ba.id,
             formatDate(ba.tanggal),
+            getPembuatNama(ba),
             formatUkuranColumn(ba, "ukuranCairan"),
             formatUkuranColumn(ba, "ukuranAir"),
             getUniqueFactorTankLabels(ba),
@@ -524,6 +533,7 @@ const BABongkar = () => {
             pengisianIndex === 0 ? rowNumber : "",
             pengisianIndex === 0 ? ba.id : "",
             pengisianIndex === 0 ? formatDate(ba.tanggal) : "",
+            pengisianIndex === 0 ? getPembuatNama(ba) : "",
             ukuran.ukuranCairan ?? "-",
             ukuran.ukuranAir ?? "-",
             formatFactorTank(item.tanki?.factorTank),
@@ -719,23 +729,23 @@ const BABongkar = () => {
       formData.append("BSNW", bak3sForm.BSNW);
       formData.append("produksi", bak3sForm.produksi);
       formData.append("sg", bak3sForm.sg);
+      if (user?.id) formData.append("userKPBPNId", user.id);
       if (bak3sForm.file) formData.append("dokumen", bak3sForm.file);
 
-      if (bak3sTarget.bak3s?.id) {
-        await axios.post(
-          `${API_BASE}/tanki/edit/bak3s/${bak3sTarget.bak3s.id}`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } },
-        );
-      } else {
-        await axios.post(`${API_BASE}/tanki/post/bak3s`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      }
+      const isEdit = Boolean(bak3sTarget.bak3s?.id);
+      const res = isEdit
+        ? await axios.post(
+            `${API_BASE}/tanki/edit/bak3s/${bak3sTarget.bak3s.id}`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } },
+          )
+        : await axios.post(`${API_BASE}/tanki/post/bak3s`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
 
       toast({
         title: "Berhasil",
-        description: bak3sTarget.bak3s?.id
+        description: isEdit
           ? "BAK3S berhasil diperbarui"
           : "BAK3S berhasil disimpan",
         status: "success",
@@ -744,6 +754,11 @@ const BABongkar = () => {
       });
       closeBak3sModal();
       fetchDataBA();
+
+      const createdId = res.data?.result?.id;
+      if (!isEdit && createdId) {
+        history.push(`/tanki-kpbpn/detail-bak3s/${createdId}`);
+      }
     } catch (err) {
       toast({
         title: "Gagal menyimpan BAK3S",
@@ -1079,6 +1094,7 @@ const BABongkar = () => {
         {
           tanggal: baTanggal,
           tanki: tankiPayload,
+          userKPBPNId: user?.id || null,
         },
         { responseType: "blob" },
       );
@@ -1145,7 +1161,7 @@ const BABongkar = () => {
     fetchDataBA();
   }, [page, tanggalAwal, tanggalAkhir, tangkiFilterId, baIdFilter]);
 
-  const colSpan = 12;
+  const colSpan = 13;
 
   return (
     <LayoutKPBPN>
@@ -1259,6 +1275,7 @@ const BABongkar = () => {
                     <Th>Volume (barrel)</Th>
                     <Th>Jumlah Pengisian</Th>
                     <Th>Tangki</Th>
+                    <Th>Dibuat oleh</Th>
                     <Th>BAK3S</Th>
                     <Th>Aksi</Th>
                   </Tr>
@@ -1306,6 +1323,7 @@ const BABongkar = () => {
                             <Td isNumeric>{getVolumeLabelsForBA(ba)}</Td>
                             <Td>{pengisianList.length}</Td>
                             <Td>{getUniqueTankiKodes(ba)}</Td>
+                            <Td>{getPembuatNama(ba)}</Td>
                             <Td>
                               {ba.BAK3S ? (
                                 <Badge colorScheme="green">Ada</Badge>
@@ -1325,14 +1343,24 @@ const BABongkar = () => {
                                   Cetak Ulang BA
                                 </Button>
                                 {ba.BAK3S ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    leftIcon={<BsPencil />}
-                                    onClick={() => openEditBak3s(ba)}
-                                  >
-                                    Edit BAK3S
-                                  </Button>
+                                  <>
+                                    <Button
+                                      as={RouterLink}
+                                      to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
+                                      size="sm"
+                                      colorScheme="orange"
+                                    >
+                                      Detail BAK3S
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      leftIcon={<BsPencil />}
+                                      onClick={() => openEditBak3s(ba)}
+                                    >
+                                      Edit BAK3S
+                                    </Button>
+                                  </>
                                 ) : (
                                   <Button
                                     size="sm"
@@ -1376,6 +1404,14 @@ const BABongkar = () => {
                                         {ba.BAK3S ? (
                                           <>
                                             <Button
+                                              as={RouterLink}
+                                              to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
+                                              size="xs"
+                                              colorScheme="orange"
+                                            >
+                                              Detail
+                                            </Button>
+                                            <Button
                                               size="xs"
                                               variant="outline"
                                               leftIcon={<BsPencil />}
@@ -1408,7 +1444,7 @@ const BABongkar = () => {
                                     </HStack>
                                     {ba.BAK3S ? (
                                       <SimpleGrid
-                                        columns={{ base: 2, md: 5 }}
+                                        columns={{ base: 2, md: 6 }}
                                         spacing={3}
                                       >
                                         <Box>
@@ -1441,6 +1477,14 @@ const BABongkar = () => {
                                           </Text>
                                           <Text fontSize="sm" fontWeight="medium">
                                             {formatAngka(ba.BAK3S.sg)}
+                                          </Text>
+                                        </Box>
+                                        <Box>
+                                          <Text fontSize="xs" color="gray.500">
+                                            Dibuat oleh
+                                          </Text>
+                                          <Text fontSize="sm" fontWeight="medium">
+                                            {getPembuatNama(ba.BAK3S)}
                                           </Text>
                                         </Box>
                                         <Box>
@@ -1734,6 +1778,14 @@ const BABongkar = () => {
                 Setiap BA Bongkar hanya memiliki satu BAK3S. Isi API, BSNW,
                 produksi, SG, dan unggah dokumen.
               </Text>
+              {!bak3sTarget?.bak3s?.id && (
+                <Text fontSize="sm" color="gray.500">
+                  Dokumen akan tercatat atas nama:{" "}
+                  <Text as="span" fontWeight="semibold" color="gray.700">
+                    {user?.nama || "-"}
+                  </Text>
+                </Text>
+              )}
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
                 <FormControl isRequired>
                   <FormLabel>API</FormLabel>
@@ -1866,6 +1918,12 @@ const BABongkar = () => {
                 Jika OFFSPEC, lakukan pencampuran bahan kimia lalu uji ulang.
                 Setiap tanki menjadi satu baris terpisah dalam dokumen BA
                 Bongkar.
+              </Text>
+              <Text fontSize="sm" color="gray.500">
+                Dokumen akan tercatat atas nama:{" "}
+                <Text as="span" fontWeight="semibold" color="gray.700">
+                  {user?.nama || "-"}
+                </Text>
               </Text>
               {selectedIds.length > 0 && (
                 <Text fontSize="sm" color="kpbpn" fontWeight="medium">

@@ -33,8 +33,10 @@ import {
   TableContainer,
   Badge,
 } from "@chakra-ui/react";
+import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
+import { userRedux } from "../../Redux/Reducers/auth";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -151,6 +153,7 @@ const getLinkedTankiKode = (kp) =>
 const TambahPengisianTanki = () => {
   const toast = useToast();
   const history = useHistory();
+  const user = useSelector(userRedux);
   const [dataTanki, setDataTanki] = useState([]);
   const [dataSatuanVolume, setDataSatuanVolume] = useState([]);
   const [dataKonfirmasi, setDataKonfirmasi] = useState([]);
@@ -210,6 +213,7 @@ const TambahPengisianTanki = () => {
         saksi: values.saksi || null,
         satuanVolumeId: parseInt(values.satuanVolumeId, 10),
         ids: values.ids.map((id) => parseInt(id, 10)),
+        userKPBPNId: user?.id || null,
       });
 
       toast({
@@ -243,7 +247,15 @@ const TambahPengisianTanki = () => {
       <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
         <Container variant="primary" p="30px" my="30px" minW="1000px">
           <HStack justify="space-between" mb={6}>
-            <Heading color="kpbpn">Buat BAST</Heading>
+            <VStack align="start" spacing={1}>
+              <Heading color="kpbpn">Buat BAST</Heading>
+              <Text fontSize="sm" color="gray.500">
+                Dokumen akan tercatat atas nama:{" "}
+                <Text as="span" fontWeight="semibold" color="gray.700">
+                  {user?.nama || "-"}
+                </Text>
+              </Text>
+            </VStack>
             <Button
               variant="outline"
               onClick={() => history.push("/tanki-kpbpn/pengisian")}

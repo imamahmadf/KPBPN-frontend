@@ -24,6 +24,7 @@ import SuratJalan from "./pages/PengirimanAdminKPBPN/SuratJalan.jsx";
 import SuratJalanMitra from "./pages/PengirimanMitraKPBPN/SuratJalanMitra.jsx";
 import PengisianTanki from "./pages/Tanki/PengisianTanki.jsx";
 import BABongkar from "./pages/Tanki/BABongkar.jsx";
+import DetailBAK3S from "./pages/Tanki/DetailBAK3S.jsx";
 import TambahPengisianTanki from "./pages/Tanki/TambahPengisianTanki.jsx";
 import DaftarTanki from "./pages/Tanki/DaftarTanki.jsx";
 import AdminDashborad from "./pages/Dashboard/AdminDashborad.jsx";
@@ -133,6 +134,13 @@ function App() {
           <ProtectedRoute
             component={BABongkar}
             path="/tanki-kpbpn/ba-bongkar"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={DetailBAK3S}
+            path="/tanki-kpbpn/detail-bak3s/:id"
             exact
             roleRoute={[1, 2]}
           />

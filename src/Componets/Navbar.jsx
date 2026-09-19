@@ -296,15 +296,17 @@ function Navbar() {
     );
   }, [userRoleIds]);
 
+  const userId = user?.id || user?.[0]?.id;
+  const resolvedProfilePic =
+    user?.profilePic || user?.[0]?.profilePic || profilePic;
+
   // Fetch foto profile
   const fetchProfilePic = useCallback(async () => {
-    if (!isAuthenticated || !user || !user[0]?.id) return;
+    if (!isAuthenticated || !userId) return;
     try {
       const token = localStorage.getItem("token");
       const response = await axios.get(
-        `${import.meta.env.VITE_REACT_APP_API_BASE_URL}/user/profile/${
-          user[0].id
-        }`,
+        `${import.meta.env.VITE_REACT_APP_API_BASE_URL}/user-kpbpn/profile/${userId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -315,21 +317,21 @@ function Navbar() {
     } catch (error) {
       console.error("Error fetching profile pic:", error);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, userId]);
 
   // Fetch foto profile saat mount atau saat authenticated berubah
   useEffect(() => {
-    if (isAuthenticated && user && user[0]?.id) {
+    if (isAuthenticated && userId) {
       fetchProfilePic();
     } else {
       setProfilePic(null);
     }
-  }, [isAuthenticated, user, fetchProfilePic]);
+  }, [isAuthenticated, userId, fetchProfilePic]);
 
   // Refresh foto profile saat kembali ke halaman (misalnya setelah upload foto)
   useEffect(() => {
     const handleFocus = () => {
-      if (isAuthenticated && user && user[0]?.id) {
+      if (isAuthenticated && userId) {
         fetchProfilePic();
       }
     };
@@ -340,7 +342,7 @@ function Navbar() {
     return () => {
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isAuthenticated, user, fetchProfilePic]);
+  }, [isAuthenticated, userId, fetchProfilePic]);
 
   // Color mode values untuk mobile drawer (dari Style folder)
   const {
@@ -1072,8 +1074,8 @@ function Navbar() {
                           size="sm"
                           name={displayName}
                           src={
-                            profilePic
-                              ? `${import.meta.env.VITE_REACT_APP_API_BASE_URL}${profilePic}`
+                            resolvedProfilePic
+                              ? `${import.meta.env.VITE_REACT_APP_API_BASE_URL}${resolvedProfilePic}`
                               : undefined
                           }
                           bg="primary"
@@ -1120,8 +1122,8 @@ function Navbar() {
                               size="xs"
                               name={displayName}
                               src={
-                                profilePic
-                                  ? `${import.meta.env.VITE_REACT_APP_API_BASE_URL}${profilePic}`
+                                resolvedProfilePic
+                                  ? `${import.meta.env.VITE_REACT_APP_API_BASE_URL}${resolvedProfilePic}`
                                   : undefined
                               }
                             />
@@ -1246,10 +1248,10 @@ function Navbar() {
                         size="lg"
                         name={user[0]?.nama}
                         src={
-                          profilePic
+                          resolvedProfilePic
                             ? `${
                                 import.meta.env.VITE_REACT_APP_API_BASE_URL
-                              }${profilePic}`
+                              }${resolvedProfilePic}`
                             : undefined
                         }
                         border="3px solid"
@@ -1300,10 +1302,10 @@ function Navbar() {
                           size="xs"
                           name={user[0]?.nama}
                           src={
-                            profilePic
+                            resolvedProfilePic
                               ? `${
                                   import.meta.env.VITE_REACT_APP_API_BASE_URL
-                                }${profilePic}`
+                                }${resolvedProfilePic}`
                               : undefined
                           }
                         />

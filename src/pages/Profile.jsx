@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import Layout from "../Componets/Layout";
 import { useDisclosure } from "@chakra-ui/react";
@@ -35,12 +35,13 @@ import {
   IconButton,
   useToast,
 } from "@chakra-ui/react";
-import { FaEye, FaEyeSlash, FaLock } from "react-icons/fa";
-import { useSelector } from "react-redux";
-import { userRedux } from "../Redux/Reducers/auth";
+import { FaEye, FaEyeSlash, FaLock, FaUser, FaEdit, FaCamera } from "react-icons/fa";
+import { useDispatch, useSelector } from "react-redux";
+import { persistUpdatedUser, userRedux } from "../Redux/Reducers/auth";
 
 function Profile() {
   const user = useSelector(userRedux);
+  const dispatch = useDispatch();
   const toast = useToast();
   const [dataProfile, setDataProfile] = useState(null);
 
@@ -49,12 +50,34 @@ function Profile() {
     onOpen: onOpenGantiPassword,
     onClose: onCloseGantiPassword,
   } = useDisclosure();
+  const {
+    isOpen: isOpenEditProfil,
+    onOpen: onOpenEditProfil,
+    onClose: onCloseEditProfil,
+  } = useDisclosure();
   const [passwordLama, setPasswordLama] = useState("");
   const [passwordBaru, setPasswordBaru] = useState("");
   const [showPasswordLama, setShowPasswordLama] = useState(false);
   const [showPasswordBaru, setShowPasswordBaru] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingProfil, setIsSavingProfil] = useState(false);
+  const [formNama, setFormNama] = useState("");
+  const [formNamaPengguna, setFormNamaPengguna] = useState("");
+  const {
+    isOpen: isOpenEditFoto,
+    onOpen: onOpenEditFoto,
+    onClose: onCloseEditFoto,
+  } = useDisclosure();
+  const fileInputRef = useRef(null);
+  const [selectedFoto, setSelectedFoto] = useState(null);
+  const [previewFoto, setPreviewFoto] = useState(null);
+  const [isUploadingFoto, setIsUploadingFoto] = useState(false);
   const token = localStorage.getItem("token");
+
+  const getFotoUrl = (profilePic) =>
+    profilePic
+      ? `${import.meta.env.VITE_REACT_APP_API_BASE_URL}${profilePic}`
+      : Foto;
 
   async function fetchProfile() {
     try {
@@ -62,6 +85,11 @@ function Profile() {
         `${import.meta.env.VITE_REACT_APP_API_BASE_URL}/user-kpbpn/profile/${user.id}`,
       );
       setDataProfile(res.data.result);
+      if (res.data.result?.profilePic) {
+        dispatch(
+          persistUpdatedUser({ profilePic: res.data.result.profilePic }),
+        );
+      }
     } catch (err) {
       console.error(err);
     }
@@ -72,6 +100,199 @@ function Profile() {
       fetchProfile();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (previewFoto) {
+        URL.revokeObjectURL(previewFoto);
+      }
+    };
+  }, [previewFoto]);
+
+  const handleOpenEditProfil = () => {
+    setFormNama(dataProfile?.nama || "");
+    setFormNamaPengguna(dataProfile?.namaPengguna || "");
+    onOpenEditProfil();
+  };
+
+  const handleUpdateProfile = async () => {
+    const nama = formNama.trim();
+    const namaPengguna = formNamaPengguna.trim();
+
+    if (!nama || !namaPengguna) {
+      toast({
+        title: "Error",
+        description: "Nama dan nama pengguna harus diisi",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (namaPengguna.length < 3) {
+      toast({
+        title: "Error",
+        description: "Nama pengguna minimal 3 karakter",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSavingProfil(true);
+    try {
+      const res = await axios.put(
+        `${import.meta.env.VITE_REACT_APP_API_BASE_URL}/user-kpbpn/update-profile`,
+        { nama, namaPengguna },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      const updated = res.data.result;
+      setDataProfile(updated);
+      dispatch(
+        persistUpdatedUser({
+          id: updated.id,
+          nama: updated.nama,
+          namaPengguna: updated.namaPengguna,
+          mitraId: updated.mitraId,
+          profilePic: updated.profilePic,
+        }),
+      );
+
+      toast({
+        title: "Berhasil",
+        description: res.data.message || "Profil berhasil diperbarui",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      onCloseEditProfil();
+    } catch (err) {
+      const errorMessage =
+        err.response?.data?.message ||
+        "Gagal mengubah profil. Silakan coba lagi.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSavingProfil(false);
+    }
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: "Error",
+        description: "Ukuran file maksimal 2MB",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Error",
+        description: "File harus berupa gambar",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setSelectedFoto(file);
+    const preview = URL.createObjectURL(file);
+    setPreviewFoto(preview);
+  };
+
+  const handleCancelEditFoto = () => {
+    setSelectedFoto(null);
+    if (previewFoto) {
+      URL.revokeObjectURL(previewFoto);
+    }
+    setPreviewFoto(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    onCloseEditFoto();
+  };
+
+  const handleUploadFoto = async () => {
+    if (!selectedFoto) {
+      toast({
+        title: "Error",
+        description: "Silakan pilih foto terlebih dahulu",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsUploadingFoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", selectedFoto);
+      if (dataProfile?.profilePic) {
+        formData.append("old_img", dataProfile.profilePic);
+      }
+
+      const res = await axios.post(
+        `${import.meta.env.VITE_REACT_APP_API_BASE_URL}/user-kpbpn/profile/photo`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        },
+      );
+
+      const newPhoto = res.data.photo;
+      setDataProfile((prev) => ({
+        ...prev,
+        profilePic: newPhoto,
+      }));
+      dispatch(persistUpdatedUser({ profilePic: newPhoto }));
+
+      toast({
+        title: "Berhasil",
+        description: res.data.message || "Foto profil berhasil diubah",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      handleCancelEditFoto();
+    } catch (err) {
+      const errorMessage =
+        err.response?.data?.message ||
+        "Gagal mengubah foto profil. Silakan coba lagi.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsUploadingFoto(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     // Validasi
     if (!passwordLama || !passwordBaru) {
@@ -154,6 +375,14 @@ function Profile() {
               <>
                 <Flex justify="space-between" align="center" mb={"30px"}>
                   <Heading size="lg">Profil Pengguna</Heading>
+                  <Button
+                    colorScheme="blue"
+                    variant="outline"
+                    leftIcon={<Icon as={FaEdit} />}
+                    onClick={handleOpenEditProfil}
+                  >
+                    Edit Profil
+                  </Button>
                 </Flex>
 
                 <Box mb={"30px"}>
@@ -167,15 +396,28 @@ function Profile() {
                     p={"20px"}
                   >
                     <Flex align="center" gap={6}>
-                      <Image
-                        src={Foto}
-                        alt="Foto Profile"
-                        boxSize="150px"
-                        borderRadius="full"
-                        objectFit="cover"
-                        border="4px solid"
-                        borderColor="blue.200"
-                      />
+                      <Box position="relative">
+                        <Image
+                          src={getFotoUrl(dataProfile.profilePic)}
+                          alt="Foto Profile"
+                          boxSize="150px"
+                          borderRadius="full"
+                          objectFit="cover"
+                          border="4px solid"
+                          borderColor="blue.200"
+                        />
+                        <IconButton
+                          aria-label="Edit foto profile"
+                          icon={<FaCamera />}
+                          position="absolute"
+                          bottom="0"
+                          right="0"
+                          colorScheme="blue"
+                          borderRadius="full"
+                          size="sm"
+                          onClick={onOpenEditFoto}
+                        />
+                      </Box>
                       <VStack align="start" spacing={2}>
                         <Text fontSize="md" fontWeight="medium">
                           {dataProfile.nama}
@@ -183,6 +425,15 @@ function Profile() {
                         <Text fontSize="sm" color="gray.500">
                           {dataProfile.namaPengguna}
                         </Text>
+                        <Button
+                          leftIcon={<Icon as={FaCamera} />}
+                          colorScheme="blue"
+                          variant="outline"
+                          size="sm"
+                          onClick={onOpenEditFoto}
+                        >
+                          Ubah Foto
+                        </Button>
                       </VStack>
                     </Flex>
                   </Box>
@@ -271,6 +522,153 @@ function Profile() {
           </Box>
         </Container>
       </Box>
+
+      {/* Modal Edit Profil */}
+      <Modal
+        isOpen={isOpenEditProfil}
+        onClose={onCloseEditProfil}
+        size="md"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Edit Profil</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <VStack spacing={4}>
+              <FormControl>
+                <FormLabel display="flex" alignItems="center" gap={2}>
+                  <Icon as={FaUser} />
+                  Nama
+                </FormLabel>
+                <Input
+                  placeholder="Masukkan nama"
+                  value={formNama}
+                  onChange={(e) => setFormNama(e.target.value)}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel display="flex" alignItems="center" gap={2}>
+                  <Icon as={FaUser} />
+                  Nama Pengguna
+                </FormLabel>
+                <Input
+                  placeholder="Masukkan nama pengguna"
+                  value={formNamaPengguna}
+                  onChange={(e) => setFormNamaPengguna(e.target.value)}
+                />
+                <FormHelperText>
+                  Nama pengguna minimal 3 karakter dan harus unik
+                </FormHelperText>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Role</FormLabel>
+                <Input
+                  value={
+                    dataProfile?.userRoleKPBPNs?.length > 0
+                      ? dataProfile.userRoleKPBPNs
+                          .map((userRole) => userRole.roleKPBPN?.name)
+                          .filter(Boolean)
+                          .join(", ")
+                      : "-"
+                  }
+                  isReadOnly
+                  bg="gray.100"
+                  cursor="not-allowed"
+                />
+                <FormHelperText>
+                  Role tidak dapat diubah dari halaman ini
+                </FormHelperText>
+              </FormControl>
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              variant="ghost"
+              mr={3}
+              onClick={onCloseEditProfil}
+              isDisabled={isSavingProfil}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={handleUpdateProfile}
+              isLoading={isSavingProfil}
+              loadingText="Menyimpan..."
+            >
+              Simpan Perubahan
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modal Edit Foto Profile */}
+      <Modal isOpen={isOpenEditFoto} onClose={handleCancelEditFoto} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Ubah Foto Profile</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <VStack spacing={4}>
+              <FormControl>
+                <FormLabel>Pilih Foto</FormLabel>
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  display="none"
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  leftIcon={<Icon as={FaCamera} />}
+                  variant="outline"
+                  width="full"
+                >
+                  Pilih Foto
+                </Button>
+                <FormHelperText>
+                  Format: JPG, PNG, atau GIF. Maksimal 2MB
+                </FormHelperText>
+              </FormControl>
+
+              <Image
+                src={previewFoto || getFotoUrl(dataProfile?.profilePic)}
+                alt="Preview foto"
+                boxSize="200px"
+                borderRadius="full"
+                objectFit="cover"
+                border="2px solid"
+                borderColor="gray.200"
+                mx="auto"
+              />
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              variant="ghost"
+              mr={3}
+              onClick={handleCancelEditFoto}
+              isDisabled={isUploadingFoto}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={handleUploadFoto}
+              isLoading={isUploadingFoto}
+              loadingText="Mengupload..."
+              isDisabled={!selectedFoto}
+            >
+              Simpan Foto
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       {/* Modal Ganti Password */}
       <Modal

@@ -113,6 +113,8 @@ const getPengisianSatuan = (item) => {
 const getPengisianSatuanOrDefault = (item) =>
   getPengisianSatuan(item) || "Barrel";
 
+const getPembuatNama = (item) => item.userKPBPN?.nama || "-";
+
 const getLinkedTankiKode = (kp) =>
   Array.from(
     new Set(
@@ -122,7 +124,7 @@ const getLinkedTankiKode = (kp) =>
     ),
   );
 
-const PENGISIAN_TANKI_COL_COUNT = 15;
+const PENGISIAN_TANKI_COL_COUNT = 16;
 
 const MobileField = ({ label, children }) => (
   <Box>
@@ -922,6 +924,9 @@ const PengisianTanki = () => {
                           <MobileField label="Saksi">
                             {item.saksi || "-"}
                           </MobileField>
+                          <MobileField label="Dibuat oleh">
+                            {getPembuatNama(item)}
+                          </MobileField>
                           <MobileField label="Nomor Surat BAST">
                             {item.nomorSurat || (
                               <Badge colorScheme="gray">Belum ada</Badge>
@@ -994,6 +999,7 @@ const PengisianTanki = () => {
                       <Th>BSW</Th>
                       <Th>Catatan</Th>
                       <Th>Saksi</Th>
+                      <Th>Dibuat oleh</Th>
                       <Th>No. Plat Kendaraan</Th>
                       <Th>Nomor Surat BAST</Th>
                       <Th>Status BA</Th>
@@ -1048,6 +1054,7 @@ const PengisianTanki = () => {
                                 {item.catatan || "-"}
                               </Td>
                               <Td>{item.saksi || "-"}</Td>
+                              <Td>{getPembuatNama(item)}</Td>
                               <Td>{renderPlatCell(item)}</Td>
                               <Td>
                                 {item.nomorSurat ? (
