@@ -464,7 +464,10 @@ const SuratJalanMitra = () => {
     try {
       const res = await axios.get(
         `${API_BASE}/pengiriman/get/cetak/${item.id}`,
-        { params: { format }, responseType: "blob" },
+        {
+          params: { format, frontendUrl: window.location.origin },
+          responseType: "blob",
+        },
       );
 
       const isDocx = format === "docx";

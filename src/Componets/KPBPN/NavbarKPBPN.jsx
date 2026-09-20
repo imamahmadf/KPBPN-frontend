@@ -98,6 +98,7 @@ const menuData = [
       { label: "Pengisian Tanki", path: "/tanki-kpbpn/pengisian" },
       { label: "Tambah Pengisian", path: "/tanki-kpbpn/tambah-pengisian" },
       { label: "Daftar Tanki", path: "/tanki-kpbpn/daftar-tanki" },
+      { label: "Riwayat Tanki", path: "/tanki-kpbpn/riwayat" },
     ],
   },
   {

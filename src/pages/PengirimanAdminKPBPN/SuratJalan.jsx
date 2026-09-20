@@ -106,25 +106,17 @@ const decimalFieldSchema = (label) =>
       return num !== null && num >= 0;
     });
 
-const fotoFieldSchema = (name, requiredMessage, invalidMessage) =>
+const optionalFotoSchema = (invalidMessage) =>
   Yup.mixed()
     .nullable()
-    .test("foto-required", requiredMessage, function (value) {
-      if (value instanceof File) return true;
-      if (this.parent[name]) return true;
-      return false;
-    })
     .test("is-file", invalidMessage, (value) => {
       if (!value) return true;
       return value instanceof File;
     });
 
 const konfirmasiTibaSchema = Yup.object({
-  foto: fotoFieldSchema(
-    "fotoPreview",
-    "Foto bukti penerimaan wajib diunggah",
-    "Foto tidak valid",
-  ),
+  jamKedatangan: Yup.string().required("Jam kedatangan wajib diisi"),
+  foto: optionalFotoSchema("Foto tidak valid"),
 });
 
 const konfirmasiBongkarSchema = Yup.object({
@@ -136,15 +128,12 @@ const konfirmasiBongkarSchema = Yup.object({
   catatan: Yup.string().nullable(),
   api: decimalFieldSchema("API"),
   BSNW: decimalFieldSchema("BSNW"),
-  fotoLab: fotoFieldSchema(
-    "fotoLabPreview",
-    "Foto lab wajib diunggah",
-    "Foto lab tidak valid",
-  ),
+  fotoLab: optionalFotoSchema("Foto lab tidak valid"),
 });
 
 const initialValuesKonfirmasi = {
   tanggal: "",
+  jamKedatangan: "",
   volume: "",
 
   catatan: "",
@@ -319,6 +308,27 @@ const toDateInput = (value) => {
   const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
+
+const toTimeInput = (value) => {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2, "0")}:${String(
+      value.getMinutes(),
+    ).padStart(2, "0")}`;
+  }
+  const str = String(value).trim();
+  const timeOnly = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) {
+    return `${timeOnly[1].padStart(2, "0")}:${timeOnly[2]}`;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+};
+
+const formatJam = (value) => toTimeInput(value) || "-";
 
 const toDateTimeLocalInput = (value) => {
   if (!value) return "";
@@ -510,6 +520,8 @@ const SuratJalan = () => {
       return {
         tanggal:
           toDateInput(editingKonfirmasi.tanggal) || toDateInput(new Date()),
+        jamKedatangan:
+          toTimeInput(editingKonfirmasi.jamKedatangan) || toTimeInput(new Date()),
         volume:
           editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
         catatan: editingKonfirmasi.catatan || "",
@@ -524,6 +536,7 @@ const SuratJalan = () => {
 
     return {
       ...initialValuesKonfirmasi,
+      jamKedatangan: toTimeInput(new Date()),
       volume: selectedSuratJalan?.volume ?? "",
     };
   }, [editingKonfirmasi, selectedSuratJalan]);
@@ -1032,6 +1045,7 @@ const SuratJalan = () => {
       if (isTiba) {
         if (values.foto instanceof File) formData.append("foto", values.foto);
         formData.append("suratJalanId", suratJalanId);
+        formData.append("jamKedatangan", values.jamKedatangan);
         if (user?.id) formData.append("userPKId", user.id);
         await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
       } else {
@@ -2183,9 +2197,9 @@ const SuratJalan = () => {
               </Text>
               <Text fontSize="xs" color="gray.400" mt={1}>
                 {konfirmasiMode === "tiba"
-                  ? "Langkah 1 dari 2: unggah foto bukti penerimaan"
+                  ? "Langkah 1 dari 2: isi jam kedatangan. Foto bukti penerimaan opsional"
                   : konfirmasiMode === "bongkar"
-                    ? "Langkah 2 dari 2: isi data bongkar dan foto lab"
+                    ? "Langkah 2 dari 2: isi data bongkar. Foto lab opsional"
                     : "Perbarui data konfirmasi bongkar"}
               </Text>
               {(konfirmasiMode === "tiba" || konfirmasiMode === "bongkar") && (
@@ -2320,23 +2334,44 @@ const SuratJalan = () => {
                     )}
 
                     {konfirmasiMode === "tiba" && (
-                      <Box gridColumn={{ md: "span 2" }}>
-                        <FileUploadField
-                          label="Foto Bukti Penerimaan"
-                          preview={values.fotoPreview}
-                          touched={touched.foto}
-                          error={errors.foto}
+                      <>
+                        <FormControl
                           isRequired
-                          onChange={(file) => {
-                            setFieldValue("foto", file);
-                            setFieldValue(
-                              "fotoPreview",
-                              file ? URL.createObjectURL(file) : "",
-                            );
-                            setFieldTouched("foto", true);
-                          }}
-                        />
-                      </Box>
+                          isInvalid={
+                            touched.jamKedatangan && errors.jamKedatangan
+                          }
+                        >
+                          <FormLabel>Jam Kedatangan</FormLabel>
+                          <Input
+                            name="jamKedatangan"
+                            type="time"
+                            bgColor="terang"
+                            value={values.jamKedatangan}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                          />
+                          <FormErrorMessage>
+                            {errors.jamKedatangan}
+                          </FormErrorMessage>
+                        </FormControl>
+                        <Box gridColumn={{ md: "span 2" }}>
+                          <FileUploadField
+                            label="Foto Bukti Penerimaan"
+                            preview={values.fotoPreview}
+                            touched={touched.foto}
+                            error={errors.foto}
+                            isRequired={false}
+                            onChange={(file) => {
+                              setFieldValue("foto", file);
+                              setFieldValue(
+                                "fotoPreview",
+                                file ? URL.createObjectURL(file) : "",
+                              );
+                              setFieldTouched("foto", true);
+                            }}
+                          />
+                        </Box>
+                      </>
                     )}
 
                     {konfirmasiMode !== "tiba" && (
@@ -2346,7 +2381,7 @@ const SuratJalan = () => {
                           preview={values.fotoLabPreview}
                           touched={touched.fotoLab}
                           error={errors.fotoLab}
-                          isRequired={konfirmasiMode === "bongkar"}
+                          isRequired={false}
                           onChange={(file) => {
                             setFieldValue("fotoLab", file);
                             setFieldValue(
@@ -2383,13 +2418,12 @@ const SuratJalan = () => {
                       const formErrors = await validateForm();
                       setTouched(
                         konfirmasiMode === "tiba"
-                          ? { foto: true }
+                          ? { jamKedatangan: true }
                           : {
                               tanggal: true,
                               volume: true,
                               api: true,
                               BSNW: true,
-                              fotoLab: true,
                             },
                       );
                       if (Object.keys(formErrors || {}).length) {
@@ -2501,6 +2535,9 @@ const SuratJalan = () => {
                       </MobileField>
                       <MobileField label="Tanggal">
                         {formatTanggal(kp.tanggal)}
+                      </MobileField>
+                      <MobileField label="Jam Kedatangan">
+                        {formatJam(kp.jamKedatangan)}
                       </MobileField>
                       <MobileField label="Volume Diterima">
                         <VolumeMultiSatuan

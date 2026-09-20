@@ -53,6 +53,22 @@ export const formatDateTime = (value) => {
   });
 };
 
+export const formatJam = (value) => {
+  if (!value) return "-";
+  const str = String(value).trim();
+  const timeOnly = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) {
+    return `${timeOnly[1].padStart(2, "0")}:${timeOnly[2]}`;
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return str;
+  return d.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
 export const formatAngka = (value, digits = 3) => {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);

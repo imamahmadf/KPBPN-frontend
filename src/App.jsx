@@ -50,6 +50,7 @@ import LaporanSuratJalan from "./pages/Laporan/LaporanSuratJalan.jsx";
 import LaporanBABongkar from "./pages/Laporan/LaporanBABongkar.jsx";
 import LaporanKonfirmasiPenerimaan from "./pages/Laporan/LaporanKonfirmasiPenerimaan.jsx";
 import LaporanKeuangan from "./pages/Laporan/LaporanKeuangan.jsx";
+import RiwayatTanki from "./pages/Tanki/RiwayatTanki.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -188,6 +189,13 @@ function App() {
           <ProtectedRoute
             component={StokOpname}
             path="/tanki-kpbpn/stok-opname"
+            exact
+            roleRoute={[1, 2]}
+          />
+
+          <ProtectedRoute
+            component={RiwayatTanki}
+            path="/tanki-kpbpn/riwayat"
             exact
             roleRoute={[1, 2]}
           />

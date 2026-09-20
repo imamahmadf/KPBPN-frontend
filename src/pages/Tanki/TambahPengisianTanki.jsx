@@ -217,7 +217,7 @@ const TambahPengisianTanki = () => {
       const gross = parseInt(values.gross, 10);
       const kandunganAir = parseInt(values.kandunganAir, 10);
 
-      await axios.post(`${API_BASE}/tanki/post`, {
+      const res = await axios.post(`${API_BASE}/tanki/post`, {
         tanggal: values.tanggal,
         tangkiId: parseInt(values.tangkiId, 10),
 
@@ -237,9 +237,12 @@ const TambahPengisianTanki = () => {
         userKPBPNId: user?.id || null,
       });
 
+      const nomorSurat = res.data?.nomorSurat;
       toast({
         title: "Berhasil",
-        description: "Data pengisian tanki berhasil disimpan",
+        description: nomorSurat
+          ? `BAST berhasil disimpan dengan nomor ${nomorSurat}`
+          : "Data pengisian tanki berhasil disimpan",
         status: "success",
         duration: 4000,
         isClosable: true,

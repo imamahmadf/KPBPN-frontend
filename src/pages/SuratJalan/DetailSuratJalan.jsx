@@ -769,6 +769,9 @@ function DetailSuratJalan({
                           <InfoField label="Tanggal">
                             {formatTanggal(kp.tanggal)}
                           </InfoField>
+                          <InfoField label="Jam Kedatangan">
+                            {formatJam(kp.jamKedatangan)}
+                          </InfoField>
                           <InfoField label="Volume Diterima">
                             <VolumeMultiSatuan
                               volume={kp.volume}

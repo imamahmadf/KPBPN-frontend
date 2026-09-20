@@ -4,7 +4,11 @@ export const parseQrError = (err, fallback) =>
   err.response?.data?.error || err.message || fallback;
 
 export const fetchSumurQrCode = async (apiBase, id, fallbackName) => {
-  const res = await axios.get(`${apiBase}/sumur-minyak/get/qrcode/${id}`);
+  const res = await axios.get(`${apiBase}/sumur-minyak/get/qrcode/${id}`, {
+    params: {
+      frontendUrl: window.location.origin,
+    },
+  });
   const data = res.data || {};
 
   if (!data.qrCode) {

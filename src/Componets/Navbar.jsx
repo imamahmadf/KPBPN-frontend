@@ -232,6 +232,7 @@ const menuData = [
       { label: "Uji Lab K3S", path: "/tanki-kpbpn/uji-lab" },
       { label: "BA Bongkar", path: "/tanki-kpbpn/ba-bongkar" },
       { label: "Stok Opname", path: "/tanki-kpbpn/stok-opname" },
+      { label: "Riwayat Tanki", path: "/tanki-kpbpn/riwayat" },
       // { label: "Tambah Pengisian", path: "/tanki-kpbpn/tambah-pengisian" },
      
     ],

@@ -738,9 +738,9 @@ function ProduksiSumur({ match }) {
                         No: {sumurMinyak.nomor}
                       </Text>
                     )}
-                    {qrPreview?.path && (
-                      <Text fontSize="sm" color="gray.500" mt={1}>
-                        {qrPreview.path}
+                    {qrPreview?.url && (
+                      <Text fontSize="sm" color="gray.500" mt={1} wordBreak="break-all">
+                        {qrPreview.url}
                       </Text>
                     )}
                   </Box>

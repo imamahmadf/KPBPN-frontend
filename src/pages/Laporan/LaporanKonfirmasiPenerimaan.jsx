@@ -2,6 +2,7 @@ import React from "react";
 import { Link as ChakraLink } from "@chakra-ui/react";
 import LaporanPage, {
   formatAngka,
+  formatJam,
   formatTanggal,
   getImageUrl,
 } from "./LaporanPage";
@@ -20,6 +21,12 @@ function LaporanKonfirmasiPenerimaan() {
           header: "Tanggal",
           render: (item) => formatTanggal(item.tanggal),
           excelValue: (item) => formatTanggal(item.tanggal),
+        },
+        {
+          key: "jamKedatangan",
+          header: "Jam Kedatangan",
+          render: (item) => formatJam(item.jamKedatangan),
+          excelValue: (item) => formatJam(item.jamKedatangan),
         },
         { key: "nomorSuratJalan", header: "Surat Jalan" },
         { key: "mitra", header: "Mitra" },

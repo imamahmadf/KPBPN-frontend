@@ -344,6 +344,9 @@ function QRCodeSuratJalan({ match }) {
                         <InfoItem label="TANGGAL">
                           {formatTanggal(item.tanggal)}
                         </InfoItem>
+                        <InfoItem label="JAM KEDATANGAN">
+                          {formatJam(item.jamKedatangan)}
+                        </InfoItem>
                         <InfoItem label="VOLUME">
                           {item.volume != null ? item.volume : "-"}
                         </InfoItem>
