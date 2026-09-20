@@ -58,11 +58,21 @@ import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const SATUAN = "barrel";
-const TABLE_COL_SPAN = 15;
-const EXPAND_COL_SPAN = 12;
+const TABLE_COL_SPAN = 17;
+const EXPAND_COL_SPAN = 14;
 
 const roundBarrel = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+
+const calcBsnwGabungan = (sedimen, volume) => {
+  const totalVolume = Number(volume) || 0;
+  const totalSedimen = Number(sedimen) || 0;
+  if (totalVolume <= 0) return null;
+  return (
+    Math.round(((totalSedimen / totalVolume) * 100 + Number.EPSILON) * 1000) /
+    1000
+  );
+};
 
 const groupStokByTanggal = (items) => {
   const groups = [];
@@ -76,6 +86,8 @@ const groupStokByTanggal = (items) => {
         items: [],
         totalMasuk: 0,
         totalKeluar: 0,
+        totalBsnwMasukVolume: 0,
+        totalBsnwMasukSedimen: 0,
       };
       map.set(key, group);
       groups.push(group);
@@ -85,12 +97,20 @@ const groupStokByTanggal = (items) => {
     group.items.push(item);
     group.totalMasuk += Number(item.masuk) || 0;
     group.totalKeluar += Number(item.keluar) || 0;
+    group.totalBsnwMasukVolume += Number(item.bsnwMasukVolume) || 0;
+    group.totalBsnwMasukSedimen += Number(item.bsnwMasukSedimen) || 0;
   }
 
   return groups.map((group) => ({
     ...group,
     totalMasuk: roundBarrel(group.totalMasuk),
     totalKeluar: roundBarrel(group.totalKeluar),
+    totalBsnwMasukVolume: roundBarrel(group.totalBsnwMasukVolume),
+    totalBsnwMasukSedimen: roundBarrel(group.totalBsnwMasukSedimen),
+    BSNWGabunganMasuk: calcBsnwGabungan(
+      group.totalBsnwMasukSedimen,
+      group.totalBsnwMasukVolume,
+    ),
   }));
 };
 
@@ -172,11 +192,61 @@ const formatBarrel = (volume) => {
   return `${formatVolumeNumber(volume)} ${SATUAN}`;
 };
 
-const calcVolumePreview = (tinggi, factorTank) => {
+const getMasukBsnw = (item) => {
+  if (item?.BSNW != null && item.BSNW !== "") return item.BSNW;
+  const fromSj = (item?.suratJalans || [])
+    .map((sj) => sj.BSNW)
+    .filter((value) => value != null && value !== "");
+  if (!fromSj.length) return null;
+  if (fromSj.length === 1) return fromSj[0];
+  return [...new Set(fromSj.map((value) => formatAngka(value)))].join(", ");
+};
+
+const formatBsnw = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "string" && value.includes(",")) return value;
+  return formatAngka(value);
+};
+
+const formatBsnwPercent = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  return `${formatBsnw(value)}%`;
+};
+
+const formatVolumeSatuan = (volume, satuan) => {
+  if (volume === null || volume === undefined || volume === "") return "-";
+  return `${formatAngka(volume)} ${satuan || SATUAN}`;
+};
+
+const kualitasColor = (kualitas) => {
+  if (kualitas === "ONSPEC") return "green";
+  if (kualitas === "OFFSPEC") return "red";
+  return "gray";
+};
+
+const calcVolumePreview = (tinggi, panjang, lebar) => {
   const height = parseDecimalInput(tinggi);
-  const factor = Number(factorTank);
-  if (height === null || Number.isNaN(factor) || factor <= 0) return null;
-  return Math.round((height * factor + Number.EPSILON) * 1000) / 1000;
+  const length = parseDecimalInput(panjang);
+  const width = parseDecimalInput(lebar);
+  if (
+    height === null ||
+    length === null ||
+    width === null ||
+    length <= 0 ||
+    width <= 0
+  ) {
+    return null;
+  }
+  const liter = (height * length * width) / 1000;
+  const converted = convertVolumeToAllUnits(liter, "liter");
+  if (!converted) return null;
+  return roundBarrel(converted.barrel);
+};
+
+const hasTankiDimensi = (tanki) => {
+  const length = parseDecimalInput(tanki?.panjang);
+  const width = parseDecimalInput(tanki?.lebar);
+  return length !== null && width !== null && length > 0 && width > 0;
 };
 
 const decimalFieldSchema = (label) =>
@@ -508,6 +578,7 @@ const StokOpname = () => {
   const [totalMasuk, setTotalMasuk] = useState(0);
   const [totalKeluar, setTotalKeluar] = useState(0);
   const [totalStok, setTotalStok] = useState(0);
+  const [totalBSNWGabunganMasuk, setTotalBSNWGabunganMasuk] = useState(null);
 
   const [tanggalAwal, setTanggalAwal] = useState(getDefaultStartDate);
   const [tanggalAkhir, setTanggalAkhir] = useState(getDefaultEndDate);
@@ -563,12 +634,14 @@ const StokOpname = () => {
       setTotalMasuk(res.data.totalMasuk || 0);
       setTotalKeluar(res.data.totalKeluar || 0);
       setTotalStok(res.data.totalStok || 0);
+      setTotalBSNWGabunganMasuk(res.data.totalBSNWGabunganMasuk ?? null);
       setExpandedKeys([]);
     } catch (err) {
       console.error(err);
       setDataStok([]);
       setRows(0);
       setPages(0);
+      setTotalBSNWGabunganMasuk(null);
       toast({
         title: "Gagal memuat data",
         description: err.response?.data?.error || err.message,
@@ -996,11 +1069,32 @@ const StokOpname = () => {
   };
 
   const renderDetailMutasi = (row) => (
-    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+    <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
       <Box>
         <Heading size="xs" mb={3} color="green.700">
           Minyak Masuk · Pengisian Tanki
         </Heading>
+        {row.BSNWGabunganMasuk != null && (
+          <Box
+            mb={3}
+            p={3}
+            borderRadius="md"
+            bg="green.50"
+            border="1px solid"
+            borderColor="green.100"
+          >
+            <Text fontSize="sm" fontWeight="semibold" color="green.800">
+              BSNW gabungan: {formatBsnwPercent(row.BSNWGabunganMasuk)}
+            </Text>
+            <Text fontSize="xs" color="gray.600" mt={1}>
+              Total volume: {formatBarrel(row.bsnwMasukVolume)} · Total BS&W:{" "}
+              {formatBarrel(row.bsnwMasukSedimen)}
+            </Text>
+            <Text fontSize="xs" color="gray.500">
+              (Total BS&W ÷ total volume) × 100%
+            </Text>
+          </Box>
+        )}
         {(row.detailMasuk || []).length ? (
           <Stack spacing={2}>
             {row.detailMasuk.map((item) => (
@@ -1022,6 +1116,42 @@ const StokOpname = () => {
                   Gross: {formatBarrel(item.grossBarrel)}
                 </Text>
                 <Text fontSize="sm">Net: {formatBarrel(item.netBarrel)}</Text>
+                <Text fontSize="sm">
+                  BSNW gabungan:{" "}
+                  {formatBsnwPercent(
+                    item.BSNWGabungan ?? getMasukBsnw(item),
+                  )}
+                </Text>
+                {(item.suratJalans || []).length > 0 && (
+                  <Stack spacing={2} mt={2}>
+                    {item.suratJalans.map((sj) => (
+                      <Box
+                        key={`sj-${item.id}-${sj.id}`}
+                        p={2}
+                        borderRadius="md"
+                        bg="gray.50"
+                      >
+                        <Text fontSize="xs" fontWeight="medium" color="gray.700">
+                          {sj.nomorSuratJalan || sj.nomor || "Surat jalan"}
+                          {sj.mitraNama ? ` · ${sj.mitraNama}` : ""}
+                        </Text>
+                        <Text fontSize="xs" color="gray.600">
+                          Volume:{" "}
+                          {sj.satuan &&
+                          String(sj.satuan).toLowerCase() !== "barrel"
+                            ? `${formatVolumeSatuan(sj.volume, sj.satuan)} (${formatBarrel(sj.volumeBarrel)})`
+                            : formatBarrel(sj.volumeBarrel ?? sj.volume)}
+                        </Text>
+                        <Text fontSize="xs" color="gray.600">
+                          BSNW: {formatBsnwPercent(sj.BSNW)}
+                        </Text>
+                        <Text fontSize="xs" color="gray.600">
+                          BS&W: {formatBarrel(sj.sedimenBarrel)}
+                        </Text>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
               </Box>
             ))}
           </Stack>
@@ -1059,12 +1189,74 @@ const StokOpname = () => {
                   Ukuran air: {formatAngka(item.ukuranAir)}
                 </Text>
                 <Text fontSize="sm">Volume: {formatBarrel(item.volume)}</Text>
+                <Text fontSize="sm">BSNW: {formatBsnw(item.BSNW)}</Text>
+                {item.api != null && (
+                  <Text fontSize="sm">API: {formatAngka(item.api)}</Text>
+                )}
+                {item.kualitas && (
+                  <Badge
+                    mt={1}
+                    colorScheme={kualitasColor(item.kualitas)}
+                    variant="subtle"
+                  >
+                    {item.kualitas}
+                  </Badge>
+                )}
               </Box>
             ))}
           </Stack>
         ) : (
           <Text fontSize="sm" color="gray.500">
             Tidak ada BA bongkar pada tanggal ini
+          </Text>
+        )}
+      </Box>
+      <Box>
+        <Heading size="xs" mb={3} color="purple.700">
+          BSNW · Uji Lab K3S
+        </Heading>
+        {(row.detailBSNW || []).length ? (
+          <Stack spacing={2}>
+            {row.detailBSNW.map((item) => (
+              <Box
+                key={`bsnw-${item.id}`}
+                p={3}
+                borderRadius="md"
+                bg="white"
+                border="1px solid"
+                borderColor="gray.200"
+              >
+                <Text fontSize="sm" fontWeight="medium">
+                  Uji Lab #{item.id}
+                  {item.baId ? ` · BA #${item.baId}` : ""}
+                </Text>
+                <Text fontSize="xs" color="gray.500">
+                  {formatDate(item.tanggal)}
+                </Text>
+                <Text fontSize="sm" mt={1} fontWeight="semibold">
+                  BSNW: {formatBsnw(item.BSNW)}
+                </Text>
+                <Text fontSize="sm">API: {formatAngka(item.api)}</Text>
+                <Text fontSize="sm">SG: {formatAngka(item.sg)}</Text>
+                <Text fontSize="sm">
+                  Suhu:{" "}
+                  {item.suhu != null ? `${formatAngka(item.suhu)} °C` : "-"}
+                </Text>
+                {item.kualitas && (
+                  <Badge
+                    mt={1}
+                    colorScheme={kualitasColor(item.kualitas)}
+                    variant="subtle"
+                  >
+                    {item.kualitas}
+                  </Badge>
+                )}
+              </Box>
+            ))}
+          </Stack>
+        ) : (
+          <Text fontSize="sm" color="gray.500">
+            Tidak ada data uji lab BSNW pada tanggal ini
           </Text>
         )}
       </Box>
@@ -1107,6 +1299,14 @@ const StokOpname = () => {
           {formatBarrel(group.totalKeluar)}
         </Text>
       </Box>
+      <Box>
+        <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+          BSNW gabungan
+        </Text>
+        <Text fontSize="sm" color="green.700" fontWeight="semibold">
+          {formatBsnwPercent(group.BSNWGabunganMasuk)}
+        </Text>
+      </Box>
     </HStack>
   );
 
@@ -1143,9 +1343,10 @@ const StokOpname = () => {
                 color="gray.500"
                 textAlign={{ base: "center", sm: "left" }}
               >
-                Pengukuran manual harian (tinggi minyak & tinggi air × factor
-                tank) dalam satuan barrel, plus minyak masuk dari pengisian
-                tanki dan keluar dari BA bongkar.
+                Pengukuran manual harian (tinggi × panjang × lebar / 1000 =
+                liter, lalu dikonversi ke barrel), plus minyak masuk dari
+                pengisian tanki, keluar dari BA bongkar, dan BSNW gabungan
+                minyak masuk (rata-rata tertimbang volume).
               </Text>
               <Text fontSize="sm" color="gray.500">
                 Total: {rows} data
@@ -1191,6 +1392,9 @@ const StokOpname = () => {
             </Badge>
             <Badge colorScheme="purple" px={3} py={1} borderRadius="md">
               Stok terukur: {formatBarrel(totalStok)}
+            </Badge>
+            <Badge colorScheme="teal" px={3} py={1} borderRadius="md">
+              BSNW gabungan: {formatBsnwPercent(totalBSNWGabunganMasuk)}
             </Badge>
           </HStack>
 
@@ -1342,8 +1546,11 @@ const StokOpname = () => {
                                       ? `${formatAngka(item.suhu)} °C`
                                       : "-"}
                                   </MobileField>
-                                  <MobileField label="Factor Tank">
-                                    {formatAngka(item.factorTank)}
+                                  <MobileField label="Panjang">
+                                    {formatAngka(item.panjang ?? item.tanki?.panjang)}
+                                  </MobileField>
+                                  <MobileField label="Lebar">
+                                    {formatAngka(item.lebar ?? item.tanki?.lebar)}
                                   </MobileField>
                                   <MobileField label="Volume Minyak">
                                     {formatBarrel(item.volumeMinyak)}
@@ -1359,6 +1566,9 @@ const StokOpname = () => {
                                   </MobileField>
                                   <MobileField label="Keluar">
                                     {formatBarrel(item.keluar)}
+                                  </MobileField>
+                                  <MobileField label="BSNW Gabungan">
+                                    {formatBsnwPercent(item.BSNWGabunganMasuk)}
                                   </MobileField>
                                 </SimpleGrid>
                                 <HStack mt={4} spacing={2} flexWrap="wrap">
@@ -1458,7 +1668,10 @@ const StokOpname = () => {
                       Suhu
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
-                      Factor Tank
+                      Panjang
+                    </Th>
+                    <Th textTransform="capitalize" isNumeric>
+                      Lebar
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
                       Volume Minyak
@@ -1471,6 +1684,9 @@ const StokOpname = () => {
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
                       Keluar
+                    </Th>
+                    <Th textTransform="capitalize" isNumeric>
+                      BSNW Gabungan
                     </Th>
                     <Th textTransform="capitalize">Mutasi</Th>
                     <Th textTransform="capitalize">Aksi</Th>
@@ -1528,6 +1744,16 @@ const StokOpname = () => {
                                   >
                                     {formatBarrel(group.totalMasuk)}
                                   </Text>
+                                  <Text fontSize="xs" color="gray.500" mt={2}>
+                                    BSNW gabungan
+                                  </Text>
+                                  <Text
+                                    fontSize="sm"
+                                    color="green.700"
+                                    fontWeight="semibold"
+                                  >
+                                    {formatBsnwPercent(group.BSNWGabunganMasuk)}
+                                  </Text>
                                 </Td>
                               )}
                               {isFirst && (
@@ -1560,7 +1786,14 @@ const StokOpname = () => {
                                   ? formatAngka(item.suhu)
                                   : "-"}
                               </Td>
-                              <Td isNumeric>{formatAngka(item.factorTank)}</Td>
+                              <Td isNumeric>
+                                {formatAngka(
+                                  item.panjang ?? item.tanki?.panjang,
+                                )}
+                              </Td>
+                              <Td isNumeric>
+                                {formatAngka(item.lebar ?? item.tanki?.lebar)}
+                              </Td>
                               <Td isNumeric>
                                 {formatBarrel(item.volumeMinyak)}
                               </Td>
@@ -1572,6 +1805,9 @@ const StokOpname = () => {
                               </Td>
                               <Td isNumeric color="red.600">
                                 {formatBarrel(item.keluar)}
+                              </Td>
+                              <Td isNumeric>
+                                {formatBsnwPercent(item.BSNWGabunganMasuk)}
                               </Td>
                               <Td>
                                 <Button
@@ -1761,19 +1997,27 @@ const StokOpname = () => {
               const selectedTanki = dataTanki.find(
                 (item) => String(item.id) === String(values.tankiId),
               );
-              const factorTank = selectedTanki?.factorTank;
               const volumeMinyak = calcVolumePreview(
                 values.tinggiMinyak,
-                factorTank,
+                selectedTanki?.panjang,
+                selectedTanki?.lebar,
               );
-              const volumeAir = calcVolumePreview(values.tinggiAir, factorTank);
+              const volumeAir = calcVolumePreview(
+                values.tinggiAir,
+                selectedTanki?.panjang,
+                selectedTanki?.lebar,
+              );
               const tinggiBersih =
                 parseDecimalInput(values.tinggiMinyak) !== null &&
                 parseDecimalInput(values.tinggiAir) !== null
                   ? parseDecimalInput(values.tinggiMinyak) -
                     parseDecimalInput(values.tinggiAir)
                   : null;
-              const volumeBersih = calcVolumePreview(tinggiBersih, factorTank);
+              const volumeBersih = calcVolumePreview(
+                tinggiBersih,
+                selectedTanki?.panjang,
+                selectedTanki?.lebar,
+              );
 
               return (
                 <Form>
@@ -1808,8 +2052,8 @@ const StokOpname = () => {
                           {dataTanki.map((item) => (
                             <option key={item.id} value={String(item.id)}>
                               {item.kode || `Tanki #${item.id}`}
-                              {item.factorTank
-                                ? ` · factor ${formatAngka(item.factorTank)}`
+                              {hasTankiDimensi(item)
+                                ? ` · ${formatAngka(item.panjang)} × ${formatAngka(item.lebar)}`
                                 : ""}
                             </option>
                           ))}
@@ -1878,7 +2122,8 @@ const StokOpname = () => {
                       borderColor="gray.200"
                     >
                       <Text fontSize="sm" fontWeight="semibold" mb={2}>
-                        Pratinjau volume (tinggi × factor tank)
+                        Pratinjau volume (tinggi × panjang × lebar / 1000 =
+                        liter → barrel)
                       </Text>
                       <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
                         <MobileField label="Volume Minyak">
@@ -1896,9 +2141,9 @@ const StokOpname = () => {
                           Pilih tanki untuk menghitung volume barrel.
                         </Text>
                       )}
-                      {selectedTanki && !selectedTanki.factorTank && (
+                      {selectedTanki && !hasTankiDimensi(selectedTanki) && (
                         <Text fontSize="xs" color="orange.600" mt={2}>
-                          Tanki ini belum memiliki factor tank.
+                          Tanki ini belum memiliki panjang dan lebar.
                         </Text>
                       )}
                     </Box>

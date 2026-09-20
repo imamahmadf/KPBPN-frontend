@@ -18,6 +18,9 @@ import {
   Container,
   Heading,
   HStack,
+  Flex,
+  Spacer,
+  Stack,
   SimpleGrid,
   Checkbox,
   Text,
@@ -150,6 +153,24 @@ const getLinkedTankiKode = (kp) =>
     ),
   );
 
+const MobileField = ({ label, children }) => (
+  <Box minW={0}>
+    <Text
+      fontSize="xs"
+      color="gray.500"
+      fontWeight="semibold"
+      textTransform="uppercase"
+      letterSpacing="wide"
+      mb={0.5}
+    >
+      {label}
+    </Text>
+    <Box fontSize="sm" color="gray.700" wordBreak="break-word">
+      {children}
+    </Box>
+  </Box>
+);
+
 const TambahPengisianTanki = () => {
   const toast = useToast();
   const history = useHistory();
@@ -244,25 +265,58 @@ const TambahPengisianTanki = () => {
 
   return (
     <LayoutKPBPN>
-      <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
-        <Container variant="primary" p="30px" my="30px" minW="1000px">
-          <HStack justify="space-between" mb={6}>
-            <VStack align="start" spacing={1}>
-              <Heading color="kpbpn">Buat BAST</Heading>
-              <Text fontSize="sm" color="gray.500">
+      <Box
+        bgColor="secondary"
+        pb={{ base: 6, md: "40px" }}
+        px={{ base: 3, sm: 4, md: 6, lg: "30px" }}
+        minH="90vh"
+        overflowX="hidden"
+      >
+        <Container
+          variant="primary"
+          maxW="100%"
+          minW={0}
+          p={{ base: 4, sm: 5, md: 6, lg: "30px" }}
+          my={{ base: 4, md: "30px" }}
+        >
+          <Flex
+            align={{ base: "stretch", sm: "center" }}
+            direction={{ base: "column", sm: "row" }}
+            gap={3}
+            mb={6}
+          >
+            <VStack
+              align={{ base: "center", sm: "start" }}
+              spacing={1}
+              minW={0}
+            >
+              <Heading
+                color="kpbpn"
+                size={{ base: "md", md: "lg" }}
+                textAlign={{ base: "center", sm: "left" }}
+              >
+                Buat BAST
+              </Heading>
+              <Text
+                fontSize="sm"
+                color="gray.500"
+                textAlign={{ base: "center", sm: "left" }}
+              >
                 Dokumen akan tercatat atas nama:{" "}
                 <Text as="span" fontWeight="semibold" color="gray.700">
                   {user?.nama || "-"}
                 </Text>
               </Text>
             </VStack>
+            <Spacer display={{ base: "none", sm: "block" }} />
             <Button
               variant="outline"
+              w={{ base: "full", sm: "auto" }}
               onClick={() => history.push("/tanki-kpbpn/pengisian")}
             >
               Kembali
             </Button>
-          </HStack>
+          </Flex>
 
           {isLoading ? (
             <Center py={10}>
@@ -282,10 +336,29 @@ const TambahPengisianTanki = () => {
                 handleBlur,
                 setFieldValue,
                 setFieldTouched,
-              }) => (
+              }) => {
+                const isAllSelected =
+                  dataKonfirmasi.length > 0 &&
+                  dataKonfirmasi.every((item) =>
+                    values.ids.includes(String(item.id)),
+                  );
+                const isSomeSelected =
+                  values.ids.length > 0 &&
+                  values.ids.length < dataKonfirmasi.length;
+                const toggleSemua = (checked) => {
+                  setFieldTouched("ids", true);
+                  setFieldValue(
+                    "ids",
+                    checked
+                      ? dataKonfirmasi.map((item) => String(item.id))
+                      : [],
+                  );
+                };
+
+                return (
                 <Form>
-                  <VStack spacing={6} align="stretch">
-                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <VStack spacing={{ base: 4, md: 6 }} align="stretch" minW={0}>
+                    <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={{ base: 3, md: 4 }}>
                       <FormControl
                         isInvalid={touched.tanggal && errors.tanggal}
                       >
@@ -490,19 +563,173 @@ const TambahPengisianTanki = () => {
                           dahulu sebelum menyimpan pengisian tanki.
                         </Text>
                       ) : (
-                        <Box>
-                          <Text fontSize="sm" color="gray.600" mb={2}>
-                            {values.ids.length} dari {dataKonfirmasi.length}{" "}
-                            data dipilih
-                          </Text>
+                        <Box minW={0}>
+                          <Flex
+                            justify="space-between"
+                            align={{ base: "stretch", sm: "center" }}
+                            direction={{ base: "column", sm: "row" }}
+                            gap={2}
+                            mb={3}
+                          >
+                            <Text fontSize="sm" color="gray.600">
+                              {values.ids.length} dari {dataKonfirmasi.length}{" "}
+                              data dipilih
+                            </Text>
+                            <Checkbox
+                              isChecked={isAllSelected}
+                              isIndeterminate={isSomeSelected}
+                              onChange={(e) => toggleSemua(e.target.checked)}
+                            >
+                              Pilih semua
+                            </Checkbox>
+                          </Flex>
+
+                          <Stack
+                            display={{ base: "flex", lg: "none" }}
+                            spacing={3}
+                          >
+                            {dataKonfirmasi.map((item, index) => {
+                              const id = String(item.id);
+                              const isSelected = values.ids.includes(id);
+                              const linkedTanki = getLinkedTankiKode(item);
+
+                              return (
+                                <Box
+                                  key={item.id}
+                                  p={4}
+                                  borderRadius="lg"
+                                  border="1px solid"
+                                  borderColor={
+                                    isSelected ? "orange.300" : "gray.200"
+                                  }
+                                  bg={isSelected ? "orange.50" : "white"}
+                                  boxShadow="sm"
+                                  cursor="pointer"
+                                  onClick={() => {
+                                    setFieldTouched("ids", true);
+                                    setFieldValue(
+                                      "ids",
+                                      toggleKonfirmasiId(values.ids, item.id),
+                                    );
+                                  }}
+                                >
+                                  <HStack
+                                    justify="space-between"
+                                    align="start"
+                                    mb={3}
+                                    spacing={3}
+                                  >
+                                    <HStack align="start" spacing={3} minW={0}>
+                                      <Checkbox
+                                        mt={1}
+                                        isChecked={isSelected}
+                                        onChange={() => {
+                                          setFieldTouched("ids", true);
+                                          setFieldValue(
+                                            "ids",
+                                            toggleKonfirmasiId(
+                                              values.ids,
+                                              item.id,
+                                            ),
+                                          );
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                      <VStack align="start" spacing={0} minW={0}>
+                                        <Text fontSize="xs" color="gray.500">
+                                          No. {index + 1}
+                                        </Text>
+                                        <Text
+                                          fontWeight="bold"
+                                          color="kpbpn"
+                                          wordBreak="break-word"
+                                        >
+                                          {item.nomor || "-"}
+                                        </Text>
+                                      </VStack>
+                                    </HStack>
+                                    {linkedTanki.length > 0 ? (
+                                      <HStack
+                                        flexWrap="wrap"
+                                        spacing={1}
+                                        justify="flex-end"
+                                        flexShrink={0}
+                                      >
+                                        {linkedTanki.map((kode) => (
+                                          <Badge
+                                            key={kode}
+                                            colorScheme="orange"
+                                          >
+                                            {kode}
+                                          </Badge>
+                                        ))}
+                                      </HStack>
+                                    ) : (
+                                      <Badge colorScheme="gray" flexShrink={0}>
+                                        Belum terhubung
+                                      </Badge>
+                                    )}
+                                  </HStack>
+
+                                  <SimpleGrid
+                                    columns={{ base: 1, sm: 2 }}
+                                    spacing={3}
+                                  >
+                                    <MobileField label="Tanggal">
+                                      {formatDate(item.tanggal)}
+                                    </MobileField>
+                                    <MobileField label="Surat Jalan">
+                                      {item.suratJalan?.nomor || "-"}
+                                    </MobileField>
+                                    <MobileField label="Mitra">
+                                      {item.suratJalan?.mitra?.nama || "-"}
+                                    </MobileField>
+                                    <MobileField label="Supir">
+                                      {item.suratJalan?.supir?.nama || "-"}
+                                    </MobileField>
+                                    <MobileField label="Transportir">
+                                      {item.suratJalan?.transportir?.plat ||
+                                        "-"}
+                                    </MobileField>
+                                    <MobileField label="Volume">
+                                      <VolumeMultiSatuan
+                                        volume={
+                                          item.volume ?? item.suratJalan?.volume
+                                        }
+                                        satuan={
+                                          item.suratJalan?.satuanVolume
+                                            ?.satuan || "Barrel"
+                                        }
+                                      />
+                                    </MobileField>
+                                    <MobileField label="API">
+                                      {formatAngka(item.api)}
+                                    </MobileField>
+                                    <MobileField label="BSNW">
+                                      {formatAngka(item.BSNW)}
+                                    </MobileField>
+                                    <MobileField label="Petugas PK">
+                                      {item.userPK?.nama || "-"}
+                                    </MobileField>
+                                    <MobileField label="Petugas Lab">
+                                      {item.userLab?.nama || "-"}
+                                    </MobileField>
+                                  </SimpleGrid>
+                                </Box>
+                              );
+                            })}
+                          </Stack>
+
                           <TableContainer
+                            display={{ base: "none", lg: "block" }}
                             border="1px solid"
                             borderColor="gray.200"
                             borderRadius="md"
                             maxH="360px"
                             overflowY="auto"
+                            overflowX="auto"
                           >
-                            <Table size="sm" variant="simple">
+                            <Table size="sm" variant="simple" minW="1200px">
                               <Thead
                                 bg="gray.50"
                                 position="sticky"
@@ -513,42 +740,34 @@ const TambahPengisianTanki = () => {
                                 <Tr>
                                   <Th w="48px">
                                     <Checkbox
-                                      isChecked={
-                                        dataKonfirmasi.length > 0 &&
-                                        dataKonfirmasi.every((item) =>
-                                          values.ids.includes(String(item.id)),
-                                        )
+                                      isChecked={isAllSelected}
+                                      isIndeterminate={isSomeSelected}
+                                      onChange={(e) =>
+                                        toggleSemua(e.target.checked)
                                       }
-                                      isIndeterminate={
-                                        values.ids.length > 0 &&
-                                        values.ids.length < dataKonfirmasi.length
-                                      }
-                                      onChange={(e) => {
-                                        setFieldTouched("ids", true);
-                                        setFieldValue(
-                                          "ids",
-                                          e.target.checked
-                                            ? dataKonfirmasi.map((item) =>
-                                                String(item.id),
-                                              )
-                                            : [],
-                                        );
-                                      }}
                                     />
                                   </Th>
                                   <Th textTransform="capitalize">No.</Th>
                                   <Th textTransform="capitalize">Nomor</Th>
                                   <Th textTransform="capitalize">Tanggal</Th>
-                                  <Th textTransform="capitalize">Surat Jalan</Th>
+                                  <Th textTransform="capitalize">
+                                    Surat Jalan
+                                  </Th>
                                   <Th textTransform="capitalize">Mitra</Th>
                                   <Th textTransform="capitalize">Supir</Th>
-                                  <Th textTransform="capitalize">Transportir</Th>
+                                  <Th textTransform="capitalize">
+                                    Transportir
+                                  </Th>
                                   <Th textTransform="capitalize">Volume</Th>
                                   <Th textTransform="capitalize">API</Th>
                                   <Th textTransform="capitalize">BSNW</Th>
                                   <Th textTransform="capitalize">Petugas PK</Th>
-                                  <Th textTransform="capitalize">Petugas Lab</Th>
-                                  <Th textTransform="capitalize">Tanki terkait</Th>
+                                  <Th textTransform="capitalize">
+                                    Petugas Lab
+                                  </Th>
+                                  <Th textTransform="capitalize">
+                                    Tanki terkait
+                                  </Th>
                                 </Tr>
                               </Thead>
                               <Tbody>
@@ -561,13 +780,20 @@ const TambahPengisianTanki = () => {
                                     <Tr
                                       key={item.id}
                                       bg={isSelected ? "orange.50" : "white"}
-                                      _hover={{ bg: isSelected ? "orange.50" : "gray.50" }}
+                                      _hover={{
+                                        bg: isSelected
+                                          ? "orange.50"
+                                          : "gray.50",
+                                      }}
                                       cursor="pointer"
                                       onClick={() => {
                                         setFieldTouched("ids", true);
                                         setFieldValue(
                                           "ids",
-                                          toggleKonfirmasiId(values.ids, item.id),
+                                          toggleKonfirmasiId(
+                                            values.ids,
+                                            item.id,
+                                          ),
                                         );
                                       }}
                                     >
@@ -587,11 +813,13 @@ const TambahPengisianTanki = () => {
                                         />
                                       </Td>
                                       <Td>{index + 1}</Td>
-                                      <Td fontWeight="medium">
+                                      <Td fontWeight="medium" whiteSpace="nowrap">
                                         {item.nomor || "-"}
                                       </Td>
-                                      <Td>{formatDate(item.tanggal)}</Td>
-                                      <Td>
+                                      <Td whiteSpace="nowrap">
+                                        {formatDate(item.tanggal)}
+                                      </Td>
+                                      <Td whiteSpace="nowrap">
                                         {item.suratJalan?.nomor || "-"}
                                       </Td>
                                       <Td>
@@ -649,9 +877,15 @@ const TambahPengisianTanki = () => {
                       <FormErrorMessage>{errors.ids}</FormErrorMessage>
                     </FormControl>
 
-                    <HStack justify="flex-end" pt={4}>
+                    <Flex
+                      justify={{ base: "stretch", sm: "flex-end" }}
+                      direction={{ base: "column-reverse", sm: "row" }}
+                      gap={3}
+                      pt={4}
+                    >
                       <Button
                         variant="outline"
+                        w={{ base: "full", sm: "auto" }}
                         onClick={() => history.push("/tanki-kpbpn/pengisian")}
                       >
                         Batal
@@ -659,15 +893,17 @@ const TambahPengisianTanki = () => {
                       <Button
                         type="submit"
                         variant="primary"
+                        w={{ base: "full", sm: "auto" }}
                         isLoading={isSubmitting}
                         isDisabled={dataKonfirmasi.length === 0}
                       >
                         Simpan
                       </Button>
-                    </HStack>
+                    </Flex>
                   </VStack>
                 </Form>
-              )}
+                );
+              }}
             </Formik>
           )}
         </Container>

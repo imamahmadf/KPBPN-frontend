@@ -17,6 +17,10 @@ import {
   Tbody,
   Heading,
   HStack,
+  Flex,
+  Spacer,
+  Stack,
+  Skeleton,
   Badge,
   Text,
   Spinner,
@@ -40,6 +44,7 @@ import {
   ModalCloseButton,
   useDisclosure,
   FormHelperText,
+  FormErrorMessage,
   Checkbox,
   Image,
 } from "@chakra-ui/react";
@@ -224,6 +229,11 @@ const getTodayInputDate = () => new Date().toISOString().split("T")[0];
 
 const emptyBaUkuran = () => ({ ukuranCairan: "", ukuranAir: "" });
 
+const isUkuranValueFilled = (value) => {
+  if (value === "" || value === null || value === undefined) return false;
+  return !Number.isNaN(Number(value));
+};
+
 const emptyUjiLabForm = () => ({
   tanggal: getTodayInputDate(),
   api: "",
@@ -284,6 +294,24 @@ const groupPengisianByTangki = (items) => {
 
 const getPembuatNama = (item) => item?.userKPBPN?.nama || "-";
 
+const MobileField = ({ label, children }) => (
+  <Box minW={0}>
+    <Text
+      fontSize="xs"
+      color="gray.500"
+      fontWeight="semibold"
+      textTransform="uppercase"
+      letterSpacing="wide"
+      mb={0.5}
+    >
+      {label}
+    </Text>
+    <Box fontSize="sm" color="gray.700" wordBreak="break-word">
+      {children}
+    </Box>
+  </Box>
+);
+
 const BABongkar = () => {
   const toast = useToast();
   const history = useHistory();
@@ -312,6 +340,7 @@ const BABongkar = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [baTanggal, setBaTanggal] = useState(getTodayInputDate());
   const [baUkuranByTangki, setBaUkuranByTangki] = useState({});
+  const [showUkuranError, setShowUkuranError] = useState(false);
   const [ujiLabList, setUjiLabList] = useState([]);
   const [ujiLabTarget, setUjiLabTarget] = useState(null);
   const [ujiLabForm, setUjiLabForm] = useState(emptyUjiLabForm());
@@ -845,6 +874,7 @@ const BABongkar = () => {
     setSelectedIds([]);
     setBaTanggal(getTodayInputDate());
     setBaUkuranByTangki({});
+    setShowUkuranError(false);
     setModalPengisianData([]);
     setUjiLabList([]);
   };
@@ -1068,6 +1098,32 @@ const BABongkar = () => {
       return;
     }
 
+    const tankiTanpaUkuran = tangkiGroups.filter((group) => {
+      const hasSelected = group.items.some((item) =>
+        selectedIds.includes(item.id),
+      );
+      if (!hasSelected) return false;
+      const ukuran = getBaUkuran(group.tangkiId);
+      return (
+        !isUkuranValueFilled(ukuran.ukuranCairan) ||
+        !isUkuranValueFilled(ukuran.ukuranAir)
+      );
+    });
+
+    if (tankiTanpaUkuran.length) {
+      setShowUkuranError(true);
+      toast({
+        title: "Ukuran wajib diisi",
+        description: `Isi ukuran cairan dan ukuran air untuk tanki ${tankiTanpaUkuran
+          .map((group) => group.kode)
+          .join(", ")}`,
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setIsSubmittingBA(true);
     try {
       const tankiPayload = tangkiGroups
@@ -1163,19 +1219,461 @@ const BABongkar = () => {
 
   const colSpan = 13;
 
+  const renderBaAksiButtons = (ba, isMobile = false) => (
+    <Flex
+      gap={2}
+      wrap="wrap"
+      direction={isMobile ? "column" : "row"}
+      align={isMobile ? "stretch" : "start"}
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        colorScheme="orange"
+        isLoading={loadingCetakBA[ba.id]}
+        onClick={() => cetakUlangBABongkar(ba.id)}
+        w={isMobile ? "full" : "auto"}
+      >
+        Cetak Ulang BA
+      </Button>
+      {ba.BAK3S ? (
+        <>
+          <Button
+            as={RouterLink}
+            to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
+            size="sm"
+            colorScheme="orange"
+            w={isMobile ? "full" : "auto"}
+          >
+            Detail BAK3S
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={<BsPencil />}
+            onClick={() => openEditBak3s(ba)}
+            w={isMobile ? "full" : "auto"}
+          >
+            Edit BAK3S
+          </Button>
+        </>
+      ) : (
+        <Button
+          size="sm"
+          colorScheme="orange"
+          onClick={() => openCreateBak3s(ba)}
+          w={isMobile ? "full" : "auto"}
+        >
+          Tambah BAK3S
+        </Button>
+      )}
+    </Flex>
+  );
+
+  const renderBaDetail = (ba) => {
+    const pengisianList = getPengisianList(ba);
+
+    return (
+      <Box p={{ base: 3, md: 4 }} bg="white" minW={0}>
+        <Box mb={5} p={3} borderWidth="1px" borderRadius="md">
+          <Flex
+            justify="space-between"
+            mb={3}
+            align="start"
+            gap={2}
+            wrap="wrap"
+          >
+            <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+              BAK3S terkait BA #{ba.id}
+            </Text>
+            <Flex gap={2} wrap="wrap">
+              {ba.BAK3S ? (
+                <>
+                  <Button
+                    as={RouterLink}
+                    to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
+                    size="xs"
+                    colorScheme="orange"
+                  >
+                    Detail
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    leftIcon={<BsPencil />}
+                    onClick={() => openEditBak3s(ba)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="xs"
+                    colorScheme="red"
+                    variant="outline"
+                    leftIcon={<BsTrash />}
+                    onClick={() => openDeleteBak3s(ba)}
+                  >
+                    Hapus
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="xs"
+                  colorScheme="orange"
+                  onClick={() => openCreateBak3s(ba)}
+                >
+                  Tambah BAK3S
+                </Button>
+              )}
+            </Flex>
+          </Flex>
+          {ba.BAK3S ? (
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 6 }} spacing={3}>
+              <MobileField label="API">
+                {formatAngka(ba.BAK3S.api)}
+              </MobileField>
+              <MobileField label="BSNW">
+                {formatAngka(ba.BAK3S.BSNW)}
+              </MobileField>
+              <MobileField label="Produksi">
+                {formatAngka(ba.BAK3S.produksi)}
+              </MobileField>
+              <MobileField label="SG">{formatAngka(ba.BAK3S.sg)}</MobileField>
+              <MobileField label="Dibuat oleh">
+                {getPembuatNama(ba.BAK3S)}
+              </MobileField>
+              <MobileField label="Dokumen">
+                {ba.BAK3S.dokumen ? (
+                  <Button
+                    as="a"
+                    href={getDocumentUrl(ba.BAK3S.dokumen)}
+                    target="_blank"
+                    rel="noreferrer"
+                    size="xs"
+                    variant="link"
+                    colorScheme="orange"
+                    leftIcon={<BsDownload />}
+                  >
+                    Unduh
+                  </Button>
+                ) : (
+                  "-"
+                )}
+              </MobileField>
+            </SimpleGrid>
+          ) : (
+            <Text fontSize="sm" color="gray.500">
+              Belum ada BAK3S untuk BA Bongkar ini. Setiap BA Bongkar hanya
+              dapat memiliki satu BAK3S.
+            </Text>
+          )}
+        </Box>
+
+        {(ba.ujiLabK3S || []).length > 0 && (
+          <Box mb={5}>
+            <Text fontSize="sm" fontWeight="semibold" mb={3} color="gray.700">
+              Uji Lab K3S terkait BA #{ba.id}
+            </Text>
+            <Stack display={{ base: "flex", lg: "none" }} spacing={3}>
+              {(ba.ujiLabK3S || []).map((uji) => (
+                <Box
+                  key={uji.id}
+                  p={3}
+                  borderWidth="1px"
+                  borderRadius="md"
+                  bg="gray.50"
+                >
+                  <Flex justify="space-between" mb={2} gap={2} wrap="wrap">
+                    <Text fontWeight="semibold" fontSize="sm">
+                      {uji.tanki?.kode || "-"}
+                    </Text>
+                    <Badge
+                      colorScheme={uji.kualitas === "ONSPEC" ? "green" : "red"}
+                    >
+                      {uji.kualitas}
+                    </Badge>
+                  </Flex>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <MobileField label="Tanggal">
+                      {formatDate(uji.tanggal || uji.createdAt)}
+                    </MobileField>
+                    <MobileField label="API">{formatAngka(uji.api)}</MobileField>
+                    <MobileField label="BSNW">
+                      {formatAngka(uji.BSNW)}
+                    </MobileField>
+                    <MobileField label="Suhu">
+                      {formatAngka(uji.suhu)}
+                    </MobileField>
+                    <MobileField label="SG">{formatAngka(uji.sg)}</MobileField>
+                  </SimpleGrid>
+                </Box>
+              ))}
+            </Stack>
+            <Box display={{ base: "none", lg: "block" }} overflowX="auto">
+              <Table size="sm" variant="simple" minW="640px">
+                <Thead>
+                  <Tr>
+                    <Th>Tangki</Th>
+                    <Th>Tanggal</Th>
+                    <Th>API</Th>
+                    <Th>BSNW</Th>
+                    <Th>Suhu</Th>
+                    <Th>SG</Th>
+                    <Th>Kualitas</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {(ba.ujiLabK3S || []).map((uji) => (
+                    <Tr key={uji.id}>
+                      <Td>{uji.tanki?.kode || "-"}</Td>
+                      <Td>{formatDate(uji.tanggal || uji.createdAt)}</Td>
+                      <Td>{formatAngka(uji.api)}</Td>
+                      <Td>{formatAngka(uji.BSNW)}</Td>
+                      <Td>{formatAngka(uji.suhu)}</Td>
+                      <Td>{formatAngka(uji.sg)}</Td>
+                      <Td>
+                        <Badge
+                          colorScheme={
+                            uji.kualitas === "ONSPEC" ? "green" : "red"
+                          }
+                        >
+                          {uji.kualitas}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Box>
+          </Box>
+        )}
+
+        <Text fontSize="sm" fontWeight="semibold" mb={3} color="gray.700">
+          Pengisian Tanki terkait BA #{ba.id}
+        </Text>
+        {pengisianList.length === 0 ? (
+          <Text fontSize="sm" color="gray.500">
+            Tidak ada pengisian tanki terkait
+          </Text>
+        ) : (
+          <>
+            <Stack display={{ base: "flex", lg: "none" }} spacing={3}>
+              {pengisianList.map((item) => {
+                const ukuran = getUkuranForTanki(
+                  ba,
+                  item.tangkiId ?? item.tanki?.id,
+                );
+
+                return (
+                  <Box
+                    key={item.id}
+                    p={3}
+                    borderWidth="1px"
+                    borderRadius="md"
+                    bg="gray.50"
+                  >
+                    <Text fontWeight="semibold" fontSize="sm" mb={2}>
+                      {item.tanki?.kode || "-"}
+                    </Text>
+                    <SimpleGrid columns={2} spacing={3}>
+                      <MobileField label="Tanggal">
+                        {formatDate(item.tanggal || item.createdAt)}
+                      </MobileField>
+                      <MobileField label="Factor Tank">
+                        {formatFactorTank(item.tanki?.factorTank)}
+                      </MobileField>
+                      <MobileField label="Volume">
+                        {formatVolumeBarrelLabel(
+                          calcVolumeBarrel(
+                            ukuran.ukuranCairan,
+                            ukuran.ukuranAir,
+                            item.tanki?.factorTank,
+                          ),
+                        )}
+                      </MobileField>
+                      <MobileField label="Gross">
+                        {formatVolumeLabel(
+                          item.gross,
+                          item.satuanVolume?.satuan,
+                        )}
+                      </MobileField>
+                      <MobileField label="Net">
+                        {formatVolumeLabel(item.net, item.satuanVolume?.satuan)}
+                      </MobileField>
+                      <MobileField label="Penampilan Visual">
+                        {item.penampilanVisual || "-"}
+                      </MobileField>
+                      <MobileField label="Warna">{item.warna || "-"}</MobileField>
+                      <MobileField label="Kandungan Air">
+                        {item.kandunganAir ?? "-"}
+                      </MobileField>
+                      <MobileField label="BSW">{item.BSW ?? "-"}</MobileField>
+                      <MobileField label="Saksi">{item.saksi || "-"}</MobileField>
+                      <MobileField label="Konfirmasi Penerimaan">
+                        {getKonfirmasiLabel(item)}
+                      </MobileField>
+                      <MobileField label="Nomor Surat BAST">
+                        {item.nomorSurat || (
+                          <Badge colorScheme="gray">Belum ada</Badge>
+                        )}
+                      </MobileField>
+                    </SimpleGrid>
+                    {item.catatan && (
+                      <Box mt={3}>
+                        <MobileField label="Catatan">{item.catatan}</MobileField>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
+            </Stack>
+            <Box display={{ base: "none", lg: "block" }} overflowX="auto">
+              <Table size="sm" variant="simple" minW="1100px">
+                <Thead>
+                  <Tr>
+                    <Th>No</Th>
+                    <Th>Tanggal</Th>
+                    <Th>Tangki</Th>
+                    <Th isNumeric>Factor Tank</Th>
+                    <Th isNumeric>Volume (barrel)</Th>
+                    <Th>Gross</Th>
+                    <Th>Net</Th>
+                    <Th>Penampilan Visual</Th>
+                    <Th>Warna</Th>
+                    <Th>Kandungan Air</Th>
+                    <Th>BSW</Th>
+                    <Th>Catatan</Th>
+                    <Th>Saksi</Th>
+                    <Th>Konfirmasi Penerimaan</Th>
+                    <Th>Nomor Surat BAST</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {pengisianList.map((item, pengisianIndex) => {
+                    const ukuran = getUkuranForTanki(
+                      ba,
+                      item.tangkiId ?? item.tanki?.id,
+                    );
+
+                    return (
+                      <Tr key={item.id}>
+                        <Td>{pengisianIndex + 1}</Td>
+                        <Td>{formatDate(item.tanggal || item.createdAt)}</Td>
+                        <Td>{item.tanki?.kode || "-"}</Td>
+                        <Td isNumeric>
+                          {formatFactorTank(item.tanki?.factorTank)}
+                        </Td>
+                        <Td isNumeric>
+                          {formatVolumeBarrelLabel(
+                            calcVolumeBarrel(
+                              ukuran.ukuranCairan,
+                              ukuran.ukuranAir,
+                              item.tanki?.factorTank,
+                            ),
+                          )}
+                        </Td>
+                        <Td>
+                          {formatVolumeLabel(
+                            item.gross,
+                            item.satuanVolume?.satuan,
+                          )}
+                        </Td>
+                        <Td>
+                          {formatVolumeLabel(
+                            item.net,
+                            item.satuanVolume?.satuan,
+                          )}
+                        </Td>
+                        <Td>{item.penampilanVisual || "-"}</Td>
+                        <Td>{item.warna || "-"}</Td>
+                        <Td>{item.kandunganAir ?? "-"}</Td>
+                        <Td>{item.BSW ?? "-"}</Td>
+                        <Td>{item.catatan || "-"}</Td>
+                        <Td>{item.saksi || "-"}</Td>
+                        <Td>
+                          {(item.konfirmasiPenerimaans || []).length === 0 ? (
+                            "-"
+                          ) : (
+                            <VStack align="start" spacing={1}>
+                              {item.konfirmasiPenerimaans.map((kp) => (
+                                <Badge key={kp.id} colorScheme="orange">
+                                  {kp.nomor ||
+                                    kp.suratJalan?.transportir?.plat ||
+                                    `ID ${kp.id}`}
+                                </Badge>
+                              ))}
+                            </VStack>
+                          )}
+                        </Td>
+                        <Td>
+                          {item.nomorSurat ? (
+                            <Text fontSize="xs" whiteSpace="nowrap">
+                              {item.nomorSurat}
+                            </Text>
+                          ) : (
+                            <Badge colorScheme="gray">Belum ada</Badge>
+                          )}
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+            </Box>
+          </>
+        )}
+      </Box>
+    );
+  };
+
   return (
     <LayoutKPBPN>
-      <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
-        <Container variant="primary" p="30px" my="30px" minW="2000px">
-          <HStack justify="space-between" mb={6}>
-            <Heading color="kpbpn">BA Bongkar</Heading>
-            <HStack spacing={3}>
-              <Text fontSize="sm" color="gray.500">
+      <Box
+        bgColor="secondary"
+        pb={{ base: 6, md: "40px" }}
+        px={{ base: 3, sm: 4, md: 6, lg: "30px" }}
+        minH="90vh"
+        overflowX="hidden"
+      >
+        <Container
+          variant="primary"
+          maxW="100%"
+          minW={0}
+          p={{ base: 4, sm: 5, md: 6, lg: "30px" }}
+          my={{ base: 4, md: "30px" }}
+        >
+          <Flex
+            align={{ base: "stretch", md: "center" }}
+            direction={{ base: "column", md: "row" }}
+            gap={4}
+            mb={6}
+          >
+            <VStack align={{ base: "center", md: "start" }} spacing={1} minW={0}>
+              <Heading
+                color="kpbpn"
+                size={{ base: "md", md: "lg" }}
+                textAlign={{ base: "center", md: "left" }}
+              >
+                BA Bongkar
+              </Heading>
+              <Text
+                fontSize="sm"
+                color="gray.500"
+                textAlign={{ base: "center", md: "left" }}
+              >
                 Total: {rows} data
               </Text>
+            </VStack>
+            <Spacer display={{ base: "none", md: "block" }} />
+            <Flex
+              gap={3}
+              wrap="wrap"
+              justify={{ base: "center", md: "flex-end" }}
+              w={{ base: "full", md: "auto" }}
+            >
               <Button
                 colorScheme="orange"
                 onClick={handleOpenModalBA}
+                w={{ base: "full", sm: "auto" }}
               >
                 Buat BA Bongkar
               </Button>
@@ -1186,17 +1684,23 @@ const BABongkar = () => {
                 onClick={downloadExcel}
                 isLoading={isExporting}
                 loadingText="Mengekspor..."
+                w={{ base: "full", sm: "auto" }}
               >
                 Export Excel
               </Button>
-            </HStack>
-          </HStack>
+            </Flex>
+          </Flex>
 
-          <Box mb={6} p={4} bg="gray.50" borderRadius="lg">
+          <Box
+            mb={6}
+            p={{ base: 3, md: 4 }}
+            bg="gray.50"
+            borderRadius="lg"
+          >
             <Heading size="sm" mb={4} color="gray.700">
               Filter Data
             </Heading>
-            <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+            <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
               <FormControl>
                 <FormLabel fontSize="sm">Tanggal Awal</FormLabel>
                 <Input
@@ -1241,538 +1745,332 @@ const BABongkar = () => {
                 />
               </FormControl>
             </SimpleGrid>
-            <HStack mt={4} justify="flex-end">
+            <Flex mt={4} justify={{ base: "stretch", sm: "flex-end" }}>
               <Button
                 leftIcon={<BsX />}
                 variant="outline"
                 colorScheme="gray"
                 onClick={resetFilter}
                 isDisabled={!hasActiveFilter}
+                w={{ base: "full", sm: "auto" }}
               >
                 Reset Filter
               </Button>
-            </HStack>
+            </Flex>
           </Box>
 
           <Divider mb={6} />
 
-          {isLoading ? (
-            <Center py={10}>
-              <Spinner size="lg" color="kpbpn" />
-            </Center>
-          ) : (
-            <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
-              <Table size="sm">
-                <Thead bg="gray.50">
-                  <Tr>
-                    <Th w="40px" />
-                    <Th>No</Th>
-                    <Th>ID BA</Th>
-                    <Th>Tanggal</Th>
-                    <Th>Ukuran Cairan (cm)</Th>
-                    <Th>Ukuran Air (cm)</Th>
-                    <Th isNumeric>Factor Tank</Th>
-                    <Th>Volume (barrel)</Th>
-                    <Th>Jumlah Pengisian</Th>
-                    <Th>Tangki</Th>
-                    <Th>Dibuat oleh</Th>
-                    <Th>BAK3S</Th>
-                    <Th>Aksi</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {dataBA.length === 0 ? (
-                    <Tr>
-                      <Td colSpan={colSpan} textAlign="center" py={6}>
-                        {hasActiveFilter
-                          ? "Tidak ada data BA Bongkar sesuai filter"
-                          : "Belum ada data BA Bongkar"}
-                      </Td>
-                    </Tr>
-                  ) : (
-                    dataBA.map((ba, index) => {
-                      const pengisianList = getPengisianList(ba);
-                      const isExpanded = expandedIds.includes(ba.id);
+          <Box>
+            <Box display={{ base: "block", lg: "none" }}>
+              {isLoading ? (
+                <Stack spacing={4}>
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Box
+                      key={idx}
+                      p={4}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor="gray.200"
+                      bg="white"
+                    >
+                      <Skeleton height="20px" mb={3} width="60%" />
+                      <SimpleGrid columns={2} spacing={3}>
+                        {Array.from({ length: 6 }).map((__, i) => (
+                          <Skeleton key={i} height="36px" />
+                        ))}
+                      </SimpleGrid>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : dataBA.length === 0 ? (
+                <Box
+                  py={10}
+                  textAlign="center"
+                  borderRadius="lg"
+                  border="1px solid"
+                  borderColor="gray.200"
+                  bg="white"
+                >
+                  <Text fontSize="lg" color="gray.500">
+                    {hasActiveFilter
+                      ? "Tidak ada data BA Bongkar sesuai filter"
+                      : "Belum ada data BA Bongkar"}
+                  </Text>
+                </Box>
+              ) : (
+                <Stack spacing={4}>
+                  {dataBA.map((ba, index) => {
+                    const pengisianList = getPengisianList(ba);
+                    const isExpanded = expandedIds.includes(ba.id);
 
-                      return (
-                        <React.Fragment key={ba.id}>
-                          <Tr bg="gray.50">
-                            <Td>
-                              <IconButton
-                                aria-label={
-                                  isExpanded
-                                    ? "Tutup detail pengisian"
-                                    : "Lihat detail pengisian"
-                                }
-                                icon={
-                                  isExpanded ? <BsChevronUp /> : <BsChevronDown />
-                                }
-                                size="xs"
-                                variant="ghost"
-                                onClick={() => toggleExpand(ba.id)}
-                              />
-                            </Td>
-                            <Td>{page * limit + index + 1}</Td>
-                            <Td>
-                              <Badge colorScheme="green">BA #{ba.id}</Badge>
-                            </Td>
-                            <Td>{formatDate(ba.tanggal)}</Td>
-                            <Td>{formatUkuranColumn(ba, "ukuranCairan")}</Td>
-                            <Td>{formatUkuranColumn(ba, "ukuranAir")}</Td>
-                            <Td isNumeric>{getUniqueFactorTankLabels(ba)}</Td>
-                            <Td isNumeric>{getVolumeLabelsForBA(ba)}</Td>
-                            <Td>{pengisianList.length}</Td>
-                            <Td>{getUniqueTankiKodes(ba)}</Td>
-                            <Td>{getPembuatNama(ba)}</Td>
-                            <Td>
-                              {ba.BAK3S ? (
-                                <Badge colorScheme="green">Ada</Badge>
-                              ) : (
-                                <Badge colorScheme="gray">Belum ada</Badge>
-                              )}
-                            </Td>
-                            <Td>
-                              <HStack spacing={2} align="start">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  colorScheme="orange"
-                                  isLoading={loadingCetakBA[ba.id]}
-                                  onClick={() => cetakUlangBABongkar(ba.id)}
-                                >
-                                  Cetak Ulang BA
-                                </Button>
-                                {ba.BAK3S ? (
-                                  <>
-                                    <Button
-                                      as={RouterLink}
-                                      to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
-                                      size="sm"
-                                      colorScheme="orange"
-                                    >
-                                      Detail BAK3S
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      leftIcon={<BsPencil />}
-                                      onClick={() => openEditBak3s(ba)}
-                                    >
-                                      Edit BAK3S
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    colorScheme="orange"
-                                    onClick={() => openCreateBak3s(ba)}
-                                  >
-                                    Tambah BAK3S
-                                  </Button>
-                                )}
-                              </HStack>
-                            </Td>
-                          </Tr>
-                          <Tr>
-                            <Td colSpan={colSpan} p={0} borderBottom="none">
-                              <Collapse in={isExpanded} animateOpacity>
-                                <Box
-                                  p={4}
-                                  bg="white"
-                                  borderTopWidth="1px"
-                                  borderColor="gray.100"
-                                >
-                                  <Box
-                                    mb={5}
-                                    p={3}
-                                    borderWidth="1px"
-                                    borderRadius="md"
-                                  >
-                                    <HStack
-                                      justify="space-between"
-                                      mb={3}
-                                      align="start"
-                                    >
-                                      <Text
-                                        fontSize="sm"
-                                        fontWeight="semibold"
-                                        color="gray.700"
-                                      >
-                                        BAK3S terkait BA #{ba.id}
-                                      </Text>
-                                      <HStack spacing={2}>
-                                        {ba.BAK3S ? (
-                                          <>
-                                            <Button
-                                              as={RouterLink}
-                                              to={`/tanki-kpbpn/detail-bak3s/${ba.BAK3S.id}`}
-                                              size="xs"
-                                              colorScheme="orange"
-                                            >
-                                              Detail
-                                            </Button>
-                                            <Button
-                                              size="xs"
-                                              variant="outline"
-                                              leftIcon={<BsPencil />}
-                                              onClick={() => openEditBak3s(ba)}
-                                            >
-                                              Edit
-                                            </Button>
-                                            <Button
-                                              size="xs"
-                                              colorScheme="red"
-                                              variant="outline"
-                                              leftIcon={<BsTrash />}
-                                              onClick={() =>
-                                                openDeleteBak3s(ba)
-                                              }
-                                            >
-                                              Hapus
-                                            </Button>
-                                          </>
-                                        ) : (
-                                          <Button
-                                            size="xs"
-                                            colorScheme="orange"
-                                            onClick={() => openCreateBak3s(ba)}
-                                          >
-                                            Tambah BAK3S
-                                          </Button>
-                                        )}
-                                      </HStack>
-                                    </HStack>
-                                    {ba.BAK3S ? (
-                                      <SimpleGrid
-                                        columns={{ base: 2, md: 6 }}
-                                        spacing={3}
-                                      >
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            API
-                                          </Text>
-                                          <Text fontSize="sm" fontWeight="medium">
-                                            {formatAngka(ba.BAK3S.api)}
-                                          </Text>
-                                        </Box>
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            BSNW
-                                          </Text>
-                                          <Text fontSize="sm" fontWeight="medium">
-                                            {formatAngka(ba.BAK3S.BSNW)}
-                                          </Text>
-                                        </Box>
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            Produksi
-                                          </Text>
-                                          <Text fontSize="sm" fontWeight="medium">
-                                            {formatAngka(ba.BAK3S.produksi)}
-                                          </Text>
-                                        </Box>
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            SG
-                                          </Text>
-                                          <Text fontSize="sm" fontWeight="medium">
-                                            {formatAngka(ba.BAK3S.sg)}
-                                          </Text>
-                                        </Box>
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            Dibuat oleh
-                                          </Text>
-                                          <Text fontSize="sm" fontWeight="medium">
-                                            {getPembuatNama(ba.BAK3S)}
-                                          </Text>
-                                        </Box>
-                                        <Box>
-                                          <Text fontSize="xs" color="gray.500">
-                                            Dokumen
-                                          </Text>
-                                          {ba.BAK3S.dokumen ? (
-                                            <Button
-                                              as="a"
-                                              href={getDocumentUrl(
-                                                ba.BAK3S.dokumen,
-                                              )}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              size="xs"
-                                              variant="link"
-                                              colorScheme="orange"
-                                              leftIcon={<BsDownload />}
-                                            >
-                                              Unduh
-                                            </Button>
-                                          ) : (
-                                            <Text fontSize="sm">-</Text>
-                                          )}
-                                        </Box>
-                                      </SimpleGrid>
-                                    ) : (
-                                      <Text fontSize="sm" color="gray.500">
-                                        Belum ada BAK3S untuk BA Bongkar ini.
-                                        Setiap BA Bongkar hanya dapat memiliki
-                                        satu BAK3S.
-                                      </Text>
-                                    )}
-                                  </Box>
-                                  {(ba.ujiLabK3S || []).length > 0 && (
-                                    <Box mb={5}>
-                                      <Text
-                                        fontSize="sm"
-                                        fontWeight="semibold"
-                                        mb={3}
-                                        color="gray.700"
-                                      >
-                                        Uji Lab K3S terkait BA #{ba.id}
-                                      </Text>
-                                      <Box overflowX="auto">
-                                        <Table size="sm" variant="simple">
-                                          <Thead>
-                                            <Tr>
-                                              <Th>Tangki</Th>
-                                              <Th>Tanggal</Th>
-                                              <Th>API</Th>
-                                              <Th>BSNW</Th>
-                                              <Th>Suhu</Th>
-                                              <Th>SG</Th>
-                                              <Th>Kualitas</Th>
-                                            </Tr>
-                                          </Thead>
-                                          <Tbody>
-                                            {(ba.ujiLabK3S || []).map(
-                                              (uji) => (
-                                                <Tr key={uji.id}>
-                                                  <Td>
-                                                    {uji.tanki?.kode || "-"}
-                                                  </Td>
-                                                  <Td>
-                                                    {formatDate(
-                                                      uji.tanggal ||
-                                                        uji.createdAt,
-                                                    )}
-                                                  </Td>
-                                                  <Td>
-                                                    {formatAngka(uji.api)}
-                                                  </Td>
-                                                  <Td>
-                                                    {formatAngka(uji.BSNW)}
-                                                  </Td>
-                                                  <Td>
-                                                    {formatAngka(uji.suhu)}
-                                                  </Td>
-                                                  <Td>
-                                                    {formatAngka(uji.sg)}
-                                                  </Td>
-                                                  <Td>
-                                                    <Badge
-                                                      colorScheme={
-                                                        uji.kualitas ===
-                                                        "ONSPEC"
-                                                          ? "green"
-                                                          : "red"
-                                                      }
-                                                    >
-                                                      {uji.kualitas}
-                                                    </Badge>
-                                                  </Td>
-                                                </Tr>
-                                              ),
-                                            )}
-                                          </Tbody>
-                                        </Table>
-                                      </Box>
-                                    </Box>
-                                  )}
-                                  <Text
-                                    fontSize="sm"
-                                    fontWeight="semibold"
-                                    mb={3}
-                                    color="gray.700"
-                                  >
-                                    Pengisian Tanki terkait BA #{ba.id}
-                                  </Text>
-                                  {pengisianList.length === 0 ? (
-                                    <Text fontSize="sm" color="gray.500">
-                                      Tidak ada pengisian tanki terkait
-                                    </Text>
-                                  ) : (
-                                    <Box overflowX="auto">
-                                      <Table size="sm" variant="simple">
-                                        <Thead>
-                                          <Tr>
-                                            <Th>No</Th>
-                                            <Th>Tanggal</Th>
-                                            <Th>Tangki</Th>
-                                            <Th isNumeric>Factor Tank</Th>
-                                            <Th isNumeric>Volume (barrel)</Th>
-                                            <Th>Gross</Th>
-                                            <Th>Net</Th>
-                                            <Th>Penampilan Visual</Th>
-                                            <Th>Warna</Th>
-                                            <Th>Kandungan Air</Th>
-                                            <Th>BSW</Th>
-                                            <Th>Catatan</Th>
-                                            <Th>Saksi</Th>
-                                            <Th>Konfirmasi Penerimaan</Th>
-                                            <Th>Nomor Surat BAST</Th>
-                                          </Tr>
-                                        </Thead>
-                                        <Tbody>
-                                          {pengisianList.map(
-                                            (item, pengisianIndex) => {
-                                              const ukuran = getUkuranForTanki(
-                                                ba,
-                                                item.tangkiId ?? item.tanki?.id,
-                                              );
+                    return (
+                      <Box
+                        key={ba.id}
+                        p={4}
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        bg="white"
+                        boxShadow="sm"
+                      >
+                        <Flex
+                          justify="space-between"
+                          mb={3}
+                          align="start"
+                          gap={2}
+                        >
+                          <VStack align="start" spacing={0} minW={0}>
+                            <Text fontSize="xs" color="gray.500">
+                              No. {page * limit + index + 1}
+                            </Text>
+                            <Badge colorScheme="green">BA #{ba.id}</Badge>
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                              {formatDate(ba.tanggal)}
+                            </Text>
+                          </VStack>
+                          {ba.BAK3S ? (
+                            <Badge colorScheme="green">Ada BAK3S</Badge>
+                          ) : (
+                            <Badge colorScheme="gray">Belum BAK3S</Badge>
+                          )}
+                        </Flex>
 
-                                              return (
-                                              <Tr key={item.id}>
-                                                <Td>{pengisianIndex + 1}</Td>
-                                                <Td>
-                                                  {formatDate(
-                                                    item.tanggal ||
-                                                      item.createdAt,
-                                                  )}
-                                                </Td>
-                                                <Td>
-                                                  {item.tanki?.kode || "-"}
-                                                </Td>
-                                                <Td isNumeric>
-                                                  {formatFactorTank(
-                                                    item.tanki?.factorTank,
-                                                  )}
-                                                </Td>
-                                                <Td isNumeric>
-                                                  {formatVolumeBarrelLabel(
-                                                    calcVolumeBarrel(
-                                                      ukuran.ukuranCairan,
-                                                      ukuran.ukuranAir,
-                                                      item.tanki?.factorTank,
-                                                    ),
-                                                  )}
-                                                </Td>
-                                                <Td>
-                                                  {formatVolumeLabel(
-                                                    item.gross,
-                                                    item.satuanVolume?.satuan,
-                                                  )}
-                                                </Td>
-                                                <Td>
-                                                  {formatVolumeLabel(
-                                                    item.net,
-                                                    item.satuanVolume?.satuan,
-                                                  )}
-                                                </Td>
-                                                <Td>
-                                                  {item.penampilanVisual || "-"}
-                                                </Td>
-                                                <Td>{item.warna || "-"}</Td>
-                                                <Td>
-                                                  {item.kandunganAir ?? "-"}
-                                                </Td>
-                                                <Td>{item.BSW ?? "-"}</Td>
-                                                <Td>{item.catatan || "-"}</Td>
-                                                <Td>{item.saksi || "-"}</Td>
-                                                <Td>
-                                                  {(item.konfirmasiPenerimaans ||
-                                                    []).length === 0 ? (
-                                                    "-"
-                                                  ) : (
-                                                    <VStack align="start" spacing={1}>
-                                                      {item.konfirmasiPenerimaans.map(
-                                                        (kp) => (
-                                                          <Badge
-                                                            key={kp.id}
-                                                            colorScheme="orange"
-                                                          >
-                                                            {kp.nomor ||
-                                                              kp.suratJalan
-                                                                ?.transportir
-                                                                ?.plat ||
-                                                              `ID ${kp.id}`}
-                                                          </Badge>
-                                                        ),
-                                                      )}
-                                                    </VStack>
-                                                  )}
-                                                </Td>
-                                                <Td>
-                                                  {item.nomorSurat ? (
-                                                    <Text
-                                                      fontSize="xs"
-                                                      whiteSpace="nowrap"
-                                                    >
-                                                      {item.nomorSurat}
-                                                    </Text>
-                                                  ) : (
-                                                    <Badge colorScheme="gray">
-                                                      Belum ada
-                                                    </Badge>
-                                                  )}
-                                                </Td>
-                                              </Tr>
-                                              );
-                                            },
-                                          )}
-                                        </Tbody>
-                                      </Table>
-                                    </Box>
-                                  )}
-                                </Box>
-                              </Collapse>
-                            </Td>
-                          </Tr>
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                </Tbody>
-              </Table>
+                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                          <MobileField label="Ukuran Cairan (cm)">
+                            {formatUkuranColumn(ba, "ukuranCairan")}
+                          </MobileField>
+                          <MobileField label="Ukuran Air (cm)">
+                            {formatUkuranColumn(ba, "ukuranAir")}
+                          </MobileField>
+                          <MobileField label="Factor Tank">
+                            {getUniqueFactorTankLabels(ba)}
+                          </MobileField>
+                          <MobileField label="Volume (barrel)">
+                            {getVolumeLabelsForBA(ba)}
+                          </MobileField>
+                          <MobileField label="Jumlah Pengisian">
+                            {pengisianList.length}
+                          </MobileField>
+                          <MobileField label="Tangki">
+                            {getUniqueTankiKodes(ba)}
+                          </MobileField>
+                          <MobileField label="Dibuat oleh">
+                            {getPembuatNama(ba)}
+                          </MobileField>
+                        </SimpleGrid>
+
+                        <Box mt={4}>{renderBaAksiButtons(ba, true)}</Box>
+
+                        <Button
+                          mt={3}
+                          size="sm"
+                          variant="ghost"
+                          w="full"
+                          rightIcon={
+                            isExpanded ? <BsChevronUp /> : <BsChevronDown />
+                          }
+                          onClick={() => toggleExpand(ba.id)}
+                        >
+                          {isExpanded ? "Sembunyikan detail" : "Lihat detail"}
+                        </Button>
+
+                        <Collapse in={isExpanded} animateOpacity>
+                          <Box
+                            mt={3}
+                            pt={3}
+                            borderTopWidth="1px"
+                            borderColor="gray.100"
+                          >
+                            {renderBaDetail(ba)}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
             </Box>
-          )}
+
+            <Box
+              display={{ base: "none", lg: "block" }}
+              overflowX="auto"
+              borderWidth="1px"
+              borderRadius="lg"
+            >
+              {isLoading ? (
+                <Center py={10}>
+                  <Spinner size="lg" color="kpbpn" />
+                </Center>
+              ) : (
+                <Table size="sm" minW="1400px">
+                  <Thead bg="gray.50">
+                    <Tr>
+                      <Th w="40px" />
+                      <Th>No</Th>
+                      <Th>ID BA</Th>
+                      <Th>Tanggal</Th>
+                      <Th>Ukuran Cairan (cm)</Th>
+                      <Th>Ukuran Air (cm)</Th>
+                      <Th isNumeric>Factor Tank</Th>
+                      <Th>Volume (barrel)</Th>
+                      <Th>Jumlah Pengisian</Th>
+                      <Th>Tangki</Th>
+                      <Th>Dibuat oleh</Th>
+                      <Th>BAK3S</Th>
+                      <Th>Aksi</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {dataBA.length === 0 ? (
+                      <Tr>
+                        <Td colSpan={colSpan} textAlign="center" py={6}>
+                          {hasActiveFilter
+                            ? "Tidak ada data BA Bongkar sesuai filter"
+                            : "Belum ada data BA Bongkar"}
+                        </Td>
+                      </Tr>
+                    ) : (
+                      dataBA.map((ba, index) => {
+                        const pengisianList = getPengisianList(ba);
+                        const isExpanded = expandedIds.includes(ba.id);
+
+                        return (
+                          <React.Fragment key={ba.id}>
+                            <Tr bg="gray.50">
+                              <Td>
+                                <IconButton
+                                  aria-label={
+                                    isExpanded
+                                      ? "Tutup detail pengisian"
+                                      : "Lihat detail pengisian"
+                                  }
+                                  icon={
+                                    isExpanded ? (
+                                      <BsChevronUp />
+                                    ) : (
+                                      <BsChevronDown />
+                                    )
+                                  }
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={() => toggleExpand(ba.id)}
+                                />
+                              </Td>
+                              <Td>{page * limit + index + 1}</Td>
+                              <Td>
+                                <Badge colorScheme="green">BA #{ba.id}</Badge>
+                              </Td>
+                              <Td>{formatDate(ba.tanggal)}</Td>
+                              <Td>{formatUkuranColumn(ba, "ukuranCairan")}</Td>
+                              <Td>{formatUkuranColumn(ba, "ukuranAir")}</Td>
+                              <Td isNumeric>
+                                {getUniqueFactorTankLabels(ba)}
+                              </Td>
+                              <Td isNumeric>{getVolumeLabelsForBA(ba)}</Td>
+                              <Td>{pengisianList.length}</Td>
+                              <Td>{getUniqueTankiKodes(ba)}</Td>
+                              <Td>{getPembuatNama(ba)}</Td>
+                              <Td>
+                                {ba.BAK3S ? (
+                                  <Badge colorScheme="green">Ada</Badge>
+                                ) : (
+                                  <Badge colorScheme="gray">Belum ada</Badge>
+                                )}
+                              </Td>
+                              <Td>{renderBaAksiButtons(ba)}</Td>
+                            </Tr>
+                            <Tr>
+                              <Td colSpan={colSpan} p={0} borderBottom="none">
+                                <Collapse in={isExpanded} animateOpacity>
+                                  <Box
+                                    borderTopWidth="1px"
+                                    borderColor="gray.100"
+                                  >
+                                    {renderBaDetail(ba)}
+                                  </Box>
+                                </Collapse>
+                              </Td>
+                            </Tr>
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </Tbody>
+                </Table>
+              )}
+            </Box>
+          </Box>
 
           {!isLoading && (
-            <Box
+            <Flex
               mt={6}
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
+              direction={{ base: "column", md: "row" }}
+              align={{ base: "stretch", md: "center" }}
+              justify="space-between"
+              gap={3}
             >
-              <ReactPaginate
-                previousLabel={"←"}
-                nextLabel={"→"}
-                pageCount={pages}
-                onPageChange={changePage}
-                forcePage={page}
-                activeClassName={"item active "}
-                breakClassName={"item break-me "}
-                breakLabel={"..."}
-                containerClassName={"pagination"}
-                disabledClassName={"disabled-page"}
-                marginPagesDisplayed={1}
-                nextClassName={"item next "}
-                pageClassName={"item pagination-page "}
-                pageRangeDisplayed={2}
-                previousClassName={"item previous"}
-              />
-            </Box>
+              <Text
+                fontSize="sm"
+                color="gray.500"
+                textAlign={{ base: "center", md: "left" }}
+              >
+                Menampilkan {rows === 0 ? 0 : page * limit + 1}–
+                {Math.min((page + 1) * limit, rows)} dari {rows} data
+                {pages > 1 && (
+                  <>
+                    {" "}
+                    · Halaman {page + 1} dari {pages}
+                  </>
+                )}
+              </Text>
+              <Box
+                overflowX="auto"
+                py={1}
+                w={{ base: "full", md: "auto" }}
+                display="flex"
+                justifyContent={{ base: "center", md: "flex-end" }}
+              >
+                <ReactPaginate
+                  previousLabel={"←"}
+                  nextLabel={"→"}
+                  pageCount={Math.max(pages, 1)}
+                  onPageChange={changePage}
+                  forcePage={page}
+                  activeClassName={"item active "}
+                  breakClassName={"item break-me "}
+                  breakLabel={"..."}
+                  containerClassName={"pagination"}
+                  disabledClassName={"disabled-page"}
+                  marginPagesDisplayed={1}
+                  nextClassName={"item next "}
+                  pageClassName={"item pagination-page "}
+                  pageRangeDisplayed={2}
+                  previousClassName={"item previous"}
+                />
+              </Box>
+            </Flex>
           )}
         </Container>
       </Box>
 
-      <Modal isOpen={isBak3sOpen} onClose={closeBak3sModal} size="lg">
+      <Modal
+        isOpen={isBak3sOpen}
+        onClose={closeBak3sModal}
+        size={{ base: "full", md: "lg" }}
+        scrollBehavior="inside"
+      >
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
+        <ModalContent
+          mx={{ base: 0, md: 4 }}
+          maxW={{ base: "100%", md: "lg" }}
+        >
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
             {bak3sTarget?.bak3s?.id ? "Edit BAK3S" : "Tambah BAK3S"}
             {bak3sTarget?.ba?.id ? ` — BA #${bak3sTarget.ba.id}` : ""}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody px={{ base: 4, md: 6 }}>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
                 Setiap BA Bongkar hanya memiliki satu BAK3S. Isi API, BSNW,
@@ -1855,12 +2153,21 @@ const BABongkar = () => {
               </FormControl>
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={closeBak3sModal}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={closeBak3sModal}
+            >
               Batal
             </Button>
             <Button
               colorScheme="orange"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleSubmitBak3s}
               isLoading={isSubmittingBak3s}
             >
@@ -1872,10 +2179,15 @@ const BABongkar = () => {
 
       <Modal isOpen={isDeleteBak3sOpen} onClose={closeDeleteBak3s} isCentered>
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Hapus BAK3S</ModalHeader>
+        <ModalContent
+          mx={{ base: 4, md: 4 }}
+          maxW={{ base: "calc(100vw - 2rem)", md: "md" }}
+        >
+          <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
+            Hapus BAK3S
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody px={{ base: 4, md: 6 }}>
             <Text>
               Hapus BAK3S untuk BA Bongkar{" "}
               <Text as="span" fontWeight="bold">
@@ -1884,12 +2196,21 @@ const BABongkar = () => {
               ? Tindakan ini tidak dapat dibatalkan.
             </Text>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="outline" mr={3} onClick={closeDeleteBak3s}>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={closeDeleteBak3s}
+            >
               Batal
             </Button>
             <Button
               colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
               onClick={handleDeleteBak3s}
               isLoading={isDeletingBak3s}
             >
@@ -1943,7 +2264,12 @@ const BABongkar = () => {
                   </Text>
                 </Center>
               ) : (
-                <VStack spacing={4} align="stretch" maxH="420px" overflowY="auto">
+                <VStack
+                  spacing={4}
+                  align="stretch"
+                  maxH={{ base: "none", md: "420px" }}
+                  overflowY="auto"
+                >
                   {tangkiGroups.map((group) => {
                     const selectedInGroup = group.items.filter((item) =>
                       selectedIds.includes(item.id),
@@ -2034,7 +2360,14 @@ const BABongkar = () => {
                           Tambah Uji Lab
                         </Button>
                         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mb={3}>
-                          <FormControl>
+                          <FormControl
+                            isRequired
+                            isInvalid={
+                              showUkuranError &&
+                              selectedInGroup > 0 &&
+                              !isUkuranValueFilled(ukuran.ukuranCairan)
+                            }
+                          >
                             <FormLabel fontSize="sm">
                               Ukuran Cairan (cm)
                             </FormLabel>
@@ -2052,8 +2385,18 @@ const BABongkar = () => {
                               }
                               placeholder="Ukuran cairan tanki ini"
                             />
+                            <FormErrorMessage>
+                              Ukuran cairan wajib diisi
+                            </FormErrorMessage>
                           </FormControl>
-                          <FormControl>
+                          <FormControl
+                            isRequired
+                            isInvalid={
+                              showUkuranError &&
+                              selectedInGroup > 0 &&
+                              !isUkuranValueFilled(ukuran.ukuranAir)
+                            }
+                          >
                             <FormLabel fontSize="sm">Ukuran Air (cm)</FormLabel>
                             <Input
                               type="number"
@@ -2069,9 +2412,69 @@ const BABongkar = () => {
                               }
                               placeholder="Ukuran air tanki ini"
                             />
+                            <FormErrorMessage>
+                              Ukuran air wajib diisi
+                            </FormErrorMessage>
                           </FormControl>
                         </SimpleGrid>
-                        <Box overflowX="auto">
+                        <Stack display={{ base: "flex", md: "none" }} spacing={2}>
+                          {group.items.map((item) => {
+                            const isSelected = selectedIds.includes(item.id);
+
+                            return (
+                              <Box
+                                key={item.id}
+                                p={3}
+                                borderWidth="1px"
+                                borderRadius="md"
+                                bg={isSelected ? "orange.50" : "white"}
+                                borderColor={
+                                  isSelected ? "orange.300" : "gray.200"
+                                }
+                                opacity={siapBA ? 1 : 0.7}
+                              >
+                                <HStack align="start" spacing={3}>
+                                  <Checkbox
+                                    mt={1}
+                                    isChecked={isSelected}
+                                    isDisabled={!siapBA}
+                                    onChange={() => toggleSelectModalItem(item)}
+                                  />
+                                  <SimpleGrid columns={2} spacing={2} flex={1}>
+                                    <MobileField label="Tanggal">
+                                      {formatDate(
+                                        item.tanggal || item.createdAt,
+                                      )}
+                                    </MobileField>
+                                    <MobileField label="Nomor Surat BAST">
+                                      {item.nomorSurat || "-"}
+                                    </MobileField>
+                                    <MobileField label="Gross">
+                                      <VolumeMultiSatuan
+                                        volume={item.gross}
+                                        satuan={getPengisianSatuanOrDefault(
+                                          item,
+                                        )}
+                                      />
+                                    </MobileField>
+                                    <MobileField label="Net">
+                                      <VolumeMultiSatuan
+                                        volume={item.net}
+                                        satuan={getPengisianSatuanOrDefault(
+                                          item,
+                                        )}
+                                      />
+                                    </MobileField>
+                                  </SimpleGrid>
+                                </HStack>
+                              </Box>
+                            );
+                          })}
+                        </Stack>
+                        <Box
+                          display={{ base: "none", md: "block" }}
+                          overflowX="auto"
+                        >
                           <Table size="sm" minW="520px">
                             <Thead bg="gray.50">
                               <Tr>
@@ -2280,6 +2683,7 @@ const BABongkar = () => {
                     alt="Preview foto uji lab"
                     mt={3}
                     maxH="180px"
+                    maxW="100%"
                     objectFit="cover"
                     borderRadius="md"
                   />

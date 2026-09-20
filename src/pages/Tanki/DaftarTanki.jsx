@@ -97,6 +97,20 @@ const tankiSchema = Yup.object({
     .typeError("Factor tank harus angka")
     .positive("Factor tank harus lebih dari 0")
     .required("Factor tank wajib diisi"),
+  panjang: Yup.number()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue == null ? null : value,
+    )
+    .nullable()
+    .typeError("Panjang harus angka")
+    .positive("Panjang harus lebih dari 0"),
+  lebar: Yup.number()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue == null ? null : value,
+    )
+    .nullable()
+    .typeError("Lebar harus angka")
+    .positive("Lebar harus lebih dari 0"),
   stasiunPengumpulMinyakId: Yup.string().required(
     "Stasiun pengumpul minyak wajib dipilih",
   ),
@@ -256,6 +270,8 @@ const DaftarTanki = () => {
                     <Th>Stasiun Pengumpul Minyak</Th>
                     <Th>Kapasitas</Th>
                     <Th>Factor Tank</Th>
+                    <Th>Panjang</Th>
+                    <Th>Lebar</Th>
                     <Th>Foto</Th>
                     <Th>Aksi</Th>
                   </Tr>
@@ -263,7 +279,7 @@ const DaftarTanki = () => {
                 <Tbody>
                   {dataTanki.length === 0 ? (
                     <Tr>
-                      <Td colSpan={7} textAlign="center" py={6}>
+                      <Td colSpan={9} textAlign="center" py={6}>
                         Belum ada data tanki
                       </Td>
                     </Tr>
@@ -280,6 +296,8 @@ const DaftarTanki = () => {
                           />
                         </Td>
                         <Td>{item.factorTank ?? "-"}</Td>
+                        <Td>{item.panjang ?? "-"}</Td>
+                        <Td>{item.lebar ?? "-"}</Td>
                         <Td>
                           {item.foto ? (
                             <Image
@@ -339,6 +357,8 @@ const DaftarTanki = () => {
               kode: editingTanki?.kode || "",
               kapasitas: editingTanki?.kapasitas?.toString() || "",
               factorTank: editingTanki?.factorTank?.toString() || "",
+              panjang: editingTanki?.panjang?.toString() || "",
+              lebar: editingTanki?.lebar?.toString() || "",
               stasiunPengumpulMinyakId:
                 editingTanki?.stasiunPengumpulMinyakId?.toString() ||
                 editingTanki?.stasiunPengumpulMinyak?.id?.toString() ||
@@ -359,6 +379,8 @@ const DaftarTanki = () => {
                 formData.append("kode", values.kode);
                 formData.append("kapasitas", values.kapasitas);
                 formData.append("factorTank", values.factorTank);
+                formData.append("panjang", values.panjang ?? "");
+                formData.append("lebar", values.lebar ?? "");
                 formData.append(
                   "stasiunPengumpulMinyakId",
                   values.stasiunPengumpulMinyakId,
@@ -468,6 +490,38 @@ const DaftarTanki = () => {
                       />
                       <FormErrorMessage>{errors.factorTank}</FormErrorMessage>
                     </FormControl>
+
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="100%">
+                      <FormControl
+                        isInvalid={touched.panjang && errors.panjang}
+                      >
+                        <FormLabel>Panjang</FormLabel>
+                        <Input
+                          name="panjang"
+                          type="number"
+                          step="any"
+                          value={values.panjang}
+                          onChange={(e) =>
+                            setFieldValue("panjang", e.target.value)
+                          }
+                        />
+                        <FormErrorMessage>{errors.panjang}</FormErrorMessage>
+                      </FormControl>
+
+                      <FormControl isInvalid={touched.lebar && errors.lebar}>
+                        <FormLabel>Lebar</FormLabel>
+                        <Input
+                          name="lebar"
+                          type="number"
+                          step="any"
+                          value={values.lebar}
+                          onChange={(e) =>
+                            setFieldValue("lebar", e.target.value)
+                          }
+                        />
+                        <FormErrorMessage>{errors.lebar}</FormErrorMessage>
+                      </FormControl>
+                    </SimpleGrid>
 
                     <FormControl
                       isInvalid={
