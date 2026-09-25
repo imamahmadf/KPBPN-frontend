@@ -28,6 +28,8 @@ import {
 } from "../../Componets/KPBPN/ProduksiSumurInput";
 import {
   convertProduksiInputsBySatuan,
+  convertVolumeBetweenSatuan,
+  distributeRandomVolume,
   formatVolumeNumber,
   isVolumeEqual,
   isVolumeOver,
@@ -375,6 +377,83 @@ function DetailBAK3S({ match }) {
     }
     setIsEditing(false);
     setEditSnapshot(null);
+  };
+
+  const autoFillProduksiSumur = () => {
+    const sumurList = produksiPanel.sumurList;
+    if (sumurList.length === 0) {
+      toast({
+        title: "Tidak ada sumur",
+        description: "Tidak ada data sumur minyak untuk diisi otomatis.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const defaultProduksi = produksiPanel.defaultProduksi || {};
+    const hasSumberProduksi = sumurList.some(
+      (sumur) => Number(defaultProduksi[sumur.id]) > 0,
+    );
+    if (!hasSumberProduksi) {
+      toast({
+        title: "Produksi surat jalan kosong",
+        description:
+          "Tidak ada produksi sumur dari surat jalan sebagai rujukan isi otomatis.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!produksiPanel.satuanVolumeId) {
+      toast({
+        title: "Satuan belum dipilih",
+        description: "Pilih satuan volume produksi terlebih dahulu.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const targetVolume = convertVolumeBetweenSatuan(
+      data?.produksi,
+      "barrel",
+      produksiSatuanLabel,
+    );
+
+    if (targetVolume == null || targetVolume <= 0) {
+      toast({
+        title: "Produksi BAK3S tidak valid",
+        description: "Produksi BAK3S harus lebih dari 0 untuk isi otomatis.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setProduksiPanel((prev) => ({
+      ...prev,
+      inputs: distributeRandomVolume(
+        targetVolume,
+        sumurList,
+        (sumur) => defaultProduksi[sumur.id],
+        0.1,
+      ),
+    }));
+
+    toast({
+      title: "Isi otomatis",
+      description:
+        "Produksi diisi acak berdasar produksi sumur surat jalan (boleh desimal, contoh 4.5 atau 5.9), total tidak melebihi produksi BAK3S.",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
   };
 
   const saveProduksiSumur = async () => {
@@ -760,6 +839,8 @@ function DetailBAK3S({ match }) {
                       onEdit={startEditProduksi}
                       onCancel={cancelEditProduksi}
                       onSave={saveProduksiSumur}
+                      onAutoFill={autoFillProduksiSumur}
+                      showAutoFillButton={isEditing}
                     />
 
                     {produksiPanel.usedSumberDefault && (

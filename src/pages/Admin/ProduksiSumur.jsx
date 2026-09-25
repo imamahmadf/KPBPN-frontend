@@ -516,7 +516,7 @@ function ProduksiSumur({ match }) {
                     TOTAL PRODUKSI (FILTER)
                   </Text>
                   <Text fontWeight="bold" color="kpbpn">
-                    {totalProduksi}
+                    {totalProduksi} Barrel
                   </Text>
                 </Box>
                 {KLASIFIKASI_FIELDS.map((field) => (
@@ -826,36 +826,69 @@ function ProduksiSumur({ match }) {
               </Center>
             ) : (
               <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
-                <Table size="sm" minW="720px">
+                <Table size="sm" minW="880px">
                   <Thead bg="gray.50">
                     <Tr>
                       <Th>No</Th>
                       <Th>Tanggal Produksi</Th>
+                      <Th>Sumber</Th>
                       <Th>Produksi</Th>
-                      <Th>Nomor Surat Jalan</Th>
-                      <Th>Tanggal Surat Jalan</Th>
-                      <Th>Volume Surat Jalan</Th>
+                      <Th>Referensi</Th>
+                      <Th>Tanggal Referensi</Th>
+                      <Th>Volume Referensi</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {dataProduksi.length === 0 ? (
                       <Tr>
-                        <Td colSpan={6} textAlign="center" py={6}>
+                        <Td colSpan={7} textAlign="center" py={6}>
                           Belum ada data produksi untuk sumur ini
                         </Td>
                       </Tr>
                     ) : (
                       dataProduksi.map((item, index) => (
-                        <Tr key={item.id}>
+                        <Tr key={item.rowKey || `${item.sumber}-${item.id}`}>
                           <Td>{page * limit + index + 1}</Td>
                           <Td>{formatTanggal(item.tanggal)}</Td>
-                          <Td fontWeight="medium">{item.produksi ?? "-"}</Td>
-                          <Td>{item.suratJalan?.nomor || "-"}</Td>
-                          <Td>{formatTanggal(item.suratJalan?.tanggal)}</Td>
+                          <Td>
+                            <Badge
+                              colorScheme={
+                                item.sumber === "BAK3S" ? "orange" : "blue"
+                              }
+                              variant="subtle"
+                            >
+                              {item.sumberLabel ||
+                                (item.sumber === "BAK3S"
+                                  ? "BAK3S"
+                                  : "Surat Jalan")}
+                            </Badge>
+                          </Td>
+                          <Td fontWeight="medium">
+                            {formatVolumeLabel(
+                              item.produksi,
+                              item.satuanVolume?.satuan,
+                            )}
+                          </Td>
+                          <Td>
+                            {item.referensi ||
+                              item.suratJalan?.nomor ||
+                              (item.BAK3SId ? `BAK3S #${item.BAK3SId}` : "-")}
+                          </Td>
+                          <Td>
+                            {formatTanggal(
+                              item.tanggalReferensi ||
+                                item.suratJalan?.tanggal ||
+                                item.BAK3S?.BABongkar?.tanggal,
+                            )}
+                          </Td>
                           <Td>
                             {formatVolumeLabel(
-                              item.suratJalan?.volume,
-                              item.suratJalan?.satuanVolume?.satuan,
+                              item.volumeReferensi ??
+                                item.suratJalan?.volume ??
+                                item.BAK3S?.produksi,
+                              item.satuanReferensi ||
+                                item.suratJalan?.satuanVolume?.satuan ||
+                                (item.sumber === "BAK3S" ? "Barrel" : ""),
                             )}
                           </Td>
                         </Tr>

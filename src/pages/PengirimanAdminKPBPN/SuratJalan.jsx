@@ -521,9 +521,9 @@ const SuratJalan = () => {
         tanggal:
           toDateInput(editingKonfirmasi.tanggal) || toDateInput(new Date()),
         jamKedatangan:
-          toTimeInput(editingKonfirmasi.jamKedatangan) || toTimeInput(new Date()),
-        volume:
-          editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
+          toTimeInput(editingKonfirmasi.jamKedatangan) ||
+          toTimeInput(new Date()),
+        volume: editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
         catatan: editingKonfirmasi.catatan || "",
         api: toDecimalInput(editingKonfirmasi.api),
         BSNW: toDecimalInput(editingKonfirmasi.BSNW),
@@ -649,7 +649,9 @@ const SuratJalan = () => {
   };
 
   const openEditModal = (item) => {
-    if (denyPetugasKeamanan("Petugas Keamanan tidak dapat mengubah surat jalan")) {
+    if (
+      denyPetugasKeamanan("Petugas Keamanan tidak dapat mengubah surat jalan")
+    ) {
       return;
     }
     setEditingSuratJalan(item);
@@ -663,7 +665,9 @@ const SuratJalan = () => {
   };
 
   const openDeleteModal = (item) => {
-    if (denyPetugasKeamanan("Petugas Keamanan tidak dapat menghapus surat jalan")) {
+    if (
+      denyPetugasKeamanan("Petugas Keamanan tidak dapat menghapus surat jalan")
+    ) {
       return;
     }
     setDeleteTarget(item);
@@ -678,7 +682,9 @@ const SuratJalan = () => {
 
   const openBatalModal = (item) => {
     if (
-      denyPetugasKeamanan("Petugas Keamanan tidak dapat membatalkan surat jalan")
+      denyPetugasKeamanan(
+        "Petugas Keamanan tidak dapat membatalkan surat jalan",
+      )
     ) {
       return;
     }
@@ -715,7 +721,9 @@ const SuratJalan = () => {
 
   const handleBatalSuratJalan = async () => {
     if (
-      denyPetugasKeamanan("Petugas Keamanan tidak dapat membatalkan surat jalan")
+      denyPetugasKeamanan(
+        "Petugas Keamanan tidak dapat membatalkan surat jalan",
+      )
     ) {
       return;
     }
@@ -1417,7 +1425,7 @@ const SuratJalan = () => {
                   {...selectStyles}
                 />
               </FormControl>
-
+              {/* 
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
                   Asal Minyak
@@ -1431,7 +1439,7 @@ const SuratJalan = () => {
                   onChange={(opt) => setAsalMinyakFilterId(opt?.value || 0)}
                   {...selectStyles}
                 />
-              </FormControl>
+              </FormControl> */}
 
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
@@ -1694,7 +1702,7 @@ const SuratJalan = () => {
                     <Th textTransform="capitalize">Mitra</Th>
                     <Th textTransform="capitalize">Transportir</Th>
                     <Th textTransform="capitalize">Stasiun Pengumpul Minyak</Th>
-                    <Th textTransform="capitalize">Asal Minyak</Th>
+                    {/* <Th textTransform="capitalize">Asal Minyak</Th> */}
                     <Th textTransform="capitalize" isNumeric>
                       Volume
                     </Th>
@@ -1723,7 +1731,7 @@ const SuratJalan = () => {
                         <Td>{item.mitra?.nama || "-"}</Td>
                         <Td>{item.transportir?.plat || "-"}</Td>
                         <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
-                        <Td>{formatAsalMinyakLabel(item.asalMinyak) || "-"}</Td>
+                        {/* <Td>{formatAsalMinyakLabel(item.asalMinyak) || "-"}</Td> */}
                         <Td>
                           <VolumeMultiSatuan
                             volume={item.volume}
@@ -2439,9 +2447,7 @@ const SuratJalan = () => {
                       await submitForm();
                     }}
                   >
-                    {konfirmasiMode === "edit"
-                      ? "Simpan Perubahan"
-                      : "Simpan"}
+                    {konfirmasiMode === "edit" ? "Simpan Perubahan" : "Simpan"}
                   </Button>
                 </ModalFooter>
               </Box>
@@ -2493,42 +2499,42 @@ const SuratJalan = () => {
                   >
                     {selectedSuratJalanDetail?.statusSuratJalanId === 5 &&
                       !isPetugasKeamanan && (
-                      <Flex justify="flex-end" mb={3}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="yellow"
-                          onClick={() =>
-                            openEditKonfirmasiModal(
-                              kp,
-                              selectedSuratJalanDetail,
-                              "edit",
-                            )
-                          }
-                        >
-                          Edit
-                        </Button>
-                      </Flex>
-                    )}
+                        <Flex justify="flex-end" mb={3}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            colorScheme="yellow"
+                            onClick={() =>
+                              openEditKonfirmasiModal(
+                                kp,
+                                selectedSuratJalanDetail,
+                                "edit",
+                              )
+                            }
+                          >
+                            Edit
+                          </Button>
+                        </Flex>
+                      )}
                     {selectedSuratJalanDetail?.statusSuratJalanId === 3 &&
                       !isPetugasKeamanan && (
-                      <Flex justify="flex-end" mb={3}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="orange"
-                          onClick={() =>
-                            openEditKonfirmasiModal(
-                              kp,
-                              selectedSuratJalanDetail,
-                              "bongkar",
-                            )
-                          }
-                        >
-                          Konfirmasi Bongkar
-                        </Button>
-                      </Flex>
-                    )}
+                        <Flex justify="flex-end" mb={3}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            colorScheme="orange"
+                            onClick={() =>
+                              openEditKonfirmasiModal(
+                                kp,
+                                selectedSuratJalanDetail,
+                                "bongkar",
+                              )
+                            }
+                          >
+                            Konfirmasi Bongkar
+                          </Button>
+                        </Flex>
+                      )}
                     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
                       <MobileField label="Nomor Konfirmasi">
                         {kp.nomor || "-"}

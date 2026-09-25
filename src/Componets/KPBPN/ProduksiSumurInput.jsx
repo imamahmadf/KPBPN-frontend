@@ -77,8 +77,10 @@ export const ProduksiStickyBar = ({
   onEdit,
   onCancel,
   onSave,
+  onAutoFill,
   showEditButton = true,
   showSaveButton = true,
+  showAutoFillButton = false,
 }) => {
   const isCompact = useBreakpointValue({ base: true, lg: false }) ?? true;
 
@@ -252,6 +254,19 @@ export const ProduksiStickyBar = ({
                   Edit Produksi
                 </Button>
               ))}
+            {showAutoFillButton && isEditing && (
+              <Button
+                variant="outline"
+                colorScheme="orange"
+                size="sm"
+                onClick={onAutoFill}
+                isDisabled={saving}
+                w={{ base: "full", sm: "auto" }}
+                flexShrink={0}
+              >
+                Isi Otomatis
+              </Button>
+            )}
             {showSaveButton && (
               <Button
                 variant="primary"

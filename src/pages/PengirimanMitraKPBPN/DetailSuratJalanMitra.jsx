@@ -8,6 +8,7 @@ function DetailSuratJalanMitra(props) {
       backTo="/pengiriman-mitra/surat-jalan"
       showExtendedSections={false}
       allowEditProduksiAnytime
+      showAutoFillProduksi
     />
   );
 }

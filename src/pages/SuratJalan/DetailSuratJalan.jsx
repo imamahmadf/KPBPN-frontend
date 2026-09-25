@@ -27,6 +27,8 @@ import {
 } from "../../Componets/KPBPN/ProduksiSumurInput";
 import {
   convertProduksiInputsBySatuan,
+  convertVolumeBetweenSatuan,
+  distributeRandomVolume,
   formatVolumeNumber,
   isVolumeEqual,
   isVolumeOver,
@@ -38,7 +40,8 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
 
-const getDocumentUrl = (filePath) => (filePath ? `${API_BASE}${filePath}` : null);
+const getDocumentUrl = (filePath) =>
+  filePath ? `${API_BASE}${filePath}` : null;
 
 const getDocumentName = (filePath) => {
   if (!filePath) return "";
@@ -162,6 +165,7 @@ function DetailSuratJalan({
   backTo = "/pengiriman-kpbpn/surat-jalan",
   showExtendedSections = true,
   allowEditProduksiAnytime = false,
+  showAutoFillProduksi = false,
 }) {
   const suratJalanId = match.params.id;
   const toast = useToast();
@@ -373,6 +377,77 @@ function DetailSuratJalan({
     }
     setIsEditing(false);
     setEditSnapshot(null);
+  };
+
+  const autoFillProduksiSumur = () => {
+    const sumurList = produksiPanel.sumurList;
+    if (sumurList.length === 0) {
+      toast({
+        title: "Tidak ada sumur",
+        description: "Tidak ada data sumur minyak untuk diisi otomatis.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const hasProduksiHarian = sumurList.some(
+      (sumur) => Number(sumur.produksiHarian) > 0,
+    );
+    if (!hasProduksiHarian) {
+      toast({
+        title: "Produksi harian kosong",
+        description:
+          "Semua sumur memiliki produksi harian 0. Isi produksiHarian di data sumur terlebih dahulu.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!produksiPanel.satuanVolumeId) {
+      toast({
+        title: "Satuan belum dipilih",
+        description: "Pilih satuan volume produksi terlebih dahulu.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const targetVolume = convertVolumeBetweenSatuan(
+      produksiPanel.volume,
+      produksiPanel.satuan || "Barrel",
+      produksiSatuanLabel,
+    );
+
+    if (targetVolume == null || targetVolume <= 0) {
+      toast({
+        title: "Volume surat jalan tidak valid",
+        description: "Volume surat jalan harus lebih dari 0 untuk isi otomatis.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setProduksiPanel((prev) => ({
+      ...prev,
+      inputs: distributeRandomVolume(targetVolume, sumurList),
+    }));
+
+    toast({
+      title: "Isi otomatis",
+      description:
+        "Produksi diisi acak berdasar produksi harian (angka bulat), total sama dengan volume surat jalan.",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
   };
 
   const saveProduksiSumur = async () => {
@@ -613,20 +688,22 @@ function DetailSuratJalan({
                         {data.statusSuratJalan?.status || "-"}
                       </Badge>
                     </InfoField>
-                    <InfoField label="Mitra">{data.mitra?.nama || "-"}</InfoField>
+                    <InfoField label="Mitra">
+                      {data.mitra?.nama || "-"}
+                    </InfoField>
                     <InfoField label="Jenis Mitra">
                       {data.mitra?.jenisMitra?.jenis || "-"}
                     </InfoField>
                     <InfoField label="Stasiun Pengumpul Minyak">
                       {data.stasiunPengumpulMinyak?.nama || "-"}
                     </InfoField>
-                    <InfoField label="Asal Minyak">
+                    {/* <InfoField label="Asal Minyak">
                       {data.asalMinyak
                         ? [data.asalMinyak.nomor, data.asalMinyak.asal]
                             .filter(Boolean)
                             .join(" - ") || "-"
                         : "-"}
-                    </InfoField>
+                    </InfoField> */}
                     <InfoField label="Volume">
                       <VolumeMultiSatuan
                         volume={data.volume}
@@ -733,8 +810,12 @@ function DetailSuratJalan({
                       onEdit={startEditProduksi}
                       onCancel={cancelEditProduksi}
                       onSave={saveProduksiSumur}
+                      onAutoFill={autoFillProduksiSumur}
                       showEditButton={canEditProduksi}
                       showSaveButton={canEditProduksi}
+                      showAutoFillButton={
+                        showAutoFillProduksi && isProduksiEditing
+                      }
                     />
 
                     <ProduksiSumurList
@@ -750,343 +831,383 @@ function DetailSuratJalan({
 
               {showExtendedSections && (
                 <>
-              <SectionCard title="Konfirmasi Penerimaan">
-                {konfirmasiList.length === 0 ? (
-                  <EmptyText>
-                    Belum ada konfirmasi penerimaan untuk surat jalan ini.
-                  </EmptyText>
-                ) : (
-                  <Stack spacing={4}>
-                    {konfirmasiList.map((kp) => (
-                      <NestedCard key={kp.id}>
-                        <SimpleGrid
-                          columns={{ base: 1, sm: 2 }}
-                          spacing={{ base: 3, md: 4 }}
-                        >
-                          <InfoField label="Nomor Konfirmasi">
-                            {kp.nomor || "-"}
-                          </InfoField>
-                          <InfoField label="Tanggal">
-                            {formatTanggal(kp.tanggal)}
-                          </InfoField>
-                          <InfoField label="Jam Kedatangan">
-                            {formatJam(kp.jamKedatangan)}
-                          </InfoField>
-                          <InfoField label="Volume Diterima">
-                            <VolumeMultiSatuan
-                              volume={kp.volume}
-                              satuan={satuanSurat}
-                            />
-                          </InfoField>
-                          <InfoField label="Petugas Penerima (PK)">
-                            {kp.userPK?.nama || "-"}
-                          </InfoField>
-                          <InfoField label="Petugas Lab">
-                            {kp.userLab?.nama || "-"}
-                          </InfoField>
-                          <InfoField label="API">{formatAngka(kp.api)}</InfoField>
-                          <InfoField label="BSNW">
-                            {formatAngka(kp.BSNW)}
-                          </InfoField>
-                          <Box gridColumn={{ sm: "span 2" }}>
-                            <InfoField label="Catatan">
-                              {kp.catatan || "-"}
-                            </InfoField>
-                          </Box>
-                          <Box>
-                            <InfoField label="Foto Bukti Penerimaan">
-                              <FotoThumb
-                                src={kp.foto}
-                                alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
-                              />
-                            </InfoField>
-                          </Box>
-                          <Box>
-                            <InfoField label="Foto Lab">
-                              <FotoThumb
-                                src={kp.fotoLab}
-                                alt={`Foto lab ${kp.nomor || kp.id}`}
-                              />
-                            </InfoField>
-                          </Box>
-                        </SimpleGrid>
-                      </NestedCard>
-                      ))}
-                    </Stack>
-                  )}
-                </SectionCard>
-
-              <SectionCard title="Pengisian Tanki">
-                {pengisianList.length === 0 ? (
-                  <EmptyText>
-                    Belum ada data pengisian tanki yang terhubung dengan surat
-                    jalan ini.
-                  </EmptyText>
-                ) : (
-                  <Stack spacing={4}>
-                    {pengisianList.map((pt) => (
-                      <NestedCard key={pt.id}>
-                        <Flex
-                          justify="space-between"
-                          align={{ base: "flex-start", sm: "center" }}
-                          mb={3}
-                          gap={2}
-                          direction={{ base: "column", sm: "row" }}
-                        >
-                          <Heading size="xs" color="gray.700">
-                            Tanki {pt.tanki?.kode || `#${pt.id}`}
-                          </Heading>
-                          {pt.konfirmasiNomor && (
-                            <Badge colorScheme="blue" variant="subtle">
-                              Konfirmasi {pt.konfirmasiNomor}
-                            </Badge>
-                          )}
-                        </Flex>
-                        <SimpleGrid
-                          columns={{ base: 1, sm: 2, lg: 3 }}
-                          spacing={{ base: 3, md: 4 }}
-                        >
-                          <InfoField label="Nomor Surat">
-                            {pt.nomorSurat || "-"}
-                          </InfoField>
-                          <InfoField label="Tanggal">
-                            {formatTanggal(pt.tanggal)}
-                          </InfoField>
-                          <InfoField label="Kapasitas Tanki">
-                            {pt.tanki?.kapasitas != null
-                              ? `${pt.tanki.kapasitas} ${
-                                  pt.tanki.satuanVolume?.satuan || ""
-                                }`.trim()
-                              : "-"}
-                          </InfoField>
-                          <InfoField label="Gross">
-                            <VolumeMultiSatuan
-                              volume={pt.gross}
-                              satuan={pt.satuanVolume?.satuan || satuanSurat}
-                            />
-                          </InfoField>
-                          <InfoField label="Net">
-                            <VolumeMultiSatuan
-                              volume={pt.net}
-                              satuan={pt.satuanVolume?.satuan || satuanSurat}
-                            />
-                          </InfoField>
-                          <InfoField label="Flow Meter">
-                            {formatAngka(pt.flowMeter)}
-                          </InfoField>
-                          <InfoField label="Penampilan Visual">
-                            {pt.penampilanVisual || "-"}
-                          </InfoField>
-                          <InfoField label="Warna">{pt.warna || "-"}</InfoField>
-                          <InfoField label="Kandungan Air">
-                            {formatAngka(pt.kandunganAir)}
-                          </InfoField>
-                          <InfoField label="BSW">{formatAngka(pt.BSW)}</InfoField>
-                          <InfoField label="Saksi">{pt.saksi || "-"}</InfoField>
-                          <InfoField label="Catatan">
-                            {pt.catatan || "-"}
-                          </InfoField>
-                        </SimpleGrid>
-                      </NestedCard>
-                    ))}
-                  </Stack>
-                )}
-              </SectionCard>
-
-              <SimpleGrid
-                columns={{ base: 1, lg: 3 }}
-                spacing={{ base: 4, md: 6 }}
-                alignItems="stretch"
-              >
-                <SectionCard title="BA Bongkar">
-                  {baBongkarList.length === 0 ? (
-                    <EmptyText>
-                      Belum ada data BA Bongkar yang terhubung dengan surat
-                      jalan ini.
-                    </EmptyText>
-                  ) : (
-                    <Stack spacing={3}>
-                      {baBongkarList.map((ba) => (
-                        <NestedCard key={ba.id}>
-                          <HStack
-                            justify="space-between"
-                            mb={3}
-                            flexWrap="wrap"
-                            gap={2}
-                          >
-                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {ba.tankiKode || `BA #${ba.id}`}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500">
-                              {formatTanggal(ba.tanggal)}
-                            </Text>
-                          </HStack>
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                            <InfoField label="Ukuran Cairan">
-                              {formatAngka(ba.ukuranCairan)}
-                            </InfoField>
-                            <InfoField label="Ukuran Air">
-                              {formatAngka(ba.ukuranAir)}
-                            </InfoField>
-                          </SimpleGrid>
-                          {(ba.BABongkarTankis || []).length > 0 && (
-                            <Box mt={3}>
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                fontWeight="semibold"
-                                mb={2}
-                              >
-                                TANKI PADA BA BONGKAR
-                              </Text>
-                              <Stack spacing={2}>
-                                {(ba.BABongkarTankis || []).map((baTanki) => (
-                                  <Box
-                                    key={baTanki.id}
-                                    p={3}
-                                    borderRadius="md"
-                                    bg="gray.50"
-                                  >
-                                    <Text fontSize="sm" fontWeight="medium">
-                                      {baTanki.tanki?.kode ||
-                                        `Tanki #${baTanki.tangkiId}`}
-                                    </Text>
-                                    <SimpleGrid
-                                      columns={2}
-                                      spacing={2}
-                                      mt={2}
-                                    >
-                                      <InfoField label="Cairan">
-                                        {formatAngka(baTanki.ukuranCairan)}
-                                      </InfoField>
-                                      <InfoField label="Air">
-                                        {formatAngka(baTanki.ukuranAir)}
-                                      </InfoField>
-                                    </SimpleGrid>
-                                  </Box>
-                                ))}
-                              </Stack>
-                            </Box>
-                          )}
-                        </NestedCard>
-                      ))}
-                    </Stack>
-                  )}
-                </SectionCard>
-
-                <SectionCard title="BAK3S">
-                  {bak3sList.length === 0 ? (
-                    <EmptyText>
-                      Belum ada data BAK3S yang terhubung dengan surat jalan
-                      ini.
-                    </EmptyText>
-                  ) : (
-                    <Stack spacing={3}>
-                      {bak3sList.map((bak) => (
-                        <NestedCard key={bak.id}>
-                          <HStack
-                            justify="space-between"
-                            mb={3}
-                            flexWrap="wrap"
-                            gap={2}
-                          >
-                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {bak.tankiKode || `BA #${bak.baId || bak.id}`}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500">
-                              {formatTanggal(bak.baTanggal)}
-                            </Text>
-                          </HStack>
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                            <InfoField label="API">
-                              {formatAngka(bak.api)}
-                            </InfoField>
-                            <InfoField label="BSNW">
-                              {formatAngka(bak.BSNW)}
-                            </InfoField>
-                            <InfoField label="Produksi">
-                              {formatAngka(bak.produksi)}
-                            </InfoField>
-                            <InfoField label="SG">
-                              {formatAngka(bak.sg)}
-                            </InfoField>
-                            <Box gridColumn={{ sm: "span 2" }}>
-                              <InfoField label="Dokumen">
-                                {renderDokumenBak3s(bak.dokumen)}
-                              </InfoField>
-                            </Box>
-                          </SimpleGrid>
-                        </NestedCard>
-                      ))}
-                    </Stack>
-                  )}
-                </SectionCard>
-
-                <SectionCard title="Uji Lab K3S">
-                  {ujiLabList.length === 0 ? (
-                    <EmptyText>
-                      Belum ada data uji lab K3S yang terhubung dengan surat
-                      jalan ini.
-                    </EmptyText>
-                  ) : (
-                    <Stack spacing={3}>
-                      {ujiLabList.map((uji) => (
-                        <NestedCard key={uji.id}>
-                          <HStack
-                            justify="space-between"
-                            mb={3}
-                            flexWrap="wrap"
-                            gap={2}
-                          >
-                            <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                              {uji.tanki?.kode || "Tanki"}
-                            </Text>
-                            <Badge
-                              colorScheme={kualitasColor(uji.kualitas)}
-                              variant="subtle"
+                  <SectionCard title="Konfirmasi Penerimaan">
+                    {konfirmasiList.length === 0 ? (
+                      <EmptyText>
+                        Belum ada konfirmasi penerimaan untuk surat jalan ini.
+                      </EmptyText>
+                    ) : (
+                      <Stack spacing={4}>
+                        {konfirmasiList.map((kp) => (
+                          <NestedCard key={kp.id}>
+                            <SimpleGrid
+                              columns={{ base: 1, sm: 2 }}
+                              spacing={{ base: 3, md: 4 }}
                             >
-                              {uji.kualitas || "-"}
-                            </Badge>
-                          </HStack>
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-                            <InfoField label="Tanggal">
-                              {formatTanggal(uji.tanggal)}
-                            </InfoField>
-                            <InfoField label="API">
-                              {formatAngka(uji.api)}
-                            </InfoField>
-                            <InfoField label="BSNW">
-                              {formatAngka(uji.BSNW)}
-                            </InfoField>
-                            <InfoField label="Suhu">
-                              {formatAngka(uji.suhu)}
-                            </InfoField>
-                            <InfoField label="SG">
-                              {formatAngka(uji.sg)}
-                            </InfoField>
-                            <Box gridColumn={{ sm: "span 2" }}>
-                              <InfoField label="Foto">
-                                {uji.foto ? (
-                                  <Image
-                                    src={getImageUrl(uji.foto)}
-                                    alt="Foto uji lab"
-                                    w="100%"
-                                    maxH="140px"
-                                    borderRadius="md"
-                                    objectFit="cover"
-                                  />
-                                ) : (
-                                  "-"
-                                )}
+                              <InfoField label="Nomor Konfirmasi">
+                                {kp.nomor || "-"}
                               </InfoField>
-                            </Box>
-                          </SimpleGrid>
-                        </NestedCard>
-                      ))}
-                    </Stack>
-                  )}
-                </SectionCard>
-              </SimpleGrid>
+                              <InfoField label="Tanggal">
+                                {formatTanggal(kp.tanggal)}
+                              </InfoField>
+                              <InfoField label="Jam Kedatangan">
+                                {formatJam(kp.jamKedatangan)}
+                              </InfoField>
+                              <InfoField label="Volume Diterima">
+                                <VolumeMultiSatuan
+                                  volume={kp.volume}
+                                  satuan={satuanSurat}
+                                />
+                              </InfoField>
+                              <InfoField label="Petugas Penerima (PK)">
+                                {kp.userPK?.nama || "-"}
+                              </InfoField>
+                              <InfoField label="Petugas Lab">
+                                {kp.userLab?.nama || "-"}
+                              </InfoField>
+                              <InfoField label="API">
+                                {formatAngka(kp.api)}
+                              </InfoField>
+                              <InfoField label="BSNW">
+                                {formatAngka(kp.BSNW)}
+                              </InfoField>
+                              <Box gridColumn={{ sm: "span 2" }}>
+                                <InfoField label="Catatan">
+                                  {kp.catatan || "-"}
+                                </InfoField>
+                              </Box>
+                              <Box>
+                                <InfoField label="Foto Bukti Penerimaan">
+                                  <FotoThumb
+                                    src={kp.foto}
+                                    alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                                  />
+                                </InfoField>
+                              </Box>
+                              <Box>
+                                <InfoField label="Foto Lab">
+                                  <FotoThumb
+                                    src={kp.fotoLab}
+                                    alt={`Foto lab ${kp.nomor || kp.id}`}
+                                  />
+                                </InfoField>
+                              </Box>
+                            </SimpleGrid>
+                          </NestedCard>
+                        ))}
+                      </Stack>
+                    )}
+                  </SectionCard>
+
+                  <SectionCard title="Pengisian Tanki">
+                    {pengisianList.length === 0 ? (
+                      <EmptyText>
+                        Belum ada data pengisian tanki yang terhubung dengan
+                        surat jalan ini.
+                      </EmptyText>
+                    ) : (
+                      <Stack spacing={4}>
+                        {pengisianList.map((pt) => (
+                          <NestedCard key={pt.id}>
+                            <Flex
+                              justify="space-between"
+                              align={{ base: "flex-start", sm: "center" }}
+                              mb={3}
+                              gap={2}
+                              direction={{ base: "column", sm: "row" }}
+                            >
+                              <Heading size="xs" color="gray.700">
+                                Tanki {pt.tanki?.kode || `#${pt.id}`}
+                              </Heading>
+                              {pt.konfirmasiNomor && (
+                                <Badge colorScheme="blue" variant="subtle">
+                                  Konfirmasi {pt.konfirmasiNomor}
+                                </Badge>
+                              )}
+                            </Flex>
+                            <SimpleGrid
+                              columns={{ base: 1, sm: 2, lg: 3 }}
+                              spacing={{ base: 3, md: 4 }}
+                            >
+                              <InfoField label="Nomor Surat">
+                                {pt.nomorSurat || "-"}
+                              </InfoField>
+                              <InfoField label="Tanggal">
+                                {formatTanggal(pt.tanggal)}
+                              </InfoField>
+                              <InfoField label="Kapasitas Tanki">
+                                {pt.tanki?.kapasitas != null
+                                  ? `${pt.tanki.kapasitas} ${
+                                      pt.tanki.satuanVolume?.satuan || ""
+                                    }`.trim()
+                                  : "-"}
+                              </InfoField>
+                              <InfoField label="Gross">
+                                <VolumeMultiSatuan
+                                  volume={pt.gross}
+                                  satuan={
+                                    pt.satuanVolume?.satuan || satuanSurat
+                                  }
+                                />
+                              </InfoField>
+                              <InfoField label="Net">
+                                <VolumeMultiSatuan
+                                  volume={pt.net}
+                                  satuan={
+                                    pt.satuanVolume?.satuan || satuanSurat
+                                  }
+                                />
+                              </InfoField>
+                              <InfoField label="Flow Meter">
+                                {formatAngka(pt.flowMeter)}
+                              </InfoField>
+                              <InfoField label="Penampilan Visual">
+                                {pt.penampilanVisual || "-"}
+                              </InfoField>
+                              <InfoField label="Warna">
+                                {pt.warna || "-"}
+                              </InfoField>
+                              <InfoField label="Kandungan Air">
+                                {formatAngka(pt.kandunganAir)}
+                              </InfoField>
+                              <InfoField label="BSW">
+                                {formatAngka(pt.BSW)}
+                              </InfoField>
+                              <InfoField label="Saksi">
+                                {pt.saksi || "-"}
+                              </InfoField>
+                              <InfoField label="Catatan">
+                                {pt.catatan || "-"}
+                              </InfoField>
+                            </SimpleGrid>
+                          </NestedCard>
+                        ))}
+                      </Stack>
+                    )}
+                  </SectionCard>
+
+                  <SimpleGrid
+                    columns={{ base: 1, lg: 3 }}
+                    spacing={{ base: 4, md: 6 }}
+                    alignItems="stretch"
+                  >
+                    <SectionCard title="BA Bongkar">
+                      {baBongkarList.length === 0 ? (
+                        <EmptyText>
+                          Belum ada data BA Bongkar yang terhubung dengan surat
+                          jalan ini.
+                        </EmptyText>
+                      ) : (
+                        <Stack spacing={3}>
+                          {baBongkarList.map((ba) => (
+                            <NestedCard key={ba.id}>
+                              <HStack
+                                justify="space-between"
+                                mb={3}
+                                flexWrap="wrap"
+                                gap={2}
+                              >
+                                <Text
+                                  fontWeight="bold"
+                                  color="kpbpn"
+                                  fontSize="sm"
+                                >
+                                  {ba.tankiKode || `BA #${ba.id}`}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  {formatTanggal(ba.tanggal)}
+                                </Text>
+                              </HStack>
+                              <SimpleGrid
+                                columns={{ base: 1, sm: 2 }}
+                                spacing={3}
+                              >
+                                <InfoField label="Ukuran Cairan">
+                                  {formatAngka(ba.ukuranCairan)}
+                                </InfoField>
+                                <InfoField label="Ukuran Air">
+                                  {formatAngka(ba.ukuranAir)}
+                                </InfoField>
+                              </SimpleGrid>
+                              {(ba.BABongkarTankis || []).length > 0 && (
+                                <Box mt={3}>
+                                  <Text
+                                    fontSize="xs"
+                                    color="gray.500"
+                                    fontWeight="semibold"
+                                    mb={2}
+                                  >
+                                    TANKI PADA BA BONGKAR
+                                  </Text>
+                                  <Stack spacing={2}>
+                                    {(ba.BABongkarTankis || []).map(
+                                      (baTanki) => (
+                                        <Box
+                                          key={baTanki.id}
+                                          p={3}
+                                          borderRadius="md"
+                                          bg="gray.50"
+                                        >
+                                          <Text
+                                            fontSize="sm"
+                                            fontWeight="medium"
+                                          >
+                                            {baTanki.tanki?.kode ||
+                                              `Tanki #${baTanki.tangkiId}`}
+                                          </Text>
+                                          <SimpleGrid
+                                            columns={2}
+                                            spacing={2}
+                                            mt={2}
+                                          >
+                                            <InfoField label="Cairan">
+                                              {formatAngka(
+                                                baTanki.ukuranCairan,
+                                              )}
+                                            </InfoField>
+                                            <InfoField label="Air">
+                                              {formatAngka(baTanki.ukuranAir)}
+                                            </InfoField>
+                                          </SimpleGrid>
+                                        </Box>
+                                      ),
+                                    )}
+                                  </Stack>
+                                </Box>
+                              )}
+                            </NestedCard>
+                          ))}
+                        </Stack>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard title="BAK3S">
+                      {bak3sList.length === 0 ? (
+                        <EmptyText>
+                          Belum ada data BAK3S yang terhubung dengan surat jalan
+                          ini.
+                        </EmptyText>
+                      ) : (
+                        <Stack spacing={3}>
+                          {bak3sList.map((bak) => (
+                            <NestedCard key={bak.id}>
+                              <HStack
+                                justify="space-between"
+                                mb={3}
+                                flexWrap="wrap"
+                                gap={2}
+                              >
+                                <Text
+                                  fontWeight="bold"
+                                  color="kpbpn"
+                                  fontSize="sm"
+                                >
+                                  {bak.tankiKode || `BA #${bak.baId || bak.id}`}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  {formatTanggal(bak.baTanggal)}
+                                </Text>
+                              </HStack>
+                              <SimpleGrid
+                                columns={{ base: 1, sm: 2 }}
+                                spacing={3}
+                              >
+                                <InfoField label="API">
+                                  {formatAngka(bak.api)}
+                                </InfoField>
+                                <InfoField label="BSNW">
+                                  {formatAngka(bak.BSNW)}
+                                </InfoField>
+                                <InfoField label="Produksi">
+                                  {formatAngka(bak.produksi)}
+                                </InfoField>
+                                <InfoField label="SG">
+                                  {formatAngka(bak.sg)}
+                                </InfoField>
+                                <Box gridColumn={{ sm: "span 2" }}>
+                                  <InfoField label="Dokumen">
+                                    {renderDokumenBak3s(bak.dokumen)}
+                                  </InfoField>
+                                </Box>
+                              </SimpleGrid>
+                            </NestedCard>
+                          ))}
+                        </Stack>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard title="Uji Lab K3S">
+                      {ujiLabList.length === 0 ? (
+                        <EmptyText>
+                          Belum ada data uji lab K3S yang terhubung dengan surat
+                          jalan ini.
+                        </EmptyText>
+                      ) : (
+                        <Stack spacing={3}>
+                          {ujiLabList.map((uji) => (
+                            <NestedCard key={uji.id}>
+                              <HStack
+                                justify="space-between"
+                                mb={3}
+                                flexWrap="wrap"
+                                gap={2}
+                              >
+                                <Text
+                                  fontWeight="bold"
+                                  color="kpbpn"
+                                  fontSize="sm"
+                                >
+                                  {uji.tanki?.kode || "Tanki"}
+                                </Text>
+                                <Badge
+                                  colorScheme={kualitasColor(uji.kualitas)}
+                                  variant="subtle"
+                                >
+                                  {uji.kualitas || "-"}
+                                </Badge>
+                              </HStack>
+                              <SimpleGrid
+                                columns={{ base: 1, sm: 2 }}
+                                spacing={3}
+                              >
+                                <InfoField label="Tanggal">
+                                  {formatTanggal(uji.tanggal)}
+                                </InfoField>
+                                <InfoField label="API">
+                                  {formatAngka(uji.api)}
+                                </InfoField>
+                                <InfoField label="BSNW">
+                                  {formatAngka(uji.BSNW)}
+                                </InfoField>
+                                <InfoField label="Suhu">
+                                  {formatAngka(uji.suhu)}
+                                </InfoField>
+                                <InfoField label="SG">
+                                  {formatAngka(uji.sg)}
+                                </InfoField>
+                                <Box gridColumn={{ sm: "span 2" }}>
+                                  <InfoField label="Foto">
+                                    {uji.foto ? (
+                                      <Image
+                                        src={getImageUrl(uji.foto)}
+                                        alt="Foto uji lab"
+                                        w="100%"
+                                        maxH="140px"
+                                        borderRadius="md"
+                                        objectFit="cover"
+                                      />
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </InfoField>
+                                </Box>
+                              </SimpleGrid>
+                            </NestedCard>
+                          ))}
+                        </Stack>
+                      )}
+                    </SectionCard>
+                  </SimpleGrid>
                 </>
               )}
             </Stack>

@@ -74,9 +74,7 @@ const suratJalanSchema = Yup.object({
   stasiunPengumpulMinyakId: Yup.mixed()
     .nullable()
     .required("Stasiun pengumpul minyak wajib dipilih"),
-  asalMinyakId: Yup.mixed()
-    .nullable()
-    .required("Asal minyak wajib dipilih"),
+  asalMinyakId: Yup.mixed().nullable().required("Asal minyak wajib dipilih"),
   volume: Yup.number()
     .typeError("Volume harus angka")
     .positive("Volume harus lebih dari 0")
@@ -204,7 +202,9 @@ const formatMitraLabel = (val) => {
 
 const formatAsalMinyakLabel = (val) => {
   if (!val) return "";
-  if (val.nomor && val.asal) return `${val.nomor} - ${val.asal}`;
+  if (val.nomor && val.asal) return `${val.nomor} `;
+  // if (val.nomor && val.asal) return `${val.nomor} - ${val.asal}`;
+
   return val.asal || val.nomor || `Asal #${val.id}`;
 };
 
@@ -280,9 +280,7 @@ const SuratJalanMitra = () => {
       );
     }
     if (!mitraId) return [];
-    const mitraData = mitraList.find(
-      (m) => String(m.id) === String(mitraId),
-    );
+    const mitraData = mitraList.find((m) => String(m.id) === String(mitraId));
     return (mitraData?.supirs || []).map((s) => ({
       ...s,
       mitraNama: mitraData?.nama || mitra?.nama,
@@ -706,7 +704,7 @@ const SuratJalanMitra = () => {
                 />
               </FormControl>
 
-              <FormControl>
+              {/* <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
                   Asal Minyak
                 </FormLabel>
@@ -719,7 +717,7 @@ const SuratJalanMitra = () => {
                   onChange={(opt) => setAsalMinyakFilterId(opt?.value || 0)}
                   {...selectStyles}
                 />
-              </FormControl>
+              </FormControl> */}
 
               <FormControl>
                 <FormLabel fontSize="sm" fontWeight="medium">
@@ -999,10 +997,8 @@ const SuratJalanMitra = () => {
                     <Th textTransform="capitalize">Tanggal</Th>
                     <Th textTransform="capitalize">Mitra</Th>
                     <Th textTransform="capitalize">Transportir</Th>
-                    <Th textTransform="capitalize">
-                      Stasiun Pengumpul Minyak
-                    </Th>
-                    <Th textTransform="capitalize">Asal Minyak</Th>
+                    <Th textTransform="capitalize">Stasiun Pengumpul Minyak</Th>
+                    {/* <Th textTransform="capitalize">Asal Minyak</Th> */}
                     <Th textTransform="capitalize" isNumeric>
                       Volume
                     </Th>
@@ -1031,12 +1027,10 @@ const SuratJalanMitra = () => {
                         <Td>{formatTanggal(item.tanggal)}</Td>
                         <Td>{item.mitra?.nama || "-"}</Td>
                         <Td>{item.transportir?.plat || "-"}</Td>
-                        <Td>
-                          {item.stasiunPengumpulMinyak?.nama || "-"}
-                        </Td>
-                        <Td>
+                        <Td>{item.stasiunPengumpulMinyak?.nama || "-"}</Td>
+                        {/* <Td>
                           {formatAsalMinyakLabel(item.asalMinyak) || "-"}
-                        </Td>
+                        </Td> */}
                         <Td>
                           <VolumeMultiSatuan
                             volume={item.volume}
@@ -1072,9 +1066,7 @@ const SuratJalanMitra = () => {
                                   variant="ghost"
                                   colorScheme="blue"
                                   isLoading={loadingCetak[`${item.id}_docx`]}
-                                  onClick={() =>
-                                    cetakSuratJalan(item, "docx")
-                                  }
+                                  onClick={() => cetakSuratJalan(item, "docx")}
                                 />
                                 <IconButton
                                   aria-label="Unduh PDF"
@@ -1084,9 +1076,7 @@ const SuratJalanMitra = () => {
                                   variant="ghost"
                                   colorScheme="red"
                                   isLoading={loadingCetak[`${item.id}_pdf`]}
-                                  onClick={() =>
-                                    cetakSuratJalan(item, "pdf")
-                                  }
+                                  onClick={() => cetakSuratJalan(item, "pdf")}
                                 />
                               </>
                             )}
@@ -1177,7 +1167,9 @@ const SuratJalanMitra = () => {
       >
         <ModalOverlay />
         <ModalContent {...fullModalContentProps}>
-          <ModalHeader {...fullModalHeaderProps}>Tambah Surat Jalan</ModalHeader>
+          <ModalHeader {...fullModalHeaderProps}>
+            Tambah Surat Jalan
+          </ModalHeader>
           <ModalCloseButton />
           <Formik
             innerRef={formikRefTambah}
@@ -1313,8 +1305,7 @@ const SuratJalanMitra = () => {
                                 value: values.stasiunPengumpulMinyakId,
                                 label:
                                   (
-                                    dataSeed?.resultStasiunPengumpulMinyak ||
-                                    []
+                                    dataSeed?.resultStasiunPengumpulMinyak || []
                                   ).find(
                                     (s) =>
                                       s.id === values.stasiunPengumpulMinyakId,
@@ -1337,7 +1328,7 @@ const SuratJalanMitra = () => {
                     <FormControl
                       isInvalid={touched.asalMinyakId && errors.asalMinyakId}
                     >
-                      <FormLabel>Asal Minyak</FormLabel>
+                      <FormLabel>Pemilik Minyak</FormLabel>
                       <Select2
                         options={(dataSeed?.resultAsalMinyak || []).map(
                           (val) => ({
@@ -1345,7 +1336,7 @@ const SuratJalanMitra = () => {
                             label: formatAsalMinyakLabel(val),
                           }),
                         )}
-                        placeholder="Pilih Asal Minyak"
+                        placeholder=""
                         value={
                           values.asalMinyakId
                             ? {
@@ -1363,9 +1354,7 @@ const SuratJalanMitra = () => {
                         }
                         {...selectStyles}
                       />
-                      <FormErrorMessage>
-                        {errors.asalMinyakId}
-                      </FormErrorMessage>
+                      <FormErrorMessage>{errors.asalMinyakId}</FormErrorMessage>
                     </FormControl>
                     <FormControl isInvalid={touched.volume && errors.volume}>
                       <FormLabel>Volume</FormLabel>

@@ -78,6 +78,75 @@ export const convertVolumeBetweenSatuan = (volume, fromSatuan, toSatuan) => {
   return roundVolumeNumber(all[normalizeSatuan(toSatuan)], 3);
 };
 
+const parseProduksiHarian = (value) => {
+  const num = Number(value);
+  if (Number.isNaN(num) || num <= 0) return 0;
+  return num;
+};
+
+/**
+ * Bagi volume ke sumur secara acak.
+ * Bobot default dari produksiHarian; bisa diganti lewat getWeight.
+ * `step` 1 = angka bulat, 0.1 = satu desimal (contoh 4.5, 5.9).
+ * Nilai 0 tetap 0. Total tidak melebihi target.
+ */
+export const distributeRandomVolume = (
+  targetVolume,
+  sumurList = [],
+  getWeight = (sumur) => parseProduksiHarian(sumur.produksiHarian),
+  step = 1,
+) => {
+  const inputs = {};
+  const wells = (sumurList || []).map((sumur) => ({
+    id: sumur.id,
+    weight: parseProduksiHarian(getWeight(sumur)),
+  }));
+
+  wells.forEach((well) => {
+    inputs[well.id] = 0;
+  });
+
+  const unit = Number(step) > 0 ? Number(step) : 1;
+  const factor = Math.round(1 / unit);
+  const decimals = Math.max(0, String(unit).split(".")[1]?.length || 0);
+  const totalUnits = Math.floor(Number(targetVolume) * factor + 1e-9);
+  const active = wells.filter((well) => well.weight > 0);
+
+  if (!active.length || Number.isNaN(totalUnits) || totalUnits <= 0) {
+    return inputs;
+  }
+
+  const jittered = active.map((well) => ({
+    id: well.id,
+    weight: well.weight * (0.65 + Math.random() * 0.7),
+  }));
+  const jitterTotal = jittered.reduce((sum, well) => sum + well.weight, 0);
+  const expected = jittered.map(
+    (well) => (totalUnits * well.weight) / jitterTotal,
+  );
+  const parts = expected.map((value) => Math.floor(value));
+  const remaining = totalUnits - parts.reduce((sum, value) => sum + value, 0);
+
+  const remainders = expected
+    .map((value, index) => ({
+      index,
+      remainder: value - Math.floor(value),
+      rand: Math.random(),
+    }))
+    .sort((a, b) => b.remainder - a.remainder || b.rand - a.rand);
+
+  for (let i = 0; i < remaining; i += 1) {
+    parts[remainders[i].index] += 1;
+  }
+
+  jittered.forEach((well, index) => {
+    const value = parts[index] / factor;
+    inputs[well.id] = value === 0 ? 0 : roundVolumeNumber(value, decimals);
+  });
+
+  return inputs;
+};
+
 export const convertProduksiInputsBySatuan = (
   inputs,
   fromSatuan,
