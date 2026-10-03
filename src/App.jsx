@@ -51,6 +51,7 @@ import LaporanBABongkar from "./pages/Laporan/LaporanBABongkar.jsx";
 import LaporanKonfirmasiPenerimaan from "./pages/Laporan/LaporanKonfirmasiPenerimaan.jsx";
 import LaporanKeuangan from "./pages/Laporan/LaporanKeuangan.jsx";
 import RiwayatTanki from "./pages/Tanki/RiwayatTanki.jsx";
+import KlasifikasiSumur from "./pages/Admin/KlasifikasiSumur.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -220,7 +221,12 @@ function App() {
             exact
             roleRoute={[1, 2, 3]}
           />
-
+          <ProtectedRoute
+            component={KlasifikasiSumur}
+            path="/sumur/Klasifikasi"
+            exact
+            roleRoute={[1, 2, 3]}
+          />
           <ProtectedRoute
             component={StasiunPengumpulMinyak}
             path="/admin/stasiun-pengumpul-minyak"

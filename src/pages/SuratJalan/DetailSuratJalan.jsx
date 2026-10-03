@@ -392,10 +392,14 @@ function DetailSuratJalan({
       return;
     }
 
-    const hasProduksiHarian = sumurList.some(
-      (sumur) => Number(sumur.produksiHarian) > 0,
-    );
-    if (!hasProduksiHarian) {
+    const hasFillableWell = sumurList.some((sumur) => {
+      const raw = sumur.produksiHarian;
+      if (raw === null || raw === undefined || String(raw).trim() === "") {
+        return true;
+      }
+      return Number(raw) > 0;
+    });
+    if (!hasFillableWell) {
       toast({
         title: "Produksi harian kosong",
         description:
@@ -437,7 +441,19 @@ function DetailSuratJalan({
 
     setProduksiPanel((prev) => ({
       ...prev,
-      inputs: distributeRandomVolume(targetVolume, sumurList),
+      inputs: distributeRandomVolume(
+        targetVolume,
+        sumurList,
+        (sumur) => {
+          const raw = sumur.produksiHarian;
+          if (raw === null || raw === undefined || String(raw).trim() === "") {
+            return 1;
+          }
+          const num = Number(raw);
+          if (Number.isNaN(num) || num <= 0) return 0;
+          return num;
+        },
+      ),
     }));
 
     toast({

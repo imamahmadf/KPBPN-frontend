@@ -245,6 +245,7 @@ const menuData = [
     allowedRoles: [ROLE_KPBPN.SUPER_ADMIN, ROLE_KPBPN.ADMIN, ROLE_KPBPN.MITRA],
     items: [
       { label: "Sumur Minyak", path: "/sumur/sumur-minyak" },
+      { label: "Klasifikasi Sumur", path: "/sumur/Klasifikasi" },
       { label: "Peta Sumur", path: "/sumur/peta-sumur" },
     ],
   },

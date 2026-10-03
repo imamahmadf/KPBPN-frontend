@@ -287,6 +287,22 @@ export const ProduksiStickyBar = ({
   );
 };
 
+const renderReadonlyVolume = (value, satuanLabel, compact) => {
+  if (value === "" || value == null || Number(value) === 0) {
+    return (
+      <Text fontSize="sm" color="gray.500">
+        -
+      </Text>
+    );
+  }
+
+  return compact ? (
+    <VolumeSummary volume={value} satuan={satuanLabel} compact />
+  ) : (
+    <VolumeMultiSatuan volume={value} satuan={satuanLabel} />
+  );
+};
+
 export const ProduksiSumurList = ({
   sumurList = [],
   inputs = {},
@@ -294,7 +310,15 @@ export const ProduksiSumurList = ({
   produksiSatuanLabel,
   showMitraColumn = false,
   onInputChange,
+  sumberInputs = {},
+  sumberReferensi = {},
+  showSumberColumn = false,
+  sumberColumnLabel = "Produksi Surat Jalan",
+  produksiColumnLabel,
 }) => {
+  const k3sColumnLabel =
+    produksiColumnLabel || `Produksi BAK3S (${produksiSatuanLabel})`;
+
   const renderProduksiValue = (sumur, compact) => {
     if (isEditing) {
       return (
@@ -364,8 +388,28 @@ export const ProduksiSumurList = ({
                 <InfoField label="Mitra">{sumur.mitra?.nama || "-"}</InfoField>
               )}
               <InfoField label="Nomor Sumur">{sumur.nomor || "-"}</InfoField>
-              <Box gridColumn={{ sm: showMitraColumn ? "span 2" : "auto" }}>
-                <InfoField label={`Produksi (${produksiSatuanLabel})`}>
+              {showSumberColumn && (
+                <InfoField label="Surat Jalan">
+                  {sumberReferensi[sumur.id] || "-"}
+                </InfoField>
+              )}
+              {showSumberColumn && (
+                <InfoField label={`${sumberColumnLabel} (${produksiSatuanLabel})`}>
+                  {renderReadonlyVolume(
+                    sumberInputs[sumur.id],
+                    produksiSatuanLabel,
+                    true,
+                  )}
+                </InfoField>
+              )}
+              <Box gridColumn={{ sm: "span 2" }}>
+                <InfoField
+                  label={
+                    showSumberColumn
+                      ? k3sColumnLabel
+                      : `Produksi (${produksiSatuanLabel})`
+                  }
+                >
                   {renderProduksiValue(sumur, true)}
                 </InfoField>
               </Box>
@@ -382,15 +426,25 @@ export const ProduksiSumurList = ({
         bg="white"
         maxW="100%"
       >
-        <Table variant="simple" size="sm" minW="560px">
+        <Table variant="simple" size="sm" minW={showSumberColumn ? "820px" : "560px"}>
           <Thead bg="white">
             <Tr>
               <Th textTransform="capitalize">No.</Th>
               {showMitraColumn && <Th textTransform="capitalize">Mitra</Th>}
               <Th textTransform="capitalize">Sumur</Th>
               <Th textTransform="capitalize">Nomor Sumur</Th>
+              {showSumberColumn && (
+                <Th textTransform="capitalize">Surat Jalan</Th>
+              )}
+              {showSumberColumn && (
+                <Th textTransform="capitalize" isNumeric>
+                  {sumberColumnLabel} ({produksiSatuanLabel})
+                </Th>
+              )}
               <Th textTransform="capitalize" isNumeric>
-                Produksi ({produksiSatuanLabel})
+                {showSumberColumn
+                  ? k3sColumnLabel
+                  : `Produksi (${produksiSatuanLabel})`}
               </Th>
             </Tr>
           </Thead>
@@ -407,6 +461,20 @@ export const ProduksiSumurList = ({
                   <Text noOfLines={2}>{sumur.nama || "-"}</Text>
                 </Td>
                 <Td>{sumur.nomor || "-"}</Td>
+                {showSumberColumn && (
+                  <Td>
+                    <Text noOfLines={2}>{sumberReferensi[sumur.id] || "-"}</Text>
+                  </Td>
+                )}
+                {showSumberColumn && (
+                  <Td isNumeric>
+                    {renderReadonlyVolume(
+                      sumberInputs[sumur.id],
+                      produksiSatuanLabel,
+                      false,
+                    )}
+                  </Td>
+                )}
                 <Td isNumeric>{renderProduksiValue(sumur, false)}</Td>
               </Tr>
             ))}

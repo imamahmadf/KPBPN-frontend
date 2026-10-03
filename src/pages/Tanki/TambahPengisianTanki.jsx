@@ -39,6 +39,10 @@ import {
 import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
+import {
+  convertVolumeToLiter,
+  normalizeSatuan,
+} from "../../lib/volumeSatuan";
 import { userRedux } from "../../Redux/Reducers/auth";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -152,6 +156,29 @@ const getLinkedTankiKode = (kp) =>
         .filter(Boolean),
     ),
   );
+
+const getLiterSatuanId = (satuanList = []) => {
+  const found = satuanList.find(
+    (item) => normalizeSatuan(item.satuan) === "liter",
+  );
+  return found ? String(found.id) : "";
+};
+
+const getVolumeSuratJalanLiter = (kp) => {
+  const volume = kp?.volume ?? kp?.suratJalan?.volume;
+  const satuan = kp?.suratJalan?.satuanVolume?.satuan || "Barrel";
+  const liter = convertVolumeToLiter(volume, satuan);
+  if (liter === null) return 0;
+  return Math.round(liter);
+};
+
+const sumGrossLiterFromIds = (ids, konfirmasiList = []) => {
+  const selected = new Set((ids || []).map(String));
+  return konfirmasiList.reduce((sum, item) => {
+    if (!selected.has(String(item.id))) return sum;
+    return sum + getVolumeSuratJalanLiter(item);
+  }, 0);
+};
 
 const MobileField = ({ label, children }) => (
   <Box minW={0}>
@@ -327,7 +354,10 @@ const TambahPengisianTanki = () => {
             </Center>
           ) : (
             <Formik
-              initialValues={initialValues}
+              initialValues={{
+                ...initialValues,
+                satuanVolumeId: getLiterSatuanId(dataSatuanVolume),
+              }}
               validationSchema={pengisianSchema}
               onSubmit={handleSubmit}
             >
@@ -340,6 +370,7 @@ const TambahPengisianTanki = () => {
                 setFieldValue,
                 setFieldTouched,
               }) => {
+                const literSatuanId = getLiterSatuanId(dataSatuanVolume);
                 const isAllSelected =
                   dataKonfirmasi.length > 0 &&
                   dataKonfirmasi.every((item) =>
@@ -348,10 +379,23 @@ const TambahPengisianTanki = () => {
                 const isSomeSelected =
                   values.ids.length > 0 &&
                   values.ids.length < dataKonfirmasi.length;
-                const toggleSemua = (checked) => {
+                const applyKonfirmasiIds = (nextIds) => {
                   setFieldTouched("ids", true);
+                  setFieldValue("ids", nextIds);
+                  if (literSatuanId) {
+                    setFieldValue("satuanVolumeId", literSatuanId);
+                  }
+                  const gross = nextIds.length
+                    ? sumGrossLiterFromIds(nextIds, dataKonfirmasi)
+                    : "";
+                  setFieldValue("gross", gross);
                   setFieldValue(
-                    "ids",
+                    "net",
+                    hitungNet(gross === "" ? "" : gross, values.kandunganAir),
+                  );
+                };
+                const toggleSemua = (checked) => {
+                  applyKonfirmasiIds(
                     checked
                       ? dataKonfirmasi.map((item) => String(item.id))
                       : [],
@@ -384,18 +428,7 @@ const TambahPengisianTanki = () => {
                           name="tangkiId"
                           placeholder="Pilih tangki"
                           value={values.tangkiId}
-                          onChange={(e) => {
-                            handleChange(e);
-                            const selected = dataTanki.find(
-                              (item) => String(item.id) === e.target.value,
-                            );
-                            if (selected?.satuanVolumeId) {
-                              setFieldValue(
-                                "satuanVolumeId",
-                                String(selected.satuanVolumeId),
-                              );
-                            }
-                          }}
+                          onChange={handleChange}
                           onBlur={handleBlur}
                         >
                           {dataTanki.map((item) => (
@@ -422,6 +455,9 @@ const TambahPengisianTanki = () => {
                           }}
                           onBlur={handleBlur}
                         />
+                        <FormHelperText>
+                          Terisi otomatis dari volume surat jalan (Liter)
+                        </FormHelperText>
                         <FormErrorMessage>{errors.gross}</FormErrorMessage>
                       </FormControl>
 
@@ -609,9 +645,7 @@ const TambahPengisianTanki = () => {
                                   boxShadow="sm"
                                   cursor="pointer"
                                   onClick={() => {
-                                    setFieldTouched("ids", true);
-                                    setFieldValue(
-                                      "ids",
+                                    applyKonfirmasiIds(
                                       toggleKonfirmasiId(values.ids, item.id),
                                     );
                                   }}
@@ -627,9 +661,7 @@ const TambahPengisianTanki = () => {
                                         mt={1}
                                         isChecked={isSelected}
                                         onChange={() => {
-                                          setFieldTouched("ids", true);
-                                          setFieldValue(
-                                            "ids",
+                                          applyKonfirmasiIds(
                                             toggleKonfirmasiId(
                                               values.ids,
                                               item.id,
@@ -790,9 +822,7 @@ const TambahPengisianTanki = () => {
                                       }}
                                       cursor="pointer"
                                       onClick={() => {
-                                        setFieldTouched("ids", true);
-                                        setFieldValue(
-                                          "ids",
+                                        applyKonfirmasiIds(
                                           toggleKonfirmasiId(
                                             values.ids,
                                             item.id,
@@ -804,9 +834,7 @@ const TambahPengisianTanki = () => {
                                         <Checkbox
                                           isChecked={isSelected}
                                           onChange={() => {
-                                            setFieldTouched("ids", true);
-                                            setFieldValue(
-                                              "ids",
+                                            applyKonfirmasiIds(
                                               toggleKonfirmasiId(
                                                 values.ids,
                                                 item.id,

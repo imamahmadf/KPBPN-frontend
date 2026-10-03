@@ -10,6 +10,7 @@ import {
   Flex,
   Heading,
   HStack,
+  Image,
   SimpleGrid,
   Skeleton,
   Spinner,
@@ -21,6 +22,7 @@ import {
 import { BsFileEarmarkExcel } from "react-icons/bs";
 import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import {
   ProduksiStickyBar,
   ProduksiSumurList,
@@ -39,6 +41,8 @@ import {
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
+const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
+
 const getDocumentUrl = (filePath) => (filePath ? `${API_BASE}${filePath}` : null);
 
 const getDocumentName = (filePath) => {
@@ -54,6 +58,28 @@ const formatTanggal = (d) =>
         year: "numeric",
       })
     : "-";
+
+const formatJam = (value) => {
+  if (!value) return "-";
+  const str = String(value).trim();
+  const timeOnly = str.match(/^(\d{2}:\d{2})(?::\d{2})?$/);
+  if (timeOnly) return timeOnly[1];
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return str;
+  return parsed.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const statusColor = (status) => {
+  const value = String(status || "").toUpperCase();
+  if (value === "TIBA") return "green";
+  if (value === "BONGKAR") return "orange";
+  if (value === "KIRIM") return "blue";
+  if (value === "BATAL") return "red";
+  return "gray";
+};
 
 const formatAngka = (value) => {
   if (value === null || value === undefined || value === "") return "-";
@@ -119,6 +145,35 @@ const EmptyText = ({ children }) => (
   </Text>
 );
 
+const FotoThumb = ({ src, alt }) => {
+  if (!src) return <EmptyText>Tidak ada foto</EmptyText>;
+  return (
+    <Image
+      src={getImageUrl(src)}
+      alt={alt}
+      w="100%"
+      maxW="100%"
+      maxH={{ base: "160px", md: "180px" }}
+      borderRadius="md"
+      objectFit="cover"
+      border="1px solid"
+      borderColor="gray.200"
+    />
+  );
+};
+
+const NestedCard = ({ children }) => (
+  <Box
+    p={{ base: 3, md: 4 }}
+    borderWidth="1px"
+    borderRadius="md"
+    bg="white"
+    overflow="hidden"
+  >
+    {children}
+  </Box>
+);
+
 function DetailBAK3S({ match }) {
   const bak3sId = match.params.id;
   const toast = useToast();
@@ -134,6 +189,7 @@ function DetailBAK3S({ match }) {
     satuanVolumeOptions: [],
     relatedMitra: [],
     defaultProduksi: {},
+    sumberReferensi: {},
     usedSumberDefault: false,
   });
   const [isEditing, setIsEditing] = useState(false);
@@ -169,6 +225,7 @@ function DetailBAK3S({ match }) {
       sumurList: [],
       inputs: {},
       defaultProduksi: {},
+      sumberReferensi: {},
       usedSumberDefault: false,
     }));
 
@@ -189,6 +246,22 @@ function DetailBAK3S({ match }) {
         if (item?.sumurMinyakId && item?.produksi) {
           defaultProduksi[item.sumurMinyakId] = item.produksi;
         }
+      });
+      const sumberReferensi = {};
+      (res.data.resultProduksiSumber || []).forEach((item) => {
+        const sumurId = item?.sumurMinyakId;
+        if (!sumurId) return;
+        const nomor =
+          item.suratJalan?.nomor ||
+          (item.suratJalanId ? `SJ #${item.suratJalanId}` : null);
+        if (!nomor) return;
+        if (!sumberReferensi[sumurId]) sumberReferensi[sumurId] = [];
+        if (!sumberReferensi[sumurId].includes(nomor)) {
+          sumberReferensi[sumurId].push(nomor);
+        }
+      });
+      Object.keys(sumberReferensi).forEach((sumurId) => {
+        sumberReferensi[sumurId] = sumberReferensi[sumurId].join(", ");
       });
       const hasSavedProduksi = existingProduksi.length > 0;
       const inputs = {};
@@ -227,6 +300,7 @@ function DetailBAK3S({ match }) {
         satuanVolumeOptions,
         relatedMitra: res.data.relatedMitra || [],
         defaultProduksi,
+        sumberReferensi,
         usedSumberDefault,
       }));
       setIsEditing(existingProduksi.length === 0);
@@ -525,6 +599,10 @@ function DetailBAK3S({ match }) {
     const rows = produksiPanel.sumurList.map((sumur) => ({
       sumur,
       produksi: parseProduksiNumber(produksiPanel.inputs[sumur.id]),
+      produksiSuratJalan: parseProduksiNumber(
+        produksiPanel.defaultProduksi?.[sumur.id],
+      ),
+      suratJalan: produksiPanel.sumberReferensi?.[sumur.id] || "-",
     }));
 
     if (!rows.length) {
@@ -575,7 +653,9 @@ function DetailBAK3S({ match }) {
         "Nama Sumur",
         "Koordinat X",
         "Koordinat Y",
-        `Produksi (${satuanLabel})`,
+        "Surat Jalan",
+        `Produksi Surat Jalan (${satuanLabel})`,
+        `Produksi BAK3S (${satuanLabel})`,
       ]);
       headerRow.eachCell((cell) => {
         cell.style = headerStyle;
@@ -587,6 +667,8 @@ function DetailBAK3S({ match }) {
           item.sumur.nama || "-",
           excelNumber(item.sumur.longitude),
           excelNumber(item.sumur.latitude),
+          item.suratJalan,
+          item.produksiSuratJalan,
           item.produksi,
         ]);
         dataRow.eachCell((cell) => {
@@ -597,9 +679,11 @@ function DetailBAK3S({ match }) {
             dataRow.getCell(col).numFmt = "0.00000000";
           }
         });
-        if (typeof dataRow.getCell(5).value === "number") {
-          dataRow.getCell(5).numFmt = "#,##0.000";
-        }
+        [6, 7].forEach((col) => {
+          if (typeof dataRow.getCell(col).value === "number") {
+            dataRow.getCell(col).numFmt = "#,##0.000";
+          }
+        });
       });
 
       worksheet.columns.forEach((column) => {
@@ -649,6 +733,29 @@ function DetailBAK3S({ match }) {
   const ba = data?.BABongkar;
   const tankiList = ba?.BABongkarTankis || [];
   const pengisianList = ba?.pengisianTankis || [];
+  const konfirmasiList = useMemo(() => {
+    const map = new Map();
+    pengisianList.forEach((pt) => {
+      (pt.konfirmasiPenerimaans || []).forEach((kp) => {
+        if (kp?.id && !map.has(kp.id)) map.set(kp.id, kp);
+      });
+    });
+    return Array.from(map.values());
+  }, [pengisianList]);
+  const suratJalanList = useMemo(() => {
+    const map = new Map();
+    konfirmasiList.forEach((kp) => {
+      const sj = kp.suratJalan;
+      if (sj?.id && !map.has(sj.id)) {
+        map.set(sj.id, {
+          ...sj,
+          konfirmasiNomor: kp.nomor,
+          konfirmasiId: kp.id,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [konfirmasiList]);
   const tankiLabels =
     tankiList
       .map((item) => item.tanki?.kode)
@@ -783,6 +890,266 @@ function DetailBAK3S({ match }) {
                 </SectionCard>
               </SimpleGrid>
 
+              <SectionCard title="Surat Jalan">
+                {suratJalanList.length === 0 ? (
+                  <EmptyText>
+                    Belum ada surat jalan yang terhubung dengan BAK3S ini.
+                  </EmptyText>
+                ) : (
+                  <Stack spacing={4}>
+                    {suratJalanList.map((sj) => {
+                      const satuanSj = sj.satuanVolume?.satuan || "Barrel";
+                      return (
+                        <NestedCard key={sj.id}>
+                          <Flex
+                            justify="space-between"
+                            align={{ base: "flex-start", sm: "center" }}
+                            mb={3}
+                            gap={2}
+                            direction={{ base: "column", sm: "row" }}
+                          >
+                            <Heading size="xs" color="gray.700">
+                              {sj.nomor || `Surat Jalan #${sj.id}`}
+                            </Heading>
+                            <HStack spacing={2} flexWrap="wrap">
+                              <Badge
+                                colorScheme={statusColor(
+                                  sj.statusSuratJalan?.status,
+                                )}
+                                variant="subtle"
+                              >
+                                {sj.statusSuratJalan?.status || "-"}
+                              </Badge>
+                              <Button
+                                as={RouterLink}
+                                to={`/pengiriman-kpbpn/detail-surat-jalan/${sj.id}`}
+                                size="xs"
+                                variant="link"
+                                colorScheme="orange"
+                              >
+                                Lihat detail
+                              </Button>
+                            </HStack>
+                          </Flex>
+                          <SimpleGrid
+                            columns={{ base: 1, sm: 2, lg: 3 }}
+                            spacing={{ base: 3, md: 4 }}
+                          >
+                            <InfoField label="Tanggal">
+                              {formatTanggal(sj.tanggal)}
+                            </InfoField>
+                            <InfoField label="Mitra">
+                              {sj.mitra?.nama || "-"}
+                            </InfoField>
+                            <InfoField label="Volume">
+                              <VolumeMultiSatuan
+                                volume={sj.volume}
+                                satuan={satuanSj}
+                              />
+                            </InfoField>
+                            <InfoField label="Plat">
+                              {sj.transportir?.plat || "-"}
+                            </InfoField>
+                            <InfoField label="Supir">
+                              {sj.supir?.nama || "-"}
+                            </InfoField>
+                            <InfoField label="Konfirmasi">
+                              {sj.konfirmasiNomor ||
+                                (sj.konfirmasiId
+                                  ? `#${sj.konfirmasiId}`
+                                  : "-")}
+                            </InfoField>
+                          </SimpleGrid>
+                        </NestedCard>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </SectionCard>
+
+              <SectionCard title="Konfirmasi Penerimaan">
+                {konfirmasiList.length === 0 ? (
+                  <EmptyText>
+                    Belum ada konfirmasi penerimaan yang terhubung dengan BAK3S
+                    ini.
+                  </EmptyText>
+                ) : (
+                  <Stack spacing={4}>
+                    {konfirmasiList.map((kp) => {
+                      const satuanKp =
+                        kp.suratJalan?.satuanVolume?.satuan || "Barrel";
+                      return (
+                        <NestedCard key={kp.id}>
+                          <Flex
+                            justify="space-between"
+                            align={{ base: "flex-start", sm: "center" }}
+                            mb={3}
+                            gap={2}
+                            direction={{ base: "column", sm: "row" }}
+                          >
+                            <Heading size="xs" color="gray.700">
+                              {kp.nomor || `Konfirmasi #${kp.id}`}
+                            </Heading>
+                            {kp.suratJalan?.nomor && (
+                              <Badge colorScheme="blue" variant="subtle">
+                                {kp.suratJalan.nomor}
+                              </Badge>
+                            )}
+                          </Flex>
+                          <SimpleGrid
+                            columns={{ base: 1, sm: 2, lg: 3 }}
+                            spacing={{ base: 3, md: 4 }}
+                          >
+                            <InfoField label="Tanggal">
+                              {formatTanggal(kp.tanggal)}
+                            </InfoField>
+                            <InfoField label="Jam Kedatangan">
+                              {formatJam(kp.jamKedatangan)}
+                            </InfoField>
+                            <InfoField label="Volume Diterima">
+                              <VolumeMultiSatuan
+                                volume={kp.volume}
+                                satuan={satuanKp}
+                              />
+                            </InfoField>
+                            <InfoField label="Petugas Penerima (PK)">
+                              {kp.userPK?.nama || "-"}
+                            </InfoField>
+                            <InfoField label="Petugas Lab">
+                              {kp.userLab?.nama || "-"}
+                            </InfoField>
+                            <InfoField label="API">
+                              {formatAngka(kp.api)}
+                            </InfoField>
+                            <InfoField label="BSNW">
+                              {formatAngka(kp.BSNW)}
+                            </InfoField>
+                            <Box gridColumn={{ lg: "span 2" }}>
+                              <InfoField label="Catatan">
+                                {kp.catatan || "-"}
+                              </InfoField>
+                            </Box>
+                            <Box>
+                              <InfoField label="Foto Bukti Penerimaan">
+                                <FotoThumb
+                                  src={kp.foto}
+                                  alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                                />
+                              </InfoField>
+                            </Box>
+                            <Box>
+                              <InfoField label="Foto Lab">
+                                <FotoThumb
+                                  src={kp.fotoLab}
+                                  alt={`Foto lab ${kp.nomor || kp.id}`}
+                                />
+                              </InfoField>
+                            </Box>
+                          </SimpleGrid>
+                        </NestedCard>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </SectionCard>
+
+              <SectionCard title="Pengisian Tanki">
+                {pengisianList.length === 0 ? (
+                  <EmptyText>
+                    Belum ada data pengisian tanki yang terhubung dengan BAK3S
+                    ini.
+                  </EmptyText>
+                ) : (
+                  <Stack spacing={4}>
+                    {pengisianList.map((pt) => {
+                      const satuanPt = pt.satuanVolume?.satuan || "Barrel";
+                      const konfirmasiLabels = (pt.konfirmasiPenerimaans || [])
+                        .map((kp) => kp.nomor || `#${kp.id}`)
+                        .filter(Boolean);
+                      return (
+                        <NestedCard key={pt.id}>
+                          <Flex
+                            justify="space-between"
+                            align={{ base: "flex-start", sm: "center" }}
+                            mb={3}
+                            gap={2}
+                            direction={{ base: "column", sm: "row" }}
+                          >
+                            <Heading size="xs" color="gray.700">
+                              Tanki {pt.tanki?.kode || `#${pt.id}`}
+                            </Heading>
+                            {konfirmasiLabels.length > 0 && (
+                              <HStack spacing={1} flexWrap="wrap">
+                                {konfirmasiLabels.map((label) => (
+                                  <Badge
+                                    key={label}
+                                    colorScheme="blue"
+                                    variant="subtle"
+                                  >
+                                    {label}
+                                  </Badge>
+                                ))}
+                              </HStack>
+                            )}
+                          </Flex>
+                          <SimpleGrid
+                            columns={{ base: 1, sm: 2, lg: 3 }}
+                            spacing={{ base: 3, md: 4 }}
+                          >
+                            <InfoField label="Nomor Surat">
+                              {pt.nomorSurat || "-"}
+                            </InfoField>
+                            <InfoField label="Tanggal">
+                              {formatTanggal(pt.tanggal)}
+                            </InfoField>
+                            <InfoField label="Kapasitas Tanki">
+                              {pt.tanki?.kapasitas != null
+                                ? `${pt.tanki.kapasitas} ${
+                                    pt.tanki.satuanVolume?.satuan || ""
+                                  }`.trim()
+                                : "-"}
+                            </InfoField>
+                            <InfoField label="Gross">
+                              <VolumeMultiSatuan
+                                volume={pt.gross}
+                                satuan={satuanPt}
+                              />
+                            </InfoField>
+                            <InfoField label="Net">
+                              <VolumeMultiSatuan
+                                volume={pt.net}
+                                satuan={satuanPt}
+                              />
+                            </InfoField>
+                            <InfoField label="Flow Meter">
+                              {formatAngka(pt.flowMeter)}
+                            </InfoField>
+                            <InfoField label="Penampilan Visual">
+                              {pt.penampilanVisual || "-"}
+                            </InfoField>
+                            <InfoField label="Warna">
+                              {pt.warna || "-"}
+                            </InfoField>
+                            <InfoField label="Kandungan Air">
+                              {formatAngka(pt.kandunganAir)}
+                            </InfoField>
+                            <InfoField label="BSW">
+                              {formatAngka(pt.BSW)}
+                            </InfoField>
+                            <InfoField label="Saksi">
+                              {pt.saksi || "-"}
+                            </InfoField>
+                            <InfoField label="Catatan">
+                              {pt.catatan || "-"}
+                            </InfoField>
+                          </SimpleGrid>
+                        </NestedCard>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </SectionCard>
+
               <SectionCard
                 title="Input Produksi Sumur"
                 overflow="visible"
@@ -859,6 +1226,9 @@ function DetailBAK3S({ match }) {
                       produksiSatuanLabel={produksiSatuanLabel}
                       showMitraColumn={showMitraColumn}
                       onInputChange={handleProduksiInputChange}
+                      showSumberColumn
+                      sumberInputs={produksiPanel.defaultProduksi}
+                      sumberReferensi={produksiPanel.sumberReferensi}
                     />
                   </>
                 )}
