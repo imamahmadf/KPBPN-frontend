@@ -392,18 +392,24 @@ function DetailSuratJalan({
       return;
     }
 
-    const hasFillableWell = sumurList.some((sumur) => {
-      const raw = sumur.produksiHarian;
+    const getTingkatProduksi = (sumur) => {
+      const raw = sumur?.tingkatProduksi;
       if (raw === null || raw === undefined || String(raw).trim() === "") {
-        return true;
+        return 0;
       }
-      return Number(raw) > 0;
-    });
+      const num = Number(raw);
+      if (Number.isNaN(num) || num <= 0) return 0;
+      return num;
+    };
+
+    const hasFillableWell = sumurList.some(
+      (sumur) => getTingkatProduksi(sumur) > 0,
+    );
     if (!hasFillableWell) {
       toast({
-        title: "Produksi harian kosong",
+        title: "Tingkat produksi kosong",
         description:
-          "Semua sumur memiliki produksi harian 0. Isi produksiHarian di data sumur terlebih dahulu.",
+          "Semua sumur memiliki tingkatProduksi 0. Isi tingkat produksi di data klasifikasi sumur terlebih dahulu.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -444,22 +450,15 @@ function DetailSuratJalan({
       inputs: distributeRandomVolume(
         targetVolume,
         sumurList,
-        (sumur) => {
-          const raw = sumur.produksiHarian;
-          if (raw === null || raw === undefined || String(raw).trim() === "") {
-            return 1;
-          }
-          const num = Number(raw);
-          if (Number.isNaN(num) || num <= 0) return 0;
-          return num;
-        },
+        (sumur) => getTingkatProduksi(sumur),
+        0.1,
       ),
     }));
 
     toast({
       title: "Isi otomatis",
       description:
-        "Produksi diisi acak berdasar produksi harian (angka bulat), total sama dengan volume surat jalan.",
+        "Produksi diisi acak berbobot tingkat produksi: nilai lebih besar lebih mungkin mendapat produksi lebih tinggi. Sumur dengan tingkatProduksi 0 tetap 0.",
       status: "success",
       duration: 3000,
       isClosable: true,
