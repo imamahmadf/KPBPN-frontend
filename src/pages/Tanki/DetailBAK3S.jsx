@@ -31,7 +31,7 @@ import {
 import {
   convertProduksiInputsBySatuan,
   convertVolumeBetweenSatuan,
-  distributeRandomVolume,
+  distributeEqualDifference,
   formatVolumeNumber,
   isVolumeEqual,
   isVolumeOver,
@@ -512,20 +512,19 @@ function DetailBAK3S({ match }) {
 
     setProduksiPanel((prev) => ({
       ...prev,
-      inputs: distributeRandomVolume(
+      inputs: distributeEqualDifference(
         targetVolume,
         sumurList,
         (sumur) => defaultProduksi[sumur.id],
-        0.1,
       ),
     }));
 
     toast({
       title: "Isi otomatis",
       description:
-        "Produksi diisi acak berdasar produksi sumur surat jalan (boleh desimal, contoh 4.5 atau 5.9), total tidak melebihi produksi BAK3S.",
+        "Produksi K3S diisi dari produksi surat jalan dikurangi selisih (total produksi − produksi BAK3S) yang dibagi rata ke sumur.",
       status: "success",
-      duration: 3000,
+      duration: 4000,
       isClosable: true,
     });
   };

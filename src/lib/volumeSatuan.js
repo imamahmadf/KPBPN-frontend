@@ -260,6 +260,81 @@ export const distributeRandomVolume = (
   return inputs;
 };
 
+/**
+ * Isi produksi K3S dari produksi sumber (surat jalan):
+ * selisih = total produksi sumber - target (produksi BAK3S),
+ * lalu dibagi rata ke sumur yang punya produksi.
+ * hasil = produksi sumber - porsi selisih.
+ * Sumur tanpa produksi sumber tetap 0. Total disesuaikan ke target.
+ */
+export const distributeEqualDifference = (
+  targetVolume,
+  sumurList = [],
+  getSourceVolume = (sumur) => parseProduksiNumber(sumur.produksiHarian),
+) => {
+  const inputs = {};
+  const wells = (sumurList || []).map((sumur) => ({
+    id: sumur.id,
+    source: parseProduksiNumber(getSourceVolume(sumur)),
+  }));
+
+  wells.forEach((well) => {
+    inputs[well.id] = 0;
+  });
+
+  const target = roundVolumeNumber(Number(targetVolume), 3);
+  if (target == null || target <= 0) return inputs;
+
+  let remaining = wells.filter((well) => well.source > 0);
+  if (!remaining.length) return inputs;
+
+  const assigned = {};
+
+  while (remaining.length) {
+    const totalSource =
+      roundVolumeNumber(
+        remaining.reduce((sum, well) => sum + well.source, 0),
+        3,
+      ) ?? 0;
+    const share = (totalSource - target) / remaining.length;
+    const nextRemaining = [];
+    let hasNegative = false;
+
+    remaining.forEach((well) => {
+      const value = roundVolumeNumber(well.source - share, 3) ?? 0;
+      if (value < 0) {
+        assigned[well.id] = 0;
+        hasNegative = true;
+        return;
+      }
+      assigned[well.id] = value;
+      nextRemaining.push(well);
+    });
+
+    if (!hasNegative) break;
+    remaining = nextRemaining;
+  }
+
+  const filledIds = Object.keys(assigned).filter((id) => assigned[id] > 0);
+  if (filledIds.length) {
+    const exceptLast = filledIds.slice(0, -1);
+    const lastId = filledIds[filledIds.length - 1];
+    const subtotal =
+      roundVolumeNumber(
+        exceptLast.reduce((sum, id) => sum + assigned[id], 0),
+        3,
+      ) ?? 0;
+    const last = roundVolumeNumber(target - subtotal, 3) ?? 0;
+    assigned[lastId] = last < 0 ? 0 : last;
+  }
+
+  Object.entries(assigned).forEach(([id, value]) => {
+    inputs[id] = value;
+  });
+
+  return inputs;
+};
+
 export const convertProduksiInputsBySatuan = (
   inputs,
   fromSatuan,
