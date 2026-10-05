@@ -84,17 +84,32 @@ const parseProduksiHarian = (value) => {
   return num;
 };
 
+const pickWeightedItem = (items, getWeight) => {
+  const total = items.reduce((sum, item) => sum + getWeight(item), 0);
+  if (!items.length) return null;
+  if (total <= 0) return items[Math.floor(Math.random() * items.length)];
+  let cursor = Math.random() * total;
+  for (const item of items) {
+    cursor -= getWeight(item);
+    if (cursor <= 0) return item;
+  }
+  return items[items.length - 1];
+};
+
 /**
  * Bagi volume ke sumur secara acak.
  * Bobot default dari produksiHarian; bisa diganti lewat getWeight.
  * `step` 1 = angka bulat, 0.1 = satu desimal (contoh 4.5, 5.9).
  * Nilai 0 tetap 0. Total tidak melebihi target.
+ * options.maxPerWell: batas nilai per sumur.
+ * options.leaveSomeEmpty: tidak memaksa semua sumur terisi; bobot hanya peluang.
  */
 export const distributeRandomVolume = (
   targetVolume,
   sumurList = [],
   getWeight = (sumur) => parseProduksiHarian(sumur.produksiHarian),
   step = 1,
+  options = {},
 ) => {
   const inputs = {};
   const wells = (sumurList || []).map((sumur) => ({
@@ -111,8 +126,91 @@ export const distributeRandomVolume = (
   const decimals = Math.max(0, String(unit).split(".")[1]?.length || 0);
   const totalUnits = Math.floor(Number(targetVolume) * factor + 1e-9);
   const active = wells.filter((well) => well.weight > 0);
+  const maxPerWell =
+    options.maxPerWell == null || options.maxPerWell === ""
+      ? null
+      : Number(options.maxPerWell);
+  const maxUnits =
+    maxPerWell != null && Number.isFinite(maxPerWell) && maxPerWell > 0
+      ? Math.round(maxPerWell * factor)
+      : null;
 
   if (!active.length || Number.isNaN(totalUnits) || totalUnits <= 0) {
+    return inputs;
+  }
+
+  if (options.leaveSomeEmpty) {
+    let remainingUnits = totalUnits;
+    if (maxUnits) {
+      remainingUnits = Math.min(remainingUnits, active.length * maxUnits);
+    }
+
+    const minNeeded = maxUnits
+      ? Math.min(active.length, Math.ceil(remainingUnits / maxUnits))
+      : 1;
+    const typicalFill = 1.4 + Math.random() * 1.6;
+    let selectedCount = Math.ceil(remainingUnits / factor / typicalFill);
+    selectedCount = Math.max(minNeeded, selectedCount);
+    if (active.length > minNeeded) {
+      const maxShare = Math.max(
+        minNeeded,
+        Math.ceil(active.length * (0.35 + Math.random() * 0.25)),
+      );
+      selectedCount = Math.min(selectedCount, maxShare, active.length);
+    } else {
+      selectedCount = active.length;
+    }
+
+    const pool = [...active];
+    const selected = [];
+    while (selected.length < selectedCount && pool.length) {
+      const picked = pickWeightedItem(pool, (well) => well.weight);
+      selected.push(picked);
+      const idx = pool.findIndex((well) => well.id === picked.id);
+      if (idx >= 0) pool.splice(idx, 1);
+    }
+
+    const maxWeight = Math.max(...selected.map((well) => well.weight), 1);
+    for (let i = selected.length - 1; i >= 0; i -= 1) {
+      if (selected.length <= minNeeded) break;
+      const well = selected[i];
+      const skipChance = 0.08 + 0.22 * (1 - well.weight / maxWeight);
+      if (Math.random() < skipChance) selected.splice(i, 1);
+    }
+
+    while (
+      maxUnits &&
+      selected.length < active.length &&
+      selected.length * maxUnits < remainingUnits
+    ) {
+      const picked = pickWeightedItem(pool, (well) => well.weight);
+      if (!picked) break;
+      selected.push(picked);
+      const idx = pool.findIndex((well) => well.id === picked.id);
+      if (idx >= 0) pool.splice(idx, 1);
+    }
+
+    const units = {};
+    selected.forEach((well) => {
+      units[well.id] = 0;
+    });
+
+    let leftover = remainingUnits;
+    while (leftover > 0) {
+      const candidates = selected.filter(
+        (well) => !maxUnits || units[well.id] < maxUnits,
+      );
+      if (!candidates.length) break;
+      const picked = pickWeightedItem(candidates, (well) => well.weight);
+      units[picked.id] += 1;
+      leftover -= 1;
+    }
+
+    selected.forEach((well) => {
+      const value = units[well.id] / factor;
+      inputs[well.id] = value === 0 ? 0 : roundVolumeNumber(value, decimals);
+    });
+
     return inputs;
   }
 
@@ -125,7 +223,7 @@ export const distributeRandomVolume = (
     (well) => (totalUnits * well.weight) / jitterTotal,
   );
   const parts = expected.map((value) => Math.floor(value));
-  const remaining = totalUnits - parts.reduce((sum, value) => sum + value, 0);
+  let remaining = totalUnits - parts.reduce((sum, value) => sum + value, 0);
 
   const remainders = expected
     .map((value, index) => ({
@@ -137,6 +235,21 @@ export const distributeRandomVolume = (
 
   for (let i = 0; i < remaining; i += 1) {
     parts[remainders[i].index] += 1;
+  }
+
+  if (maxUnits) {
+    remaining = 0;
+    parts.forEach((value, index) => {
+      if (value > maxUnits) {
+        remaining += value - maxUnits;
+        parts[index] = maxUnits;
+      }
+    });
+    for (let i = 0; i < remaining; i += 1) {
+      const idx = parts.findIndex((value) => value < maxUnits);
+      if (idx < 0) break;
+      parts[idx] += 1;
+    }
   }
 
   jittered.forEach((well, index) => {

@@ -437,13 +437,20 @@ function DetailSuratJalan({
     if (targetVolume == null || targetVolume <= 0) {
       toast({
         title: "Volume surat jalan tidak valid",
-        description: "Volume surat jalan harus lebih dari 0 untuk isi otomatis.",
+        description:
+          "Volume surat jalan harus lebih dari 0 untuk isi otomatis.",
         status: "warning",
         duration: 4000,
         isClosable: true,
       });
       return;
     }
+
+    const maxProduksiPerSumur = 4;
+    const eligibleCount = sumurList.filter(
+      (sumur) => getTingkatProduksi(sumur) > 0,
+    ).length;
+    const maxTotal = eligibleCount * maxProduksiPerSumur;
 
     setProduksiPanel((prev) => ({
       ...prev,
@@ -452,14 +459,17 @@ function DetailSuratJalan({
         sumurList,
         (sumur) => getTingkatProduksi(sumur),
         0.1,
+        { maxPerWell: maxProduksiPerSumur, leaveSomeEmpty: true },
       ),
     }));
 
     toast({
-      title: "Isi otomatis",
+      title: maxTotal < targetVolume ? "Isi otomatis terbatas" : "Isi otomatis",
       description:
-        "Produksi diisi acak berbobot tingkat produksi: nilai lebih besar lebih mungkin mendapat produksi lebih tinggi. Sumur dengan tingkatProduksi 0 tetap 0.",
-      status: "success",
+        maxTotal < targetVolume
+          ? `Produksi diisi acak berdasar tingkat produksi, maksimal ${maxProduksiPerSumur} per sumur. Total tidak cukup mencapai volume surat jalan karena batas tersebut.`
+          : `Produksi diisi acak berdasar tingkat produksi. Tidak semua sumur terisi, nilai maksimal ${maxProduksiPerSumur} per sumur.`,
+      status: maxTotal < targetVolume ? "warning" : "success",
       duration: 3000,
       isClosable: true,
     });
