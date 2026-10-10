@@ -622,6 +622,7 @@ const PengisianTanki = () => {
                       volume={volume}
                       satuan={satuan}
                       fontSize="xs"
+                      primarySatuan="liter"
                     />
                   </HStack>
                 </Box>
@@ -914,12 +915,14 @@ const PengisianTanki = () => {
                             <VolumeMultiSatuan
                               volume={item.gross}
                               satuan={getPengisianSatuanOrDefault(item)}
+                              primarySatuan="liter"
                             />
                           </MobileField>
                           <MobileField label="Net">
                             <VolumeMultiSatuan
                               volume={item.net}
                               satuan={getPengisianSatuanOrDefault(item)}
+                              primarySatuan="liter"
                             />
                           </MobileField>
                           <MobileField label="Penampilan Visual">
@@ -932,6 +935,7 @@ const PengisianTanki = () => {
                             <VolumeMultiSatuan
                               volume={item.kandunganAir}
                               satuan={getPengisianSatuanOrDefault(item)}
+                              primarySatuan="liter"
                             />
                           </MobileField>
                           <MobileField label="BSW">
@@ -1052,12 +1056,14 @@ const PengisianTanki = () => {
                                 <VolumeMultiSatuan
                                   volume={item.gross}
                                   satuan={getPengisianSatuanOrDefault(item)}
+                                  primarySatuan="liter"
                                 />
                               </Td>
                               <Td>
                                 <VolumeMultiSatuan
                                   volume={item.net}
                                   satuan={getPengisianSatuanOrDefault(item)}
+                                  primarySatuan="liter"
                                 />
                               </Td>
                               <Td>{item.penampilanVisual || "-"}</Td>
@@ -1066,6 +1072,7 @@ const PengisianTanki = () => {
                                 <VolumeMultiSatuan
                                   volume={item.kandunganAir}
                                   satuan={getPengisianSatuanOrDefault(item)}
+                                  primarySatuan="liter"
                                 />
                               </Td>
                               <Td>{item.BSW ?? "-"}</Td>
@@ -1394,6 +1401,7 @@ const PengisianTanki = () => {
                                     "Barrel"
                                   }
                                   fontSize="sm"
+                                  primarySatuan="liter"
                                 />
                                 {linkedTanki.length > 0
                                   ? ` — Tanki: ${linkedTanki.join(", ")}`

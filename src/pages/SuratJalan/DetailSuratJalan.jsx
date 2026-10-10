@@ -17,6 +17,12 @@ import {
   VStack,
   Stack,
   Skeleton,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
@@ -89,6 +95,27 @@ const statusColor = (status) => {
 const kualitasColor = (kualitas) =>
   String(kualitas || "").toUpperCase() === "ONSPEC" ? "green" : "orange";
 
+const calcVolumeBarrelFromUkuran = (ukuranCairan, ukuranAir, factorTank) => {
+  const cairan = Number(ukuranCairan);
+  const air =
+    ukuranAir === null || ukuranAir === undefined || ukuranAir === ""
+      ? 0
+      : Number(ukuranAir);
+  const factor = Number(factorTank);
+  if (
+    ukuranCairan === null ||
+    ukuranCairan === undefined ||
+    ukuranCairan === "" ||
+    Number.isNaN(cairan) ||
+    Number.isNaN(air) ||
+    Number.isNaN(factor) ||
+    factor <= 0
+  ) {
+    return null;
+  }
+  return Math.round(((cairan - air) * factor + Number.EPSILON) * 1000) / 1000;
+};
+
 const InfoField = ({ label, children }) => (
   <Box minW={0}>
     <Text
@@ -131,20 +158,40 @@ const EmptyText = ({ children }) => (
   </Text>
 );
 
-const FotoThumb = ({ src, alt }) => {
+const FotoThumb = ({ src, alt, title, onOpen }) => {
   if (!src) return <EmptyText>Tidak ada foto</EmptyText>;
+  const label = title || alt;
   return (
-    <Image
-      src={getImageUrl(src)}
-      alt={alt}
-      w="100%"
-      maxW="100%"
-      maxH={{ base: "160px", md: "180px" }}
+    <Box
+      as="button"
+      type="button"
+      onClick={() => onOpen(src, label)}
+      aria-label={`Perbesar ${label}`}
+      w={{ base: "148px", md: "220px" }}
+      h={{ base: "148px", md: "180px" }}
+      p={1.5}
       borderRadius="md"
-      objectFit="cover"
       border="1px solid"
       borderColor="gray.200"
-    />
+      bg="white"
+      overflow="hidden"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      cursor="pointer"
+      flexShrink={0}
+      transition="border-color 0.15s ease, box-shadow 0.15s ease"
+      _hover={{ borderColor: "orange.300", boxShadow: "sm" }}
+    >
+      <Image
+        src={getImageUrl(src)}
+        alt={alt}
+        maxW="100%"
+        maxH="100%"
+        objectFit="contain"
+        pointerEvents="none"
+      />
+    </Box>
   );
 };
 
@@ -184,6 +231,13 @@ function DetailSuratJalan({
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editSnapshot, setEditSnapshot] = useState(null);
+  const [previewFoto, setPreviewFoto] = useState(null);
+
+  const openPreviewFoto = (src, title) => {
+    setPreviewFoto({ src: getImageUrl(src), title: title || "Foto" });
+  };
+
+  const closePreviewFoto = () => setPreviewFoto(null);
 
   const fetchDetail = async () => {
     setIsLoading(true);
@@ -589,6 +643,14 @@ function DetailSuratJalan({
   }, [pengisianList]);
 
   const baBongkarList = useMemo(() => {
+    const factorByTankiId = new Map();
+    pengisianList.forEach((pt) => {
+      const tangkiId = pt.tanki?.id ?? pt.tangkiId;
+      if (tangkiId != null && pt.tanki?.factorTank != null) {
+        factorByTankiId.set(tangkiId, pt.tanki.factorTank);
+      }
+    });
+
     const map = new Map();
     pengisianList.forEach((pt) => {
       const ba = pt.BABongkar;
@@ -597,6 +659,15 @@ function DetailSuratJalan({
           ...ba,
           tankiKode: pt.tanki?.kode,
           konfirmasiNomor: pt.konfirmasiNomor,
+          factorTank: pt.tanki?.factorTank,
+          BABongkarTankis: (ba.BABongkarTankis || []).map((item) => {
+            const tangkiId = item.tanki?.id ?? item.tangkiId;
+            return {
+              ...item,
+              factorTank:
+                item.tanki?.factorTank ?? factorByTankiId.get(tangkiId) ?? null,
+            };
+          }),
         });
       }
     });
@@ -733,6 +804,7 @@ function DetailSuratJalan({
                       <VolumeMultiSatuan
                         volume={data.volume}
                         satuan={satuanSurat}
+                        primarySatuan="drum"
                       />
                     </InfoField>
                     <InfoField label="Jam Datang">
@@ -777,16 +849,26 @@ function DetailSuratJalan({
                     <InfoField label="NIK Supir">
                       {data.supir?.nik || "-"}
                     </InfoField>
+                  </SimpleGrid>
+                  <SimpleGrid
+                    columns={{ base: 1, sm: 2 }}
+                    spacing={{ base: 3, md: 4 }}
+                    mt={{ base: 3, md: 4 }}
+                  >
                     <InfoField label="Foto Kendaraan">
                       <FotoThumb
                         src={data.transportir?.foto}
                         alt={data.transportir?.plat || "Kendaraan"}
+                        title="Foto Kendaraan"
+                        onOpen={openPreviewFoto}
                       />
                     </InfoField>
                     <InfoField label="Foto Supir">
                       <FotoThumb
                         src={data.supir?.foto}
                         alt={data.supir?.nama || "Supir"}
+                        title="Foto Supir"
+                        onOpen={openPreviewFoto}
                       />
                     </InfoField>
                   </SimpleGrid>
@@ -841,6 +923,7 @@ function DetailSuratJalan({
                       showAutoFillButton={
                         showAutoFillProduksi && isProduksiEditing
                       }
+                      primarySatuan="drum"
                     />
 
                     <ProduksiSumurList
@@ -849,6 +932,7 @@ function DetailSuratJalan({
                       isEditing={isProduksiEditing}
                       produksiSatuanLabel={produksiSatuanLabel}
                       onInputChange={handleProduksiInputChange}
+                      primarySatuan="drum"
                     />
                   </>
                 )}
@@ -882,6 +966,7 @@ function DetailSuratJalan({
                                 <VolumeMultiSatuan
                                   volume={kp.volume}
                                   satuan={satuanSurat}
+                                  primarySatuan="drum"
                                 />
                               </InfoField>
                               <InfoField label="Petugas Penerima (PK)">
@@ -906,6 +991,8 @@ function DetailSuratJalan({
                                   <FotoThumb
                                     src={kp.foto}
                                     alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                                    title="Foto Bukti Penerimaan"
+                                    onOpen={openPreviewFoto}
                                   />
                                 </InfoField>
                               </Box>
@@ -914,6 +1001,8 @@ function DetailSuratJalan({
                                   <FotoThumb
                                     src={kp.fotoLab}
                                     alt={`Foto lab ${kp.nomor || kp.id}`}
+                                    title="Foto Lab"
+                                    onOpen={openPreviewFoto}
                                   />
                                 </InfoField>
                               </Box>
@@ -961,11 +1050,18 @@ function DetailSuratJalan({
                                 {formatTanggal(pt.tanggal)}
                               </InfoField>
                               <InfoField label="Kapasitas Tanki">
-                                {pt.tanki?.kapasitas != null
-                                  ? `${pt.tanki.kapasitas} ${
-                                      pt.tanki.satuanVolume?.satuan || ""
-                                    }`.trim()
-                                  : "-"}
+                                {pt.tanki?.kapasitas != null ? (
+                                  <VolumeMultiSatuan
+                                    volume={pt.tanki.kapasitas}
+                                    satuan={
+                                      pt.tanki.satuanVolume?.satuan ||
+                                      satuanSurat
+                                    }
+                                    primarySatuan="liter"
+                                  />
+                                ) : (
+                                  "-"
+                                )}
                               </InfoField>
                               <InfoField label="Gross">
                                 <VolumeMultiSatuan
@@ -973,6 +1069,7 @@ function DetailSuratJalan({
                                   satuan={
                                     pt.satuanVolume?.satuan || satuanSurat
                                   }
+                                  primarySatuan="liter"
                                 />
                               </InfoField>
                               <InfoField label="Net">
@@ -981,6 +1078,7 @@ function DetailSuratJalan({
                                   satuan={
                                     pt.satuanVolume?.satuan || satuanSurat
                                   }
+                                  primarySatuan="liter"
                                 />
                               </InfoField>
                               <InfoField label="Flow Meter">
@@ -1024,84 +1122,110 @@ function DetailSuratJalan({
                         </EmptyText>
                       ) : (
                         <Stack spacing={3}>
-                          {baBongkarList.map((ba) => (
-                            <NestedCard key={ba.id}>
-                              <HStack
-                                justify="space-between"
-                                mb={3}
-                                flexWrap="wrap"
-                                gap={2}
-                              >
-                                <Text
-                                  fontWeight="bold"
-                                  color="kpbpn"
-                                  fontSize="sm"
+                          {baBongkarList.map((ba) => {
+                            const tankiRows = ba.BABongkarTankis || [];
+                            const tankiLabel =
+                              tankiRows
+                                .map(
+                                  (item) =>
+                                    item.tanki?.kode ||
+                                    (item.tangkiId
+                                      ? `Tanki #${item.tangkiId}`
+                                      : null),
+                                )
+                                .filter(Boolean)
+                                .join(", ") ||
+                              ba.tankiKode ||
+                              `BA #${ba.id}`;
+
+                            return (
+                              <NestedCard key={ba.id}>
+                                <HStack
+                                  justify="space-between"
+                                  mb={3}
+                                  flexWrap="wrap"
+                                  gap={2}
                                 >
-                                  {ba.tankiKode || `BA #${ba.id}`}
-                                </Text>
-                                <Text fontSize="xs" color="gray.500">
-                                  {formatTanggal(ba.tanggal)}
-                                </Text>
-                              </HStack>
-                              <SimpleGrid
-                                columns={{ base: 1, sm: 2 }}
-                                spacing={3}
-                              >
-                                <InfoField label="Ukuran Cairan">
-                                  {formatAngka(ba.ukuranCairan)}
-                                </InfoField>
-                                <InfoField label="Ukuran Air">
-                                  {formatAngka(ba.ukuranAir)}
-                                </InfoField>
-                              </SimpleGrid>
-                              {(ba.BABongkarTankis || []).length > 0 && (
-                                <Box mt={3}>
                                   <Text
-                                    fontSize="xs"
-                                    color="gray.500"
-                                    fontWeight="semibold"
-                                    mb={2}
+                                    fontWeight="bold"
+                                    color="kpbpn"
+                                    fontSize="sm"
                                   >
-                                    TANKI PADA BA BONGKAR
+                                    {tankiLabel}
                                   </Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    {formatTanggal(ba.tanggal)}
+                                  </Text>
+                                </HStack>
+                                {tankiRows.length === 0 ? (
+                                  <SimpleGrid
+                                    columns={{ base: 1, sm: 2 }}
+                                    spacing={3}
+                                  >
+                                    <InfoField label="Ukuran Cairan">
+                                      {formatAngka(ba.ukuranCairan)}
+                                    </InfoField>
+                                    <InfoField label="Ukuran Air">
+                                      {formatAngka(ba.ukuranAir)}
+                                    </InfoField>
+                                    <Box gridColumn={{ sm: "span 2" }}>
+                                      <InfoField label="Volume">
+                                        <VolumeMultiSatuan
+                                          volume={calcVolumeBarrelFromUkuran(
+                                            ba.ukuranCairan,
+                                            ba.ukuranAir,
+                                            ba.factorTank,
+                                          )}
+                                          satuan="barrel"
+                                          primarySatuan="barrel"
+                                        />
+                                      </InfoField>
+                                    </Box>
+                                  </SimpleGrid>
+                                ) : (
                                   <Stack spacing={2}>
-                                    {(ba.BABongkarTankis || []).map(
-                                      (baTanki) => (
-                                        <Box
-                                          key={baTanki.id}
-                                          p={3}
-                                          borderRadius="md"
-                                          bg="gray.50"
+                                    {tankiRows.map((baTanki) => (
+                                      <Box
+                                        key={baTanki.id}
+                                        p={3}
+                                        borderRadius="md"
+                                        bg="gray.50"
+                                      >
+                                        <Text
+                                          fontSize="sm"
+                                          fontWeight="semibold"
+                                          color="gray.700"
+                                          mb={2}
                                         >
-                                          <Text
-                                            fontSize="sm"
-                                            fontWeight="medium"
-                                          >
-                                            {baTanki.tanki?.kode ||
-                                              `Tanki #${baTanki.tangkiId}`}
-                                          </Text>
-                                          <SimpleGrid
-                                            columns={2}
-                                            spacing={2}
-                                            mt={2}
-                                          >
-                                            <InfoField label="Cairan">
-                                              {formatAngka(
-                                                baTanki.ukuranCairan,
-                                              )}
-                                            </InfoField>
-                                            <InfoField label="Air">
-                                              {formatAngka(baTanki.ukuranAir)}
-                                            </InfoField>
-                                          </SimpleGrid>
-                                        </Box>
-                                      ),
-                                    )}
+                                          {baTanki.tanki?.kode ||
+                                            `Tanki #${baTanki.tangkiId}`}
+                                        </Text>
+                                        <InfoField label="Volume">
+                                          <VolumeMultiSatuan
+                                            volume={calcVolumeBarrelFromUkuran(
+                                              baTanki.ukuranCairan,
+                                              baTanki.ukuranAir,
+                                              baTanki.factorTank,
+                                            )}
+                                            satuan="barrel"
+                                            primarySatuan="barrel"
+                                          />
+                                        </InfoField>
+                                        <SimpleGrid columns={2} spacing={2} mt={2}>
+                                          <InfoField label="Cairan">
+                                            {formatAngka(baTanki.ukuranCairan)}
+                                          </InfoField>
+                                          <InfoField label="Air">
+                                            {formatAngka(baTanki.ukuranAir)}
+                                          </InfoField>
+                                        </SimpleGrid>
+                                      </Box>
+                                    ))}
                                   </Stack>
-                                </Box>
-                              )}
-                            </NestedCard>
-                          ))}
+                                )}
+                              </NestedCard>
+                            );
+                          })}
                         </Stack>
                       )}
                     </SectionCard>
@@ -1144,7 +1268,11 @@ function DetailSuratJalan({
                                   {formatAngka(bak.BSNW)}
                                 </InfoField>
                                 <InfoField label="Produksi">
-                                  {formatAngka(bak.produksi)}
+                                  <VolumeMultiSatuan
+                                    volume={bak.produksi}
+                                    satuan="barrel"
+                                    primarySatuan="barrel"
+                                  />
                                 </InfoField>
                                 <InfoField label="SG">
                                   {formatAngka(bak.sg)}
@@ -1212,18 +1340,12 @@ function DetailSuratJalan({
                                 </InfoField>
                                 <Box gridColumn={{ sm: "span 2" }}>
                                   <InfoField label="Foto">
-                                    {uji.foto ? (
-                                      <Image
-                                        src={getImageUrl(uji.foto)}
-                                        alt="Foto uji lab"
-                                        w="100%"
-                                        maxH="140px"
-                                        borderRadius="md"
-                                        objectFit="cover"
-                                      />
-                                    ) : (
-                                      "-"
-                                    )}
+                                    <FotoThumb
+                                      src={uji.foto}
+                                      alt="Foto uji lab"
+                                      title="Foto Uji Lab"
+                                      onOpen={openPreviewFoto}
+                                    />
                                   </InfoField>
                                 </Box>
                               </SimpleGrid>
@@ -1239,6 +1361,42 @@ function DetailSuratJalan({
           )}
         </Container>
       </Box>
+
+      <Modal
+        isOpen={Boolean(previewFoto)}
+        onClose={closePreviewFoto}
+        size="xl"
+        isCentered
+      >
+        <ModalOverlay />
+        <ModalContent
+          mx={{ base: 3, md: 4 }}
+          maxW={{ base: "calc(100vw - 1.5rem)", md: "xl" }}
+          maxH="90vh"
+        >
+          <ModalHeader pr={12} fontSize={{ base: "md", md: "lg" }}>
+            {previewFoto?.title || "Foto"}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody
+            pb={6}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            {previewFoto?.src ? (
+              <Image
+                src={previewFoto.src}
+                alt={previewFoto.title}
+                w="100%"
+                maxH="70vh"
+                objectFit="contain"
+                borderRadius="md"
+              />
+            ) : null}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </LayoutKPBPN>
   );
 }

@@ -1658,6 +1658,7 @@ const SuratJalan = () => {
                           <VolumeMultiSatuan
                             volume={item.volume}
                             satuan={item.satuanVolume?.satuan || "Barrel"}
+                            primarySatuan="drum"
                           />
                         </MobileField>
                         <MobileField label="Supir">
@@ -1736,6 +1737,7 @@ const SuratJalan = () => {
                           <VolumeMultiSatuan
                             volume={item.volume}
                             satuan={item.satuanVolume?.satuan || "Barrel"}
+                            primarySatuan="drum"
                           />
                         </Td>
                         <Td>{item.supir?.nama || "-"}</Td>
@@ -2553,6 +2555,7 @@ const SuratJalan = () => {
                             selectedSuratJalanDetail?.satuanVolume?.satuan ||
                             "Barrel"
                           }
+                          primarySatuan="drum"
                         />
                       </MobileField>
 

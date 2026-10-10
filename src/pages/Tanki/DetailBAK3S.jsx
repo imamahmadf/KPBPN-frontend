@@ -11,11 +11,16 @@ import {
   Heading,
   HStack,
   Image,
-  SimpleGrid,
   Skeleton,
   Spinner,
   Stack,
+  Table,
+  Tbody,
+  Td,
   Text,
+  Th,
+  Thead,
+  Tr,
   useToast,
   VStack,
 } from "@chakra-ui/react";
@@ -29,10 +34,13 @@ import {
   VolumeSummary,
 } from "../../Componets/KPBPN/ProduksiSumurInput";
 import {
+  LITER_PER_BARREL,
   convertProduksiInputsBySatuan,
   convertVolumeBetweenSatuan,
+  convertVolumeToLiter,
   distributeEqualDifference,
   formatVolumeNumber,
+  getVolumeAllSatuanLines,
   isVolumeEqual,
   isVolumeOver,
   parseProduksiNumber,
@@ -88,28 +96,51 @@ const formatAngka = (value) => {
   return formatVolumeNumber(angka);
 };
 
-const InfoField = ({ label, children }) => (
-  <Box minW={0}>
-    <Text
-      fontSize="xs"
-      color="gray.500"
-      fontWeight="semibold"
-      textTransform="uppercase"
-      letterSpacing="wide"
-      mb={0.5}
-    >
-      {label}
-    </Text>
-    <Box fontSize="sm" color="gray.700" wordBreak="break-word">
-      {children}
-    </Box>
-  </Box>
-);
-
 const excelNumber = (value) => {
   if (value === null || value === undefined || value === "") return "";
   const angka = Number(value);
   return Number.isNaN(angka) ? String(value) : angka;
+};
+
+const sumRounded = (values) =>
+  roundVolumeNumber(
+    values.reduce((total, value) => total + (Number(value) || 0), 0),
+    3,
+  ) ?? 0;
+
+/** Bagi produksi BAK3S (barrel) ke sumur. Total hasil sama dengan target. */
+const allocateProduksiBak3sBarrel = (targetBarrel, sumurList, getSourceBarrel) => {
+  const ids = (sumurList || []).map((sumur) => sumur.id);
+  const target = roundVolumeNumber(Number(targetBarrel), 3) ?? 0;
+  const allocated = distributeEqualDifference(
+    target,
+    sumurList,
+    getSourceBarrel,
+  );
+
+  if (target <= 0 || !ids.length) return allocated;
+
+  const total = sumRounded(ids.map((id) => allocated[id]));
+  if (total === target) return allocated;
+
+  if (!total) {
+    const share = roundVolumeNumber(target / ids.length, 3) ?? 0;
+    ids.forEach((id) => {
+      allocated[id] = share;
+    });
+    const subtotal = sumRounded(ids.slice(0, -1).map((id) => allocated[id]));
+    allocated[ids[ids.length - 1]] = roundVolumeNumber(target - subtotal, 3) ?? 0;
+    return allocated;
+  }
+
+  const lastId =
+    [...ids].reverse().find((id) => Number(allocated[id]) > 0) ||
+    ids[ids.length - 1];
+  const adjusted =
+    roundVolumeNumber((Number(allocated[lastId]) || 0) + (target - total), 3) ??
+    0;
+  if (adjusted >= 0) allocated[lastId] = adjusted;
+  return allocated;
 };
 
 const SectionCard = ({ title, action, children, ...rest }) => (
@@ -145,34 +176,120 @@ const EmptyText = ({ children }) => (
   </Text>
 );
 
-const FotoThumb = ({ src, alt }) => {
-  if (!src) return <EmptyText>Tidak ada foto</EmptyText>;
-  return (
-    <Image
-      src={getImageUrl(src)}
-      alt={alt}
-      w="100%"
-      maxW="100%"
-      maxH={{ base: "160px", md: "180px" }}
-      borderRadius="md"
-      objectFit="cover"
-      border="1px solid"
-      borderColor="gray.200"
-    />
-  );
+const toLiter = (volume, satuan) => {
+  if (volume === null || volume === undefined || volume === "") return null;
+  const liter = convertVolumeToLiter(volume, satuan || "barrel");
+  return liter === null || Number.isNaN(liter) ? null : liter;
 };
 
-const NestedCard = ({ children }) => (
-  <Box
-    p={{ base: 3, md: 4 }}
-    borderWidth="1px"
-    borderRadius="md"
-    bg="white"
-    overflow="hidden"
-  >
-    {children}
+const sumLiter = (values) => {
+  const nums = values.filter((value) => value !== null && value !== undefined);
+  if (!nums.length) return null;
+  return nums.reduce((total, value) => total + value, 0);
+};
+
+const barrelFromLiter = (liter) => {
+  if (liter === null || liter === undefined) return null;
+  return roundVolumeNumber(liter / LITER_PER_BARREL, 3);
+};
+
+const selisihBarrel = (current, previous) => {
+  if (current === null || previous === null) return null;
+  return roundVolumeNumber(current - previous, 3);
+};
+
+const persenPerubahan = (current, previous) => {
+  if (current === null || previous === null || !previous) return null;
+  return ((current - previous) / previous) * 100;
+};
+
+const formatPersen = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return null;
+  }
+  const rounded = Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const prefix = rounded > 0 ? "+" : "";
+  const label = new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(rounded);
+  return `${prefix}${label}%`;
+};
+
+const VolumeBlock = ({ label, volume, satuan }) => (
+  <Box>
+    {label ? (
+      <Text fontSize="xs" color="gray.500" mb={0.5}>
+        {label}
+      </Text>
+    ) : null}
+    <VolumeMultiSatuan
+      volume={volume}
+      satuan={satuan || "barrel"}
+      primarySatuan="barrel"
+    />
   </Box>
 );
+
+const SelisihVolume = ({ value, caption, percent }) => {
+  const persenLabel = formatPersen(percent);
+
+  if (value === null || value === undefined) {
+    return (
+      <Text fontSize="sm" color="gray.500">
+        -
+      </Text>
+    );
+  }
+
+  const rounded = roundVolumeNumber(value, 3);
+  const color =
+    rounded === 0 ? "gray.500" : rounded < 0 ? "red.600" : "orange.600";
+
+  if (rounded === 0) {
+    return (
+      <Box>
+        {caption ? (
+          <Text fontSize="xs" color="gray.500" mb={0.5}>
+            {caption}
+          </Text>
+        ) : null}
+        <Text fontSize="sm" color="gray.500" fontWeight="semibold">
+          0{persenLabel ? ` (${persenLabel})` : ""}
+        </Text>
+      </Box>
+    );
+  }
+
+  const lines = getVolumeAllSatuanLines(rounded, "barrel") || [];
+  const prefix = rounded > 0 ? "+" : "";
+
+  return (
+    <Box>
+      {caption ? (
+        <Text fontSize="xs" color="gray.500" mb={0.5}>
+          {caption}
+        </Text>
+      ) : null}
+      <VStack align="start" spacing={0}>
+        {lines.map(({ key, label }, index) => (
+          <Text
+            key={key}
+            fontSize={index === 0 ? "md" : "xs"}
+            fontWeight={index === 0 ? "semibold" : "normal"}
+            color={index === 0 ? color : "gray.500"}
+            lineHeight="short"
+            whiteSpace="nowrap"
+          >
+            {prefix}
+            {label}
+            {index === 0 && persenLabel ? ` (${persenLabel})` : ""}
+          </Text>
+        ))}
+      </VStack>
+    </Box>
+  );
+};
 
 function DetailBAK3S({ match }) {
   const bak3sId = match.params.id;
@@ -620,6 +737,26 @@ function DetailBAK3S({ match }) {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("Produksi Sumur K3S");
       const satuanLabel = produksiSatuanLabel || "Barrel";
+      const targetBarrel = roundVolumeNumber(Number(data?.produksi), 3) ?? 0;
+      const toBarrelFromSatuan = (value) =>
+        convertVolumeBetweenSatuan(
+          parseProduksiNumber(value),
+          satuanLabel,
+          "barrel",
+        );
+      const hasInputProduksi = produksiPanel.sumurList.some(
+        (sumur) => parseProduksiNumber(produksiPanel.inputs?.[sumur.id]) > 0,
+      );
+      const produksiBak3sBarrel = allocateProduksiBak3sBarrel(
+        targetBarrel,
+        produksiPanel.sumurList,
+        (sumur) =>
+          toBarrelFromSatuan(
+            hasInputProduksi
+              ? produksiPanel.inputs?.[sumur.id]
+              : produksiPanel.defaultProduksi?.[sumur.id],
+          ),
+      );
 
       const headerStyle = {
         font: { bold: true, color: { argb: "FFFFFF" } },
@@ -655,6 +792,7 @@ function DetailBAK3S({ match }) {
         "Surat Jalan",
         `Produksi Surat Jalan (${satuanLabel})`,
         `Produksi BAK3S (${satuanLabel})`,
+        "Produksi BAK3S (Barrel)",
       ]);
       headerRow.eachCell((cell) => {
         cell.style = headerStyle;
@@ -669,6 +807,7 @@ function DetailBAK3S({ match }) {
           item.suratJalan,
           item.produksiSuratJalan,
           item.produksi,
+          produksiBak3sBarrel[item.sumur.id] ?? 0,
         ]);
         dataRow.eachCell((cell) => {
           cell.style = dataStyle;
@@ -678,11 +817,39 @@ function DetailBAK3S({ match }) {
             dataRow.getCell(col).numFmt = "0.00000000";
           }
         });
-        [6, 7].forEach((col) => {
+        [6, 7, 8].forEach((col) => {
           if (typeof dataRow.getCell(col).value === "number") {
             dataRow.getCell(col).numFmt = "#,##0.000";
           }
         });
+      });
+
+      const lastDataRow = rows.length + 1;
+      const totalStyle = {
+        font: { bold: true },
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "D9E2F3" },
+        },
+        border: dataStyle.border,
+        alignment: { vertical: "middle" },
+      };
+      const totalRow = worksheet.addRow([
+        "",
+        "Total",
+        "",
+        "",
+        "",
+        { formula: `SUM(F2:F${lastDataRow})` },
+        { formula: `SUM(G2:G${lastDataRow})` },
+        { formula: `SUM(H2:H${lastDataRow})` },
+      ]);
+      totalRow.eachCell((cell) => {
+        cell.style = totalStyle;
+      });
+      [6, 7, 8].forEach((col) => {
+        totalRow.getCell(col).numFmt = "#,##0.000";
       });
 
       worksheet.columns.forEach((column) => {
@@ -741,20 +908,106 @@ function DetailBAK3S({ match }) {
     });
     return Array.from(map.values());
   }, [pengisianList]);
-  const suratJalanList = useMemo(() => {
-    const map = new Map();
-    konfirmasiList.forEach((kp) => {
-      const sj = kp.suratJalan;
-      if (sj?.id && !map.has(sj.id)) {
-        map.set(sj.id, {
-          ...sj,
-          konfirmasiNomor: kp.nomor,
-          konfirmasiId: kp.id,
-        });
-      }
+
+  const perubahanVolume = useMemo(() => {
+    const bak3sLiter = toLiter(data?.produksi, "barrel");
+    const suratJalanMap = new Map();
+    const grossList = [];
+    const airList = [];
+
+    pengisianList.forEach((pt) => {
+      const satuan = pt.satuanVolume?.satuan || "Barrel";
+      const grossLiter = toLiter(pt.gross, satuan);
+      const airLiter = toLiter(pt.kandunganAir, satuan);
+      grossList.push(grossLiter);
+      airList.push(airLiter);
+
+      (pt.konfirmasiPenerimaans || []).forEach((kp) => {
+        const sj = kp.suratJalan;
+        if (sj?.id && !suratJalanMap.has(sj.id)) {
+          suratJalanMap.set(
+            sj.id,
+            toLiter(sj.volume, sj.satuanVolume?.satuan || "Barrel"),
+          );
+        }
+      });
     });
-    return Array.from(map.values());
-  }, [konfirmasiList]);
+
+    const totalSuratJalan = sumLiter(Array.from(suratJalanMap.values()));
+    const totalGross = sumLiter(grossList);
+    const totalAir = sumLiter(airList);
+    const totalNett =
+      totalGross === null
+        ? null
+        : totalGross - (totalAir || 0);
+
+    const stage = (volumeLiter, satuan = "liter") => ({
+      volume: satuan === "barrel" ? barrelFromLiter(volumeLiter) : volumeLiter,
+      satuan,
+      barrel: barrelFromLiter(volumeLiter),
+    });
+
+    const suratJalan = stage(totalSuratJalan);
+    const gross = stage(totalGross);
+    const nett = stage(totalNett);
+    const bak3s = {
+      volume: data?.produksi ?? null,
+      satuan: "barrel",
+      barrel: barrelFromLiter(bak3sLiter),
+    };
+
+    return [
+      {
+        key: "surat-jalan",
+        tahap: "Surat Jalan",
+        keterangan: `${suratJalanMap.size} surat jalan`,
+        ...suratJalan,
+        selisih: null,
+        persen: null,
+        selisihCaption: "Tahap awal",
+      },
+      {
+        key: "gross",
+        tahap: "Gross",
+        keterangan: `${pengisianList.length} pengisian`,
+        ...gross,
+        selisih: selisihBarrel(gross.barrel, suratJalan.barrel),
+        persen: persenPerubahan(gross.barrel, suratJalan.barrel),
+        selisihCaption: "terhadap surat jalan",
+      },
+      {
+        key: "nett",
+        tahap: "Nett",
+        keterangan: "Gross − air",
+        ...nett,
+        air: totalAir,
+        selisih: selisihBarrel(nett.barrel, gross.barrel),
+        persen: persenPerubahan(nett.barrel, gross.barrel),
+        selisihCaption: "terhadap gross",
+      },
+      {
+        key: "bak3s",
+        tahap: "BAK3S",
+        keterangan: data?.id ? `Produksi BAK3S #${data.id}` : "Produksi",
+        ...bak3s,
+        selisih: selisihBarrel(bak3s.barrel, nett.barrel),
+        persen: persenPerubahan(bak3s.barrel, nett.barrel),
+        selisihCaption: "terhadap nett",
+      },
+      {
+        key: "sj-bak3s",
+        tahap: "Surat Jalan ke BAK3S",
+        keterangan: "Selisih keseluruhan",
+        volume: null,
+        satuan: "barrel",
+        highlight: true,
+        selisih: selisihBarrel(bak3s.barrel, suratJalan.barrel),
+        persen: persenPerubahan(bak3s.barrel, suratJalan.barrel),
+        selisihCaption: "terhadap surat jalan",
+      },
+    ];
+  }, [data, pengisianList]);
+
   const tankiLabels =
     tankiList
       .map((item) => item.tanki?.kode)
@@ -845,210 +1098,280 @@ function DetailBAK3S({ match }) {
             <EmptyText>Data BAK3S tidak ditemukan.</EmptyText>
           ) : (
             <Stack spacing={{ base: 4, md: 5 }}>
-              <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={{ base: 4, md: 5 }}>
-                <SectionCard title="Data BAK3S">
-                  <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }}>
-                    <InfoField label="API">{formatAngka(data.api)}</InfoField>
-                    <InfoField label="BSNW">{formatAngka(data.BSNW)}</InfoField>
-                    <InfoField label="Produksi">
-                      <VolumeSummary
-                        volume={data.produksi}
-                        satuan="barrel"
-                        compact={false}
-                      />
-                    </InfoField>
-                    <InfoField label="SG">{formatAngka(data.sg)}</InfoField>
-                    <InfoField label="Dibuat oleh">
-                      {data.userKPBPN?.nama || "-"}
-                    </InfoField>
-                    <InfoField label="Dokumen">
-                      {renderDokumen(data.dokumen)}
-                    </InfoField>
-                  </SimpleGrid>
-                </SectionCard>
-
-                <SectionCard title="BA Bongkar">
-                  <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }}>
-                    <InfoField label="ID BA">
-                      {ba?.id ? `BA #${ba.id}` : "-"}
-                    </InfoField>
-                    <InfoField label="Tanggal">
-                      {formatTanggal(ba?.tanggal)}
-                    </InfoField>
-                    <InfoField label="Tangki">{tankiLabels}</InfoField>
-                    <InfoField label="Mitra terkait">
-                      {relatedMitraLabel}
-                    </InfoField>
-                    <InfoField label="Jumlah pengisian">
-                      {pengisianList.length}
-                    </InfoField>
-                    <InfoField label="Dibuat oleh">
-                      {ba?.userKPBPN?.nama || "-"}
-                    </InfoField>
-                  </SimpleGrid>
-                </SectionCard>
-              </SimpleGrid>
-
-              <SectionCard title="Surat Jalan">
-                {suratJalanList.length === 0 ? (
-                  <EmptyText>
-                    Belum ada surat jalan yang terhubung dengan BAK3S ini.
-                  </EmptyText>
-                ) : (
-                  <Stack spacing={4}>
-                    {suratJalanList.map((sj) => {
-                      const satuanSj = sj.satuanVolume?.satuan || "Barrel";
-                      return (
-                        <NestedCard key={sj.id}>
-                          <Flex
-                            justify="space-between"
-                            align={{ base: "flex-start", sm: "center" }}
-                            mb={3}
-                            gap={2}
-                            direction={{ base: "column", sm: "row" }}
-                          >
-                            <Heading size="xs" color="gray.700">
-                              {sj.nomor || `Surat Jalan #${sj.id}`}
-                            </Heading>
-                            <HStack spacing={2} flexWrap="wrap">
-                              <Badge
-                                colorScheme={statusColor(
-                                  sj.statusSuratJalan?.status,
-                                )}
-                                variant="subtle"
-                              >
-                                {sj.statusSuratJalan?.status || "-"}
-                              </Badge>
-                              <Button
-                                as={RouterLink}
-                                to={`/pengiriman-kpbpn/detail-surat-jalan/${sj.id}`}
-                                size="xs"
-                                variant="link"
-                                colorScheme="orange"
-                              >
-                                Lihat detail
-                              </Button>
-                            </HStack>
-                          </Flex>
-                          <SimpleGrid
-                            columns={{ base: 1, sm: 2, lg: 3 }}
-                            spacing={{ base: 3, md: 4 }}
-                          >
-                            <InfoField label="Tanggal">
-                              {formatTanggal(sj.tanggal)}
-                            </InfoField>
-                            <InfoField label="Mitra">
-                              {sj.mitra?.nama || "-"}
-                            </InfoField>
-                            <InfoField label="Volume">
-                              <VolumeMultiSatuan
-                                volume={sj.volume}
-                                satuan={satuanSj}
-                              />
-                            </InfoField>
-                            <InfoField label="Plat">
-                              {sj.transportir?.plat || "-"}
-                            </InfoField>
-                            <InfoField label="Supir">
-                              {sj.supir?.nama || "-"}
-                            </InfoField>
-                            <InfoField label="Konfirmasi">
-                              {sj.konfirmasiNomor ||
-                                (sj.konfirmasiId
-                                  ? `#${sj.konfirmasiId}`
-                                  : "-")}
-                            </InfoField>
-                          </SimpleGrid>
-                        </NestedCard>
-                      );
-                    })}
-                  </Stack>
-                )}
+              <SectionCard title="Data BAK3S">
+                <Box overflowX="auto" maxW="100%">
+                  <Table size="sm" variant="simple" minW="720px" bg="white">
+                    <Thead bg="white">
+                      <Tr>
+                        <Th textTransform="capitalize">API</Th>
+                        <Th textTransform="capitalize">BSNW</Th>
+                        <Th textTransform="capitalize">Produksi</Th>
+                        <Th textTransform="capitalize">SG</Th>
+                        <Th textTransform="capitalize">Dibuat oleh</Th>
+                        <Th textTransform="capitalize">Dokumen</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      <Tr>
+                        <Td>{formatAngka(data.api)}</Td>
+                        <Td>{formatAngka(data.BSNW)}</Td>
+                        <Td>
+                          <VolumeSummary
+                            volume={data.produksi}
+                            satuan="barrel"
+                            compact={false}
+                          />
+                        </Td>
+                        <Td>{formatAngka(data.sg)}</Td>
+                        <Td>{data.userKPBPN?.nama || "-"}</Td>
+                        <Td>{renderDokumen(data.dokumen)}</Td>
+                      </Tr>
+                    </Tbody>
+                  </Table>
+                </Box>
               </SectionCard>
 
-              <SectionCard title="Konfirmasi Penerimaan">
+              <SectionCard title="BA Bongkar">
+                <Box overflowX="auto" maxW="100%">
+                  <Table size="sm" variant="simple" minW="720px" bg="white">
+                    <Thead bg="white">
+                      <Tr>
+                        <Th textTransform="capitalize">ID BA</Th>
+                        <Th textTransform="capitalize">Tanggal</Th>
+                        <Th textTransform="capitalize">Tangki</Th>
+                        <Th textTransform="capitalize">Mitra terkait</Th>
+                        <Th textTransform="capitalize">Jumlah pengisian</Th>
+                        <Th textTransform="capitalize">Dibuat oleh</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      <Tr>
+                        <Td whiteSpace="nowrap">
+                          {ba?.id ? `BA #${ba.id}` : "-"}
+                        </Td>
+                        <Td whiteSpace="nowrap">
+                          {formatTanggal(ba?.tanggal)}
+                        </Td>
+                        <Td>{tankiLabels}</Td>
+                        <Td>{relatedMitraLabel}</Td>
+                        <Td>{pengisianList.length}</Td>
+                        <Td>{ba?.userKPBPN?.nama || "-"}</Td>
+                      </Tr>
+                    </Tbody>
+                  </Table>
+                </Box>
+              </SectionCard>
+
+              <SectionCard title="Perubahan Volume Minyak">
+                <Text fontSize="sm" color="gray.600" mb={3}>
+                  Urutan volume dimulai dari total surat jalan, total gross,
+                  total nett (gross dikurangi air), sampai volume BAK3S.
+                  Perubahan menampilkan selisih volume dan persentasenya.
+                  Baris terakhir membandingkan surat jalan langsung dengan
+                  BAK3S.
+                </Text>
+                <Box overflowX="auto" maxW="100%">
+                  <Table size="sm" variant="simple" minW="640px" bg="white">
+                    <Thead bg="white">
+                      <Tr>
+                        <Th textTransform="capitalize">No.</Th>
+                        <Th textTransform="capitalize">Tahap</Th>
+                        <Th textTransform="capitalize">Keterangan</Th>
+                        <Th textTransform="capitalize">Volume</Th>
+                        <Th textTransform="capitalize">Perubahan</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {perubahanVolume.map((row, index) => (
+                        <Tr key={row.key} bg={row.highlight ? "orange.50" : undefined}>
+                          <Td>{index + 1}</Td>
+                          <Td fontWeight="semibold" whiteSpace="nowrap">
+                            {row.tahap}
+                          </Td>
+                          <Td>{row.keterangan}</Td>
+                          <Td>
+                            {row.volume === null && row.air === undefined ? (
+                              "-"
+                            ) : (
+                              <Stack spacing={2}>
+                                <VolumeBlock
+                                  volume={row.volume}
+                                  satuan={row.satuan}
+                                />
+                                {row.air !== undefined ? (
+                                  <VolumeBlock
+                                    label="Air"
+                                    volume={row.air}
+                                    satuan="liter"
+                                  />
+                                ) : null}
+                              </Stack>
+                            )}
+                          </Td>
+                          <Td>
+                            {row.selisih === null ? (
+                              <Text fontSize="sm" color="gray.500">
+                                {row.selisihCaption}
+                              </Text>
+                            ) : (
+                              <SelisihVolume
+                                value={row.selisih}
+                                percent={row.persen}
+                                caption={row.selisihCaption}
+                              />
+                            )}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </Box>
+              </SectionCard>
+
+              <SectionCard title="Surat Jalan & Konfirmasi Penerimaan">
                 {konfirmasiList.length === 0 ? (
                   <EmptyText>
-                    Belum ada konfirmasi penerimaan yang terhubung dengan BAK3S
-                    ini.
+                    Belum ada surat jalan atau konfirmasi penerimaan yang
+                    terhubung dengan BAK3S ini.
                   </EmptyText>
                 ) : (
-                  <Stack spacing={4}>
-                    {konfirmasiList.map((kp) => {
-                      const satuanKp =
-                        kp.suratJalan?.satuanVolume?.satuan || "Barrel";
-                      return (
-                        <NestedCard key={kp.id}>
-                          <Flex
-                            justify="space-between"
-                            align={{ base: "flex-start", sm: "center" }}
-                            mb={3}
-                            gap={2}
-                            direction={{ base: "column", sm: "row" }}
-                          >
-                            <Heading size="xs" color="gray.700">
-                              {kp.nomor || `Konfirmasi #${kp.id}`}
-                            </Heading>
-                            {kp.suratJalan?.nomor && (
-                              <Badge colorScheme="blue" variant="subtle">
-                                {kp.suratJalan.nomor}
-                              </Badge>
-                            )}
-                          </Flex>
-                          <SimpleGrid
-                            columns={{ base: 1, sm: 2, lg: 3 }}
-                            spacing={{ base: 3, md: 4 }}
-                          >
-                            <InfoField label="Tanggal">
-                              {formatTanggal(kp.tanggal)}
-                            </InfoField>
-                            <InfoField label="Jam Kedatangan">
-                              {formatJam(kp.jamKedatangan)}
-                            </InfoField>
-                            <InfoField label="Volume Diterima">
-                              <VolumeMultiSatuan
-                                volume={kp.volume}
-                                satuan={satuanKp}
-                              />
-                            </InfoField>
-                            <InfoField label="Petugas Penerima (PK)">
-                              {kp.userPK?.nama || "-"}
-                            </InfoField>
-                            <InfoField label="Petugas Lab">
-                              {kp.userLab?.nama || "-"}
-                            </InfoField>
-                            <InfoField label="API">
-                              {formatAngka(kp.api)}
-                            </InfoField>
-                            <InfoField label="BSNW">
-                              {formatAngka(kp.BSNW)}
-                            </InfoField>
-                            <Box gridColumn={{ lg: "span 2" }}>
-                              <InfoField label="Catatan">
+                  <Box overflowX="auto" maxW="100%">
+                    <Table size="sm" variant="simple" minW="1280px" bg="white">
+                      <Thead bg="white">
+                        <Tr>
+                          <Th textTransform="capitalize">No.</Th>
+                          <Th textTransform="capitalize">Surat Jalan</Th>
+                          <Th textTransform="capitalize">Status</Th>
+                          <Th textTransform="capitalize">Tanggal SJ</Th>
+                          <Th textTransform="capitalize">Mitra</Th>
+                          <Th textTransform="capitalize">Volume SJ</Th>
+                          <Th textTransform="capitalize">Plat</Th>
+                          <Th textTransform="capitalize">Supir</Th>
+                          <Th textTransform="capitalize">Konfirmasi</Th>
+                          <Th textTransform="capitalize">Tanggal</Th>
+                          <Th textTransform="capitalize">Jam</Th>
+                          <Th textTransform="capitalize">Volume Diterima</Th>
+                          <Th textTransform="capitalize">Petugas PK</Th>
+                          <Th textTransform="capitalize">Petugas Lab</Th>
+                          <Th textTransform="capitalize">API</Th>
+                          <Th textTransform="capitalize">BSNW</Th>
+                          <Th textTransform="capitalize">Catatan</Th>
+                          <Th textTransform="capitalize">Foto</Th>
+                          <Th textTransform="capitalize">Foto Lab</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {konfirmasiList.map((kp, index) => {
+                          const sj = kp.suratJalan;
+                          const satuan =
+                            sj?.satuanVolume?.satuan || "Barrel";
+                          return (
+                            <Tr key={kp.id}>
+                              <Td>{index + 1}</Td>
+                              <Td whiteSpace="nowrap">
+                                {sj?.id ? (
+                                  <Button
+                                    as={RouterLink}
+                                    to={`/pengiriman-kpbpn/detail-surat-jalan/${sj.id}`}
+                                    size="xs"
+                                    variant="link"
+                                    colorScheme="orange"
+                                    fontWeight="semibold"
+                                  >
+                                    {sj.nomor || `Surat Jalan #${sj.id}`}
+                                  </Button>
+                                ) : (
+                                  "-"
+                                )}
+                              </Td>
+                              <Td>
+                                <Badge
+                                  colorScheme={statusColor(
+                                    sj?.statusSuratJalan?.status,
+                                  )}
+                                  variant="subtle"
+                                >
+                                  {sj?.statusSuratJalan?.status || "-"}
+                                </Badge>
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {formatTanggal(sj?.tanggal)}
+                              </Td>
+                              <Td>{sj?.mitra?.nama || "-"}</Td>
+                              <Td>
+                                <VolumeMultiSatuan
+                                  volume={sj?.volume}
+                                  satuan={satuan}
+                                />
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {sj?.transportir?.plat || "-"}
+                              </Td>
+                              <Td>{sj?.supir?.nama || "-"}</Td>
+                              <Td whiteSpace="nowrap">
+                                {kp.nomor || `Konfirmasi #${kp.id}`}
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {formatTanggal(kp.tanggal)}
+                              </Td>
+                              <Td>{formatJam(kp.jamKedatangan)}</Td>
+                              <Td>
+                                <VolumeMultiSatuan
+                                  volume={kp.volume}
+                                  satuan={satuan}
+                                />
+                              </Td>
+                              <Td>{kp.userPK?.nama || "-"}</Td>
+                              <Td>{kp.userLab?.nama || "-"}</Td>
+                              <Td>{formatAngka(kp.api)}</Td>
+                              <Td>{formatAngka(kp.BSNW)}</Td>
+                              <Td maxW="180px" whiteSpace="normal">
                                 {kp.catatan || "-"}
-                              </InfoField>
-                            </Box>
-                            <Box>
-                              <InfoField label="Foto Bukti Penerimaan">
-                                <FotoThumb
-                                  src={kp.foto}
-                                  alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
-                                />
-                              </InfoField>
-                            </Box>
-                            <Box>
-                              <InfoField label="Foto Lab">
-                                <FotoThumb
-                                  src={kp.fotoLab}
-                                  alt={`Foto lab ${kp.nomor || kp.id}`}
-                                />
-                              </InfoField>
-                            </Box>
-                          </SimpleGrid>
-                        </NestedCard>
-                      );
-                    })}
-                  </Stack>
+                              </Td>
+                              <Td>
+                                {kp.foto ? (
+                                  <Image
+                                    as="a"
+                                    href={getImageUrl(kp.foto)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    src={getImageUrl(kp.foto)}
+                                    alt={`Foto konfirmasi ${kp.nomor || kp.id}`}
+                                    boxSize="48px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                    border="1px solid"
+                                    borderColor="gray.200"
+                                  />
+                                ) : (
+                                  "-"
+                                )}
+                              </Td>
+                              <Td>
+                                {kp.fotoLab ? (
+                                  <Image
+                                    as="a"
+                                    href={getImageUrl(kp.fotoLab)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    src={getImageUrl(kp.fotoLab)}
+                                    alt={`Foto lab ${kp.nomor || kp.id}`}
+                                    boxSize="48px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                    border="1px solid"
+                                    borderColor="gray.200"
+                                  />
+                                ) : (
+                                  "-"
+                                )}
+                              </Td>
+                            </Tr>
+                          );
+                        })}
+                      </Tbody>
+                    </Table>
+                  </Box>
                 )}
               </SectionCard>
 
@@ -1059,93 +1382,98 @@ function DetailBAK3S({ match }) {
                     ini.
                   </EmptyText>
                 ) : (
-                  <Stack spacing={4}>
-                    {pengisianList.map((pt) => {
-                      const satuanPt = pt.satuanVolume?.satuan || "Barrel";
-                      const konfirmasiLabels = (pt.konfirmasiPenerimaans || [])
-                        .map((kp) => kp.nomor || `#${kp.id}`)
-                        .filter(Boolean);
-                      return (
-                        <NestedCard key={pt.id}>
-                          <Flex
-                            justify="space-between"
-                            align={{ base: "flex-start", sm: "center" }}
-                            mb={3}
-                            gap={2}
-                            direction={{ base: "column", sm: "row" }}
-                          >
-                            <Heading size="xs" color="gray.700">
-                              Tanki {pt.tanki?.kode || `#${pt.id}`}
-                            </Heading>
-                            {konfirmasiLabels.length > 0 && (
-                              <HStack spacing={1} flexWrap="wrap">
-                                {konfirmasiLabels.map((label) => (
-                                  <Badge
-                                    key={label}
-                                    colorScheme="blue"
-                                    variant="subtle"
-                                  >
-                                    {label}
-                                  </Badge>
-                                ))}
-                              </HStack>
-                            )}
-                          </Flex>
-                          <SimpleGrid
-                            columns={{ base: 1, sm: 2, lg: 3 }}
-                            spacing={{ base: 3, md: 4 }}
-                          >
-                            <InfoField label="Nomor Surat">
-                              {pt.nomorSurat || "-"}
-                            </InfoField>
-                            <InfoField label="Tanggal">
-                              {formatTanggal(pt.tanggal)}
-                            </InfoField>
-                            <InfoField label="Kapasitas Tanki">
-                              {pt.tanki?.kapasitas != null
-                                ? `${pt.tanki.kapasitas} ${
-                                    pt.tanki.satuanVolume?.satuan || ""
-                                  }`.trim()
-                                : "-"}
-                            </InfoField>
-                            <InfoField label="Gross">
-                              <VolumeMultiSatuan
-                                volume={pt.gross}
-                                satuan={satuanPt}
-                              />
-                            </InfoField>
-                            <InfoField label="Net">
-                              <VolumeMultiSatuan
-                                volume={pt.net}
-                                satuan={satuanPt}
-                              />
-                            </InfoField>
-                            <InfoField label="Flow Meter">
-                              {formatAngka(pt.flowMeter)}
-                            </InfoField>
-                            <InfoField label="Penampilan Visual">
-                              {pt.penampilanVisual || "-"}
-                            </InfoField>
-                            <InfoField label="Warna">
-                              {pt.warna || "-"}
-                            </InfoField>
-                            <InfoField label="Kandungan Air">
-                              {formatAngka(pt.kandunganAir)}
-                            </InfoField>
-                            <InfoField label="BSW">
-                              {formatAngka(pt.BSW)}
-                            </InfoField>
-                            <InfoField label="Saksi">
-                              {pt.saksi || "-"}
-                            </InfoField>
-                            <InfoField label="Catatan">
-                              {pt.catatan || "-"}
-                            </InfoField>
-                          </SimpleGrid>
-                        </NestedCard>
-                      );
-                    })}
-                  </Stack>
+                  <Box overflowX="auto" maxW="100%">
+                    <Table size="sm" variant="simple" minW="1280px" bg="white">
+                      <Thead bg="white">
+                        <Tr>
+                          <Th textTransform="capitalize">No.</Th>
+                          <Th textTransform="capitalize">Tanki</Th>
+                          <Th textTransform="capitalize">Konfirmasi</Th>
+                          <Th textTransform="capitalize">Nomor Surat</Th>
+                          <Th textTransform="capitalize">Tanggal</Th>
+                          <Th textTransform="capitalize">Kapasitas Tanki</Th>
+                          <Th textTransform="capitalize">Gross</Th>
+                          <Th textTransform="capitalize">Net</Th>
+                          <Th textTransform="capitalize">Flow Meter</Th>
+                          <Th textTransform="capitalize">Penampilan Visual</Th>
+                          <Th textTransform="capitalize">Warna</Th>
+                          <Th textTransform="capitalize">Kandungan Air</Th>
+                          <Th textTransform="capitalize">BSW</Th>
+                          <Th textTransform="capitalize">Saksi</Th>
+                          <Th textTransform="capitalize">Catatan</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {pengisianList.map((pt, index) => {
+                          const satuanPt = pt.satuanVolume?.satuan || "Barrel";
+                          const konfirmasiLabels = (
+                            pt.konfirmasiPenerimaans || []
+                          )
+                            .map((kp) => kp.nomor || `#${kp.id}`)
+                            .filter(Boolean);
+                          return (
+                            <Tr key={pt.id}>
+                              <Td>{index + 1}</Td>
+                              <Td whiteSpace="nowrap">
+                                {pt.tanki?.kode || `#${pt.id}`}
+                              </Td>
+                              <Td>
+                                {konfirmasiLabels.length > 0 ? (
+                                  <HStack spacing={1} flexWrap="wrap">
+                                    {konfirmasiLabels.map((label) => (
+                                      <Badge
+                                        key={label}
+                                        colorScheme="blue"
+                                        variant="subtle"
+                                      >
+                                        {label}
+                                      </Badge>
+                                    ))}
+                                  </HStack>
+                                ) : (
+                                  "-"
+                                )}
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {pt.nomorSurat || "-"}
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {formatTanggal(pt.tanggal)}
+                              </Td>
+                              <Td whiteSpace="nowrap">
+                                {pt.tanki?.kapasitas != null
+                                  ? `${pt.tanki.kapasitas} ${
+                                      pt.tanki.satuanVolume?.satuan || ""
+                                    }`.trim()
+                                  : "-"}
+                              </Td>
+                              <Td>
+                                <VolumeMultiSatuan
+                                  volume={pt.gross}
+                                  satuan={satuanPt}
+                                />
+                              </Td>
+                              <Td>
+                                <VolumeMultiSatuan
+                                  volume={pt.net}
+                                  satuan={satuanPt}
+                                />
+                              </Td>
+                              <Td>{formatAngka(pt.flowMeter)}</Td>
+                              <Td>{pt.penampilanVisual || "-"}</Td>
+                              <Td>{pt.warna || "-"}</Td>
+                              <Td>{formatAngka(pt.kandunganAir)}</Td>
+                              <Td>{formatAngka(pt.BSW)}</Td>
+                              <Td>{pt.saksi || "-"}</Td>
+                              <Td maxW="180px" whiteSpace="normal">
+                                {pt.catatan || "-"}
+                              </Td>
+                            </Tr>
+                          );
+                        })}
+                      </Tbody>
+                    </Table>
+                  </Box>
                 )}
               </SectionCard>
 

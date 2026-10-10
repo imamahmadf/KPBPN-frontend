@@ -311,13 +311,29 @@ const RiwayatTanki = () => {
             <Text fontSize="xs" color="gray.500">
               {formatDate(pengisian.tanggal)}
             </Text>
-            <HStack spacing={4} mt={1} flexWrap="wrap">
-              <Text fontSize="sm">
-                Gross: {formatAngka(pengisian.gross)} {pengisian.satuan || ""}
-              </Text>
-              <Text fontSize="sm">
-                Net: {formatAngka(pengisian.net)} {pengisian.satuan || ""}
-              </Text>
+            <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} mt={2}>
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                  Gross
+                </Text>
+                <VolumeMultiSatuan
+                  volume={pengisian.gross}
+                  satuan={pengisian.satuan}
+                  primarySatuan="liter"
+                />
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                  Net
+                </Text>
+                <VolumeMultiSatuan
+                  volume={pengisian.net}
+                  satuan={pengisian.satuan}
+                  primarySatuan="liter"
+                />
+              </Box>
+            </SimpleGrid>
+            <HStack spacing={4} mt={2} flexWrap="wrap">
               {pengisian.sudahDibongkar ? (
                 <Badge colorScheme="orange" variant="subtle">
                   Dibongkar {formatDate(pengisian.tanggalBongkar)}
@@ -369,7 +385,11 @@ const RiwayatTanki = () => {
             <MobileField label="Supir">{item.supir || "-"}</MobileField>
             <MobileField label="No. Pol">{item.plat || "-"}</MobileField>
             <MobileField label="Volume">
-              <VolumeMultiSatuan volume={item.volume} satuan={item.satuan} />
+              <VolumeMultiSatuan
+                volume={item.volume}
+                satuan={item.satuan}
+                primarySatuan="liter"
+              />
             </MobileField>
             <MobileField label="API">{formatAngka(item.api)}</MobileField>
             <MobileField label="BSNW">
@@ -436,7 +456,11 @@ const RiwayatTanki = () => {
                     <Td>{item.supir || "-"}</Td>
                     <Td>{item.plat || "-"}</Td>
                     <Td>
-                      <VolumeMultiSatuan volume={item.volume} satuan={item.satuan} />
+                      <VolumeMultiSatuan
+                        volume={item.volume}
+                        satuan={item.satuan}
+                        primarySatuan="liter"
+                      />
                     </Td>
                     <Td isNumeric>{formatAngka(item.api)}</Td>
                     <Td isNumeric>
@@ -486,12 +510,23 @@ const RiwayatTanki = () => {
             <Heading size="md" color="kpbpn">
               Tanki {group.kode}
             </Heading>
-            <Text fontSize="sm" color="gray.500">
-              {group.stasiun}
-              {group.kapasitas != null
-                ? ` · Kapasitas ${formatAngka(group.kapasitas)} ${group.satuan || ""}`
-                : ""}
-            </Text>
+            <HStack spacing={2} align="start" flexWrap="wrap">
+              <Text fontSize="sm" color="gray.500">
+                {group.stasiun}
+              </Text>
+              {group.kapasitas != null && (
+                <>
+                  <Text fontSize="sm" color="gray.500">
+                    · Kapasitas
+                  </Text>
+                  <VolumeMultiSatuan
+                    volume={group.kapasitas}
+                    satuan={group.satuan}
+                    primarySatuan="liter"
+                  />
+                </>
+              )}
+            </HStack>
           </Box>
         </HStack>
         <Spacer />
@@ -502,9 +537,21 @@ const RiwayatTanki = () => {
           <Badge colorScheme="green" px={3} py={1} borderRadius="md">
             Masih di tanki: {group.ringkasan.jumlahMasihDiTanki}
           </Badge>
-          <Badge colorScheme="orange" px={3} py={1} borderRadius="md">
-            Volume: {formatAngka(group.ringkasan.totalVolumeBarrel)} Barrel
-          </Badge>
+          <Box px={3} py={1} borderRadius="md" bg="orange.50">
+            <Text
+              fontSize="xs"
+              color="orange.700"
+              fontWeight="semibold"
+              mb={0.5}
+            >
+              Volume
+            </Text>
+            <VolumeMultiSatuan
+              volume={group.ringkasan.totalVolumeBarrel}
+              satuan="barrel"
+              primarySatuan="liter"
+            />
+          </Box>
           <Button
             size="xs"
             variant="ghost"
@@ -572,12 +619,21 @@ const RiwayatTanki = () => {
             <Badge colorScheme="green" px={3} py={1} borderRadius="md">
               Masih di tanki: {ringkasan?.jumlahMasihDiTanki ?? 0}
             </Badge>
-            <Badge colorScheme="orange" px={3} py={1} borderRadius="md">
-              Volume:{" "}
-              {ringkasan?.totalVolumeBarrel != null
-                ? `${formatAngka(ringkasan.totalVolumeBarrel)} Barrel`
-                : "-"}
-            </Badge>
+            <Box px={3} py={1} borderRadius="md" bg="orange.50">
+              <Text
+                fontSize="xs"
+                color="orange.700"
+                fontWeight="semibold"
+                mb={0.5}
+              >
+                Volume
+              </Text>
+              <VolumeMultiSatuan
+                volume={ringkasan?.totalVolumeBarrel}
+                satuan="barrel"
+                primarySatuan="liter"
+              />
+            </Box>
           </HStack>
 
           <Divider mb={6} />

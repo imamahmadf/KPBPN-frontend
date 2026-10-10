@@ -44,6 +44,7 @@ const JENIS_DOKUMEN_OPTIONS = [
   { value: "BAST", label: "BAST" },
   { value: "BABongkar", label: "BA Bongkar" },
   { value: "suratJalan", label: "Surat Jalan" },
+  { value: "konfirmasiPenerimaan", label: "Konfirmasi Penerimaan" },
 ];
 
 const getJenisLabel = (jenis) =>
@@ -58,7 +59,10 @@ const getTemplateSchema = (isEdit) =>
   Yup.object({
     nama: Yup.string().required("Nama template wajib diisi"),
     jenisDokumen: Yup.string()
-      .oneOf(["BAST", "BABongkar", "suratJalan"], "Jenis dokumen tidak valid")
+      .oneOf(
+        ["BAST", "BABongkar", "suratJalan", "konfirmasiPenerimaan"],
+        "Jenis dokumen tidak valid",
+      )
       .required("Jenis dokumen wajib dipilih"),
     status: Yup.string()
       .oneOf(["aktif", "nonaktif"], "Status tidak valid")

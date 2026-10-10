@@ -23,8 +23,14 @@ import {
 import VolumeMultiSatuan from "../VolumeMultiSatuan";
 import { getVolumeAllSatuanLines } from "../../lib/volumeSatuan";
 
-export const VolumeSummary = ({ volume, satuan, compact }) => {
-  if (compact) {
+export const VolumeSummary = ({
+  volume,
+  satuan,
+  compact,
+  primarySatuan,
+  align = "start",
+}) => {
+  if (compact && !primarySatuan) {
     const lines = getVolumeAllSatuanLines(volume, satuan);
     return (
       <Text
@@ -38,7 +44,15 @@ export const VolumeSummary = ({ volume, satuan, compact }) => {
     );
   }
 
-  return <VolumeMultiSatuan volume={volume} satuan={satuan} fontSize="sm" />;
+  return (
+    <VolumeMultiSatuan
+      volume={volume}
+      satuan={satuan}
+      fontSize="sm"
+      primarySatuan={primarySatuan}
+      align={align}
+    />
+  );
 };
 
 const InfoField = ({ label, children }) => (
@@ -81,6 +95,7 @@ export const ProduksiStickyBar = ({
   showEditButton = true,
   showSaveButton = true,
   showAutoFillButton = false,
+  primarySatuan,
 }) => {
   const isCompact = useBreakpointValue({ base: true, lg: false }) ?? true;
 
@@ -168,6 +183,7 @@ export const ProduksiStickyBar = ({
                 volume={totalProduksiInput}
                 satuan={produksiSatuanLabel}
                 compact={isCompact}
+                primarySatuan={primarySatuan}
               />
             </Box>
             <Box minW={0}>
@@ -185,6 +201,7 @@ export const ProduksiStickyBar = ({
                 volume={acuanVolume}
                 satuan={acuanSatuan}
                 compact={isCompact}
+                primarySatuan={primarySatuan}
               />
             </Box>
           </SimpleGrid>
@@ -287,7 +304,7 @@ export const ProduksiStickyBar = ({
   );
 };
 
-const renderReadonlyVolume = (value, satuanLabel, compact) => {
+const renderReadonlyVolume = (value, satuanLabel, compact, primarySatuan) => {
   if (value === "" || value == null || Number(value) === 0) {
     return (
       <Text fontSize="sm" color="gray.500">
@@ -296,10 +313,14 @@ const renderReadonlyVolume = (value, satuanLabel, compact) => {
     );
   }
 
-  return compact ? (
-    <VolumeSummary volume={value} satuan={satuanLabel} compact />
-  ) : (
-    <VolumeMultiSatuan volume={value} satuan={satuanLabel} />
+  return (
+    <VolumeSummary
+      volume={value}
+      satuan={satuanLabel}
+      compact={compact && !primarySatuan}
+      primarySatuan={primarySatuan}
+      align={compact ? "start" : "end"}
+    />
   );
 };
 
@@ -315,6 +336,7 @@ export const ProduksiSumurList = ({
   showSumberColumn = false,
   sumberColumnLabel = "Produksi Surat Jalan",
   produksiColumnLabel,
+  primarySatuan,
 }) => {
   const k3sColumnLabel =
     produksiColumnLabel || `Produksi BAK3S (${produksiSatuanLabel})`;
@@ -343,16 +365,13 @@ export const ProduksiSumurList = ({
         ? 0
         : inputs[sumur.id];
 
-    return compact ? (
+    return (
       <VolumeSummary
         volume={produksiValue}
         satuan={produksiSatuanLabel}
-        compact
-      />
-    ) : (
-      <VolumeMultiSatuan
-        volume={produksiValue}
-        satuan={produksiSatuanLabel}
+        compact={compact && !primarySatuan}
+        primarySatuan={primarySatuan}
+        align={compact ? "start" : "end"}
       />
     );
   };
@@ -399,6 +418,7 @@ export const ProduksiSumurList = ({
                     sumberInputs[sumur.id],
                     produksiSatuanLabel,
                     true,
+                    primarySatuan,
                   )}
                 </InfoField>
               )}
@@ -472,6 +492,7 @@ export const ProduksiSumurList = ({
                       sumberInputs[sumur.id],
                       produksiSatuanLabel,
                       false,
+                      primarySatuan,
                     )}
                   </Td>
                 )}
