@@ -211,7 +211,13 @@ const menuData = [
       ROLE_KPBPN.ADMIN,
       ROLE_KPBPN.PETUGAS_KEAMANAN,
     ],
-    items: [{ label: "Surat Jalan", path: "/pengiriman-kpbpn/surat-jalan" }],
+    items: [
+      { label: "Surat Jalan", path: "/pengiriman-kpbpn/surat-jalan" },
+      {
+        label: "Konfirmasi Penerimaan",
+        path: "/pengiriman-kpbpn/konfirmasi-penerimaan",
+      },
+    ],
   },
   {
     title: "Pengiriman Mitra",

@@ -12,6 +12,7 @@ import {
   VStack,
   useToast,
   FormLabel,
+  FormHelperText,
   Select,
   Container,
   Thead,
@@ -30,6 +31,7 @@ import {
   ModalCloseButton,
   ModalFooter,
   Image,
+  SimpleGrid,
   Divider,
   Badge,
   useDisclosure,
@@ -42,6 +44,31 @@ import FotoPlaceholder from "../../assets/add_photo.png";
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
+
+const formatDimensi = (value) =>
+  value === null || value === undefined || value === "" ? "-" : value;
+
+const calcFactorTank = (panjang, lebar) => {
+  if (panjang === "" || lebar === "" || panjang == null || lebar == null) {
+    return "";
+  }
+  const length = Number(panjang);
+  const width = Number(lebar);
+  if (!Number.isFinite(length) || !Number.isFinite(width) || length <= 0 || width <= 0) {
+    return "";
+  }
+  const value = (length * width) / 1000;
+  return String(Math.round(value * 1000) / 1000);
+};
+
+const optionalPositiveDecimal = (label) =>
+  Yup.number()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue == null ? null : value,
+    )
+    .nullable()
+    .typeError(`${label} harus angka`)
+    .positive(`${label} harus lebih dari 0`);
 
 const FileUploadField = ({
   label,
@@ -298,6 +325,9 @@ const DaftarMitra = () => {
       "Jenis transportir wajib dipilih",
     ),
     satuanVolumeId: Yup.string().required("Satuan volume wajib dipilih"),
+    panjang: optionalPositiveDecimal("Panjang"),
+    lebar: optionalPositiveDecimal("Lebar"),
+    tinggi: optionalPositiveDecimal("Tinggi"),
     pic: Yup.mixed().nullable(),
   });
 
@@ -413,6 +443,10 @@ const DaftarMitra = () => {
                     <Th>No</Th>
                     <Th>Plat Nomor</Th>
                     <Th>Kapasitas</Th>
+                    <Th>Panjang</Th>
+                    <Th>Lebar</Th>
+                    <Th>Tinggi</Th>
+                    <Th>Factor Tank</Th>
                     <Th>Jenis</Th>
                     <Th>Foto</Th>
                     <Th>Aksi</Th>
@@ -421,7 +455,7 @@ const DaftarMitra = () => {
                 <Tbody>
                   {dataTransportir.length === 0 ? (
                     <Tr>
-                      <Td colSpan={6} textAlign="center" py={6}>
+                      <Td colSpan={10} textAlign="center" py={6}>
                         Belum ada data transportir
                       </Td>
                     </Tr>
@@ -436,6 +470,10 @@ const DaftarMitra = () => {
                             ? ` ${item.satuanVolume.satuan}`
                             : ""}
                         </Td>
+                        <Td>{formatDimensi(item.panjang)}</Td>
+                        <Td>{formatDimensi(item.lebar)}</Td>
+                        <Td>{formatDimensi(item.tinggi)}</Td>
+                        <Td>{formatDimensi(item.factorTank)}</Td>
                         <Td>{item?.jenisTransportir?.jenis}</Td>
                         <Td>
                           {item.foto ? (
@@ -718,6 +756,9 @@ const DaftarMitra = () => {
                 editingTransportir?.jenisTransportirId?.toString() || "",
               satuanVolumeId:
                 editingTransportir?.satuanVolumeId?.toString() || "",
+              panjang: editingTransportir?.panjang?.toString() || "",
+              lebar: editingTransportir?.lebar?.toString() || "",
+              tinggi: editingTransportir?.tinggi?.toString() || "",
               pic: null,
               picPreview: editingTransportir?.foto
                 ? getImageUrl(editingTransportir.foto)
@@ -734,6 +775,13 @@ const DaftarMitra = () => {
                   values.jenisTransportirId,
                 );
                 formData.append("satuanVolumeId", values.satuanVolumeId);
+                formData.append("panjang", values.panjang ?? "");
+                formData.append("lebar", values.lebar ?? "");
+                formData.append("tinggi", values.tinggi ?? "");
+                formData.append(
+                  "factorTank",
+                  calcFactorTank(values.panjang, values.lebar),
+                );
                 if (values.pic) formData.append("pic", values.pic);
 
                 if (editingTransportir) {
@@ -837,6 +885,43 @@ const DaftarMitra = () => {
                         {errors.satuanVolumeId}
                       </FormErrorMessage>
                     </FormControl>
+
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="100%">
+                      {[
+                        ["panjang", "Panjang (cm)"],
+                        ["lebar", "Lebar (cm)"],
+                        ["tinggi", "Tinggi"],
+                      ].map(([name, label]) => (
+                        <FormControl
+                          key={name}
+                          isInvalid={touched[name] && errors[name]}
+                        >
+                          <FormLabel>{label}</FormLabel>
+                          <Input
+                            name={name}
+                            type="number"
+                            step="any"
+                            value={values[name]}
+                            onChange={(e) => setFieldValue(name, e.target.value)}
+                          />
+                          <FormErrorMessage>{errors[name]}</FormErrorMessage>
+                        </FormControl>
+                      ))}
+                      {calcFactorTank(values.panjang, values.lebar) !== "" && (
+                        <FormControl>
+                          <FormLabel>Factor Tank</FormLabel>
+                          <Input
+                            name="factorTank"
+                            value={calcFactorTank(values.panjang, values.lebar)}
+                            isReadOnly
+                            bg="gray.50"
+                          />
+                          <FormHelperText>
+                            panjang × lebar / 1000
+                          </FormHelperText>
+                        </FormControl>
+                      )}
+                    </SimpleGrid>
 
                     <FileUploadField
                       label="Foto Kendaraan"

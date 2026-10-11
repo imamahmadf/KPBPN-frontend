@@ -51,7 +51,11 @@ import { BsChevronDown } from "react-icons/bs";
 import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
-import { formatVolumeNumber } from "../../lib/volumeSatuan";
+import {
+  formatVolumeNumber,
+  LITER_PER_DRUM,
+  roundVolumeNumber,
+} from "../../lib/volumeSatuan";
 import {
   userRedux,
   selectIsPetugasKeamananOnly,
@@ -60,6 +64,35 @@ import FotoPlaceholder from "../../assets/add_photo.png";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
+
+const getDownloadFileName = (contentDisposition, fallback) => {
+  if (!contentDisposition) return fallback;
+  const utf8Name = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Name?.[1]) {
+    try {
+      return decodeURIComponent(utf8Name[1]);
+    } catch {
+      return utf8Name[1];
+    }
+  }
+  const quotedName = contentDisposition.match(/filename="([^"]+)"/i);
+  if (quotedName?.[1]) return quotedName[1];
+  const plainName = contentDisposition.match(/filename=([^;]+)/i);
+  return plainName?.[1]?.trim() || fallback;
+};
+
+const readBlobError = async (error, fallback) => {
+  if (error?.response?.data instanceof Blob) {
+    try {
+      const text = await error.response.data.text();
+      const parsed = JSON.parse(text);
+      return parsed.error || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return error?.response?.data?.error || fallback;
+};
 
 const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
 
@@ -119,26 +152,89 @@ const konfirmasiTibaSchema = Yup.object({
   foto: optionalFotoSchema("Foto tidak valid"),
 });
 
+const volumeSchema = Yup.number()
+  .typeError("Volume harus angka")
+  .positive("Volume harus lebih dari 0")
+  .required("Volume wajib diisi");
+
+const tinggiCairanSchema = Yup.string()
+  .required("Tinggi cairan wajib diisi")
+  .test("is-decimal", "Tinggi cairan harus angka valid", (value) => {
+    const str = String(value ?? "").trim();
+    if (!str) return false;
+    if (/^\d+[.,]$/.test(str)) return true;
+    const num = parseDecimalInput(str);
+    return num !== null && num > 0;
+  });
+
+const konfirmasiVolumeSchema = Yup.object({
+  tinggiCairan: tinggiCairanSchema,
+  volumeAir: decimalFieldSchema("Volume air"),
+});
+
+const calcVolumeDrum = (tinggiCm, panjangCm, lebarCm) => {
+  const tinggi = parseDecimalInput(tinggiCm);
+  const panjang = parseDecimalInput(panjangCm);
+  const lebar = parseDecimalInput(lebarCm);
+  if (
+    tinggi === null ||
+    panjang === null ||
+    lebar === null ||
+    tinggi <= 0 ||
+    panjang <= 0 ||
+    lebar <= 0
+  ) {
+    return null;
+  }
+  const liter = (tinggi * panjang * lebar) / 1000;
+  return roundVolumeNumber(liter / LITER_PER_DRUM, 3);
+};
+
+const calcVolumeAkhir = (volume, volumeAir) => {
+  const vol = parseDecimalInput(volume);
+  const air = parseDecimalInput(volumeAir);
+  if (vol === null || air === null || air > vol) return null;
+  return roundVolumeNumber(vol - air, 3);
+};
+
+const volumeAirSchema = decimalFieldSchema("Volume air").test(
+  "lte-volume",
+  "Volume air tidak boleh lebih besar dari volume",
+  function (value) {
+    const air = parseDecimalInput(value);
+    const volume = parseDecimalInput(this.parent.volume);
+    if (air === null || volume === null) return true;
+    return air <= volume;
+  },
+);
+
 const konfirmasiBongkarSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
-  volume: Yup.number()
-    .typeError("Volume harus angka")
-    .positive("Volume harus lebih dari 0")
-    .required("Volume wajib diisi"),
   catatan: Yup.string().nullable(),
   api: decimalFieldSchema("API"),
   BSNW: decimalFieldSchema("BSNW"),
+  SG: decimalFieldSchema("SG"),
   fotoLab: optionalFotoSchema("Foto lab tidak valid"),
 });
 
+const konfirmasiEditSchema = konfirmasiBongkarSchema.shape({
+  nomor: Yup.string().trim().required("Nomor konfirmasi wajib diisi"),
+  volume: volumeSchema,
+  volumeAir: volumeAirSchema,
+});
+
 const initialValuesKonfirmasi = {
+  nomor: "",
   tanggal: "",
   jamKedatangan: "",
   volume: "",
-
+  tinggiCairan: "",
+  volumeAir: "",
+  volumeAkhir: "",
   catatan: "",
   api: "",
   BSNW: "",
+  SG: "",
   foto: null,
   fotoPreview: "",
   fotoLab: null,
@@ -363,6 +459,7 @@ const formatMitraLabel = (val) => {
 const statusBadgeColor = (status) => {
   const value = String(status || "").toUpperCase();
   if (value === "TIBA") return "green";
+  if (value === "VOLUME") return "purple";
   if (value === "BONGKAR") return "orange";
   if (value === "KIRIM") return "blue";
   if (value === "BATAL") return "red";
@@ -524,9 +621,13 @@ const SuratJalan = () => {
           toTimeInput(editingKonfirmasi.jamKedatangan) ||
           toTimeInput(new Date()),
         volume: editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
+        volumeAir: toDecimalInput(editingKonfirmasi.volumeAir),
+        volumeAkhir: toDecimalInput(editingKonfirmasi.volumeAkhir),
+        nomor: editingKonfirmasi.nomor || "",
         catatan: editingKonfirmasi.catatan || "",
         api: toDecimalInput(editingKonfirmasi.api),
         BSNW: toDecimalInput(editingKonfirmasi.BSNW),
+        SG: toDecimalInput(editingKonfirmasi.SG),
         foto: null,
         fotoPreview: getImageUrl(editingKonfirmasi.foto) || "",
         fotoLab: null,
@@ -698,11 +799,15 @@ const SuratJalan = () => {
       });
       return;
     }
-    if (item.statusSuratJalanId === 3 || item.statusSuratJalanId === 5) {
+    if (
+      item.statusSuratJalanId === 3 ||
+      item.statusSuratJalanId === 5 ||
+      item.statusSuratJalanId === 6
+    ) {
       toast({
         title: "Tidak dapat dibatalkan",
         description:
-          "Surat jalan yang sudah tiba atau dibongkar tidak dapat dibatalkan",
+          "Surat jalan yang sudah tiba, dikonfirmasi volumenya, atau dibongkar tidak dapat dibatalkan",
         status: "warning",
         duration: 4000,
         isClosable: true,
@@ -904,6 +1009,32 @@ const SuratJalan = () => {
     return list[0];
   };
 
+  const openKonfirmasiVolumeFromList = async (item) => {
+    if (
+      denyPetugasKeamanan(
+        "Petugas Keamanan tidak dapat melakukan konfirmasi volume",
+      )
+    ) {
+      return;
+    }
+    try {
+      const kp = await loadKonfirmasiForSuratJalan(item);
+      if (!kp) return;
+      openEditKonfirmasiModal(kp, item, "volume");
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description:
+          err.response?.data?.error ||
+          "Gagal memuat data konfirmasi penerimaan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
   const openKonfirmasiBongkarFromList = async (item) => {
     if (
       denyPetugasKeamanan(
@@ -972,6 +1103,100 @@ const SuratJalan = () => {
     onPreviewFotoOpen();
   };
 
+  const unduhBeritaAcara = async (konfirmasiId) => {
+    const res = await axios.get(
+      `${API_BASE}/pengiriman/get/cetak-konfirmasi/${konfirmasiId}`,
+      { responseType: "blob" },
+    );
+    const url = window.URL.createObjectURL(
+      new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      getDownloadFileName(
+        res.headers?.["content-disposition"],
+        `berita-acara-pengukuran-${konfirmasiId}.docx`,
+      ),
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const unduhBeritaAcaraDenganPesan = async (konfirmasiId) => {
+    try {
+      await unduhBeritaAcara(konfirmasiId);
+      toast({
+        title: "Berhasil",
+        description: "Berita acara pengukuran minyak bumi berhasil diunduh",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description: await readBlobError(
+          err,
+          "Gagal mengunduh berita acara pengukuran",
+        ),
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const unduhBeritaAcaraSuratJalan = async (suratJalanId) => {
+    try {
+      const lookup = await axios.get(
+        `${API_BASE}/pengiriman/get/konfirmasi/${suratJalanId}`,
+      );
+      const kp = (lookup.data.result || []).find(
+        (item) =>
+          item.volume !== null &&
+          item.volume !== undefined &&
+          item.volume !== "",
+      );
+      if (!kp?.id) {
+        toast({
+          title: "Gagal",
+          description: "Konfirmasi volume belum tersedia",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
+      await unduhBeritaAcara(kp.id);
+      toast({
+        title: "Berhasil",
+        description: "Berita acara pengukuran minyak bumi berhasil diunduh",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description: await readBlobError(
+          err,
+          "Gagal mengunduh berita acara pengukuran",
+        ),
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
   const openDetailKonfirmasiModal = async (item) => {
     setSelectedSuratJalanDetail(item);
     setLoadingDetailKonfirmasi(true);
@@ -1035,6 +1260,7 @@ const SuratJalan = () => {
     try {
       const formData = new FormData();
       const isTiba = konfirmasiMode === "tiba";
+      const isVolume = konfirmasiMode === "volume";
       const isBongkar = konfirmasiMode === "bongkar";
 
       if (isPetugasKeamanan && !isTiba) {
@@ -1050,19 +1276,85 @@ const SuratJalan = () => {
         return;
       }
 
+      let savedKonfirmasiId = editingKonfirmasi?.id;
+
       if (isTiba) {
         if (values.foto instanceof File) formData.append("foto", values.foto);
         formData.append("suratJalanId", suratJalanId);
         formData.append("jamKedatangan", values.jamKedatangan);
         if (user?.id) formData.append("userPKId", user.id);
         await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
+      } else if (isVolume) {
+        const volumeDrum = calcVolumeDrum(
+          values.tinggiCairan,
+          selectedSuratJalan?.transportir?.panjang,
+          selectedSuratJalan?.transportir?.lebar,
+        );
+        if (volumeDrum === null || volumeDrum <= 0) {
+          setSubmitting(false);
+          toast({
+            title: "Volume tidak dapat dihitung",
+            description:
+              "Panjang dan lebar transportir harus terisi, dan tinggi cairan harus lebih dari 0",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return;
+        }
+        formData.append("tahap", "volume");
+        formData.append("tinggiCairan", parseDecimalInput(values.tinggiCairan));
+        const volumeAkhir = calcVolumeAkhir(volumeDrum, values.volumeAir);
+        if (volumeAkhir === null) {
+          setSubmitting(false);
+          toast({
+            title: "Volume akhir tidak valid",
+            description: "Volume air tidak boleh lebih besar dari volume",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return;
+        }
+        formData.append("volume", volumeDrum);
+        formData.append(
+          "volumeAir",
+          parseDecimalInput(values.volumeAir) ?? "",
+        );
+        formData.append("volumeAkhir", volumeAkhir);
+        const res = await axios.post(
+          `${API_BASE}/pengiriman/edit/konfirmasi/${editingKonfirmasi.id}`,
+          formData,
+        );
+        savedKonfirmasiId = res.data?.result?.id || editingKonfirmasi.id;
       } else {
         formData.append("tahap", isBongkar ? "bongkar" : "edit");
         formData.append("tanggal", values.tanggal);
-        formData.append("volume", values.volume);
         formData.append("catatan", values.catatan || "");
         formData.append("api", parseDecimalInput(values.api) ?? "");
         formData.append("BSNW", parseDecimalInput(values.BSNW) ?? "");
+        formData.append("SG", parseDecimalInput(values.SG) ?? "");
+        if (!isBongkar) {
+          formData.append("nomor", String(values.nomor || "").trim());
+          const volumeAkhir = calcVolumeAkhir(values.volume, values.volumeAir);
+          if (volumeAkhir === null) {
+            setSubmitting(false);
+            toast({
+              title: "Volume akhir tidak valid",
+              description: "Volume air tidak boleh lebih besar dari volume",
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+            return;
+          }
+          formData.append("volume", values.volume);
+          formData.append(
+            "volumeAir",
+            parseDecimalInput(values.volumeAir) ?? "",
+          );
+          formData.append("volumeAkhir", volumeAkhir);
+        }
         if (isBongkar && user?.id) formData.append("userLabId", user.id);
         if (values.foto instanceof File) formData.append("foto", values.foto);
         if (values.fotoLab instanceof File) {
@@ -1075,14 +1367,31 @@ const SuratJalan = () => {
         );
       }
 
+      let dokumenGagal = "";
+      if (isVolume && savedKonfirmasiId) {
+        try {
+          await unduhBeritaAcara(savedKonfirmasiId);
+        } catch (downloadErr) {
+          console.error(downloadErr);
+          dokumenGagal = await readBlobError(
+            downloadErr,
+            "Berita acara pengukuran gagal diunduh",
+          );
+        }
+      }
+
       toast({
-        title: "Berhasil",
-        description: isTiba
-          ? "Konfirmasi kedatangan berhasil disimpan"
-          : isBongkar
-            ? "Konfirmasi bongkar berhasil disimpan"
-            : "Konfirmasi penerimaan berhasil diperbarui",
-        status: "success",
+        title: dokumenGagal ? "Sebagian berhasil" : "Berhasil",
+        description: dokumenGagal
+          ? `Konfirmasi volume tersimpan, tetapi ${dokumenGagal}`
+          : isTiba
+            ? "Konfirmasi kedatangan berhasil disimpan"
+            : isVolume
+              ? "Konfirmasi volume berhasil disimpan dan berita acara pengukuran diunduh"
+              : isBongkar
+                ? "Konfirmasi bongkar berhasil disimpan"
+                : "Konfirmasi penerimaan berhasil diperbarui",
+        status: dokumenGagal ? "warning" : "success",
         duration: 4000,
         isClosable: true,
       });
@@ -1109,9 +1418,11 @@ const SuratJalan = () => {
           err.response?.data?.error ||
           (konfirmasiMode === "tiba"
             ? "Gagal menyimpan konfirmasi kedatangan"
-            : konfirmasiMode === "bongkar"
-              ? "Gagal menyimpan konfirmasi bongkar"
-              : "Gagal memperbarui konfirmasi penerimaan"),
+            : konfirmasiMode === "volume"
+              ? "Gagal menyimpan konfirmasi volume"
+              : konfirmasiMode === "bongkar"
+                ? "Gagal menyimpan konfirmasi bongkar"
+                : "Gagal memperbarui konfirmasi penerimaan"),
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -1208,6 +1519,21 @@ const SuratJalan = () => {
     if (item.statusSuratJalanId === 3) {
       actions.push(
         {
+          key: "konfirmasi-volume",
+          label: "Konfirmasi Volume",
+          onClick: () => openKonfirmasiVolumeFromList(item),
+        },
+        {
+          key: "detail-konfirmasi",
+          label: "Detail Konfirmasi",
+          onClick: () => openDetailKonfirmasiModal(item),
+        },
+      );
+    }
+
+    if (item.statusSuratJalanId === 6) {
+      actions.push(
+        {
           key: "konfirmasi-bongkar",
           label: "Konfirmasi Bongkar",
           onClick: () => openKonfirmasiBongkarFromList(item),
@@ -1216,6 +1542,11 @@ const SuratJalan = () => {
           key: "detail-konfirmasi",
           label: "Detail Konfirmasi",
           onClick: () => openDetailKonfirmasiModal(item),
+        },
+        {
+          key: "unduh-berita-acara",
+          label: "Unduh Berita Acara",
+          onClick: () => unduhBeritaAcaraSuratJalan(item.id),
         },
       );
     }
@@ -1226,6 +1557,11 @@ const SuratJalan = () => {
           key: "detail-konfirmasi",
           label: "Detail Konfirmasi",
           onClick: () => openDetailKonfirmasiModal(item),
+        },
+        {
+          key: "unduh-berita-acara",
+          label: "Unduh Berita Acara",
+          onClick: () => unduhBeritaAcaraSuratJalan(item.id),
         },
         {
           key: "edit-konfirmasi",
@@ -2195,9 +2531,11 @@ const SuratJalan = () => {
           <ModalHeader {...fullModalHeaderProps}>
             {konfirmasiMode === "tiba"
               ? "Konfirmasi Penerimaan"
-              : konfirmasiMode === "bongkar"
-                ? "Konfirmasi Bongkar"
-                : "Edit Konfirmasi Penerimaan"}
+              : konfirmasiMode === "volume"
+                ? "Konfirmasi Volume"
+                : konfirmasiMode === "bongkar"
+                  ? "Konfirmasi Bongkar"
+                  : "Edit Konfirmasi Penerimaan"}
           </ModalHeader>
           <ModalCloseButton />
           {selectedSuratJalan && (
@@ -2207,10 +2545,12 @@ const SuratJalan = () => {
               </Text>
               <Text fontSize="xs" color="gray.400" mt={1}>
                 {konfirmasiMode === "tiba"
-                  ? "Langkah 1 dari 2: isi jam kedatangan. Foto bukti penerimaan opsional"
-                  : konfirmasiMode === "bongkar"
-                    ? "Langkah 2 dari 2: isi data bongkar. Foto lab opsional"
-                    : "Perbarui data konfirmasi bongkar"}
+                  ? "Langkah 1 dari 3: isi jam kedatangan. Foto bukti penerimaan opsional"
+                  : konfirmasiMode === "volume"
+                    ? "Langkah 2 dari 3: isi tinggi cairan. Volume drum dihitung dari panjang dan lebar transportir"
+                    : konfirmasiMode === "bongkar"
+                      ? "Langkah 3 dari 3: isi data bongkar. Foto lab opsional"
+                      : "Perbarui data konfirmasi penerimaan"}
               </Text>
               {(konfirmasiMode === "tiba" || konfirmasiMode === "bongkar") && (
                 <Text fontSize="xs" color="gray.500" mt={1}>
@@ -2231,7 +2571,11 @@ const SuratJalan = () => {
             validationSchema={
               konfirmasiMode === "tiba"
                 ? konfirmasiTibaSchema
-                : konfirmasiBongkarSchema
+                : konfirmasiMode === "volume"
+                  ? konfirmasiVolumeSchema
+                  : konfirmasiMode === "bongkar"
+                    ? konfirmasiBongkarSchema
+                    : konfirmasiEditSchema
             }
             onSubmit={submitKonfirmasiPenerimaan}
           >
@@ -2255,7 +2599,186 @@ const SuratJalan = () => {
               >
                 <ModalBody {...fullModalBodyProps}>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                    {konfirmasiMode !== "tiba" && (
+                    {konfirmasiMode === "edit" && (
+                      <FormControl
+                        isInvalid={touched.nomor && errors.nomor}
+                        gridColumn={{ md: "span 2" }}
+                      >
+                        <FormLabel>Nomor Konfirmasi</FormLabel>
+                        <Input
+                          name="nomor"
+                          bgColor="terang"
+                          value={values.nomor}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          placeholder="Masukkan nomor konfirmasi"
+                        />
+                        <FormErrorMessage>{errors.nomor}</FormErrorMessage>
+                      </FormControl>
+                    )}
+
+                    {konfirmasiMode === "volume" && (
+                      <>
+                        <FormControl>
+                          <FormLabel>Panjang transportir (cm)</FormLabel>
+                          <Input
+                            isReadOnly
+                            bgColor="gray.50"
+                            value={
+                              selectedSuratJalan?.transportir?.panjang !=
+                                null &&
+                              selectedSuratJalan?.transportir?.panjang !== ""
+                                ? formatVolumeNumber(
+                                    Number(
+                                      selectedSuratJalan.transportir.panjang,
+                                    ),
+                                  )
+                                : "-"
+                            }
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>Lebar transportir (cm)</FormLabel>
+                          <Input
+                            isReadOnly
+                            bgColor="gray.50"
+                            value={
+                              selectedSuratJalan?.transportir?.lebar != null &&
+                              selectedSuratJalan?.transportir?.lebar !== ""
+                                ? formatVolumeNumber(
+                                    Number(selectedSuratJalan.transportir.lebar),
+                                  )
+                                : "-"
+                            }
+                          />
+                        </FormControl>
+                        <FormControl
+                          isInvalid={
+                            touched.tinggiCairan && errors.tinggiCairan
+                          }
+                          gridColumn={{ md: "span 2" }}
+                        >
+                          <FormLabel>Tinggi Cairan (cm)</FormLabel>
+                          <Input
+                            name="tinggiCairan"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.tinggiCairan}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "tinggiCairan",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Masukkan tinggi cairan"
+                          />
+                          <Text fontSize="xs" color="gray.500" mt={1}>
+                            Volume drum = tinggi × panjang × lebar ÷ 1.000 ÷
+                            200
+                          </Text>
+                          <FormErrorMessage>
+                            {errors.tinggiCairan}
+                          </FormErrorMessage>
+                        </FormControl>
+                        <FormControl gridColumn={{ md: "span 2" }}>
+                          <FormLabel>Volume (drum)</FormLabel>
+                          <Input
+                            isReadOnly
+                            bgColor="gray.50"
+                            value={(() => {
+                              const volumeDrum = calcVolumeDrum(
+                                values.tinggiCairan,
+                                selectedSuratJalan?.transportir?.panjang,
+                                selectedSuratJalan?.transportir?.lebar,
+                              );
+                              return volumeDrum == null
+                                ? ""
+                                : formatVolumeNumber(volumeDrum);
+                            })()}
+                          />
+                        </FormControl>
+                      </>
+                    )}
+
+                    {(konfirmasiMode === "volume" ||
+                      konfirmasiMode === "edit") && (
+                      <>
+                        {konfirmasiMode === "edit" && (
+                          <FormControl
+                            isInvalid={touched.volume && errors.volume}
+                          >
+                            <FormLabel>Volume</FormLabel>
+                            <Input
+                              name="volume"
+                              type="number"
+                              bgColor="terang"
+                              value={values.volume}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="Masukkan volume diterima"
+                            />
+                            <FormErrorMessage>
+                              {errors.volume}
+                            </FormErrorMessage>
+                          </FormControl>
+                        )}
+
+                        <FormControl
+                          isInvalid={touched.volumeAir && errors.volumeAir}
+                        >
+                          <FormLabel>Volume Air</FormLabel>
+                          <Input
+                            name="volumeAir"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.volumeAir}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "volumeAir",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Contoh: 0,5"
+                          />
+                          <FormErrorMessage>{errors.volumeAir}</FormErrorMessage>
+                        </FormControl>
+
+                        <FormControl>
+                          <FormLabel>Volume Akhir</FormLabel>
+                          <Input
+                            isReadOnly
+                            bgColor="gray.50"
+                            value={(() => {
+                              const dasar =
+                                konfirmasiMode === "volume"
+                                  ? calcVolumeDrum(
+                                      values.tinggiCairan,
+                                      selectedSuratJalan?.transportir?.panjang,
+                                      selectedSuratJalan?.transportir?.lebar,
+                                    )
+                                  : values.volume;
+                              const akhir = calcVolumeAkhir(
+                                dasar,
+                                values.volumeAir,
+                              );
+                              return akhir == null
+                                ? ""
+                                : formatVolumeNumber(akhir);
+                            })()}
+                          />
+                          <Text fontSize="xs" color="gray.500" mt={1}>
+                            Volume akhir = volume − volume air
+                          </Text>
+                        </FormControl>
+                      </>
+                    )}
+
+                    {(konfirmasiMode === "bongkar" ||
+                      konfirmasiMode === "edit") && (
                       <>
                         <FormControl
                           isInvalid={touched.tanggal && errors.tanggal}
@@ -2270,22 +2793,6 @@ const SuratJalan = () => {
                             onBlur={handleBlur}
                           />
                           <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
-                        </FormControl>
-
-                        <FormControl
-                          isInvalid={touched.volume && errors.volume}
-                        >
-                          <FormLabel>Volume</FormLabel>
-                          <Input
-                            name="volume"
-                            type="number"
-                            bgColor="terang"
-                            value={values.volume}
-                            onChange={handleChange}
-                            onBlur={handleBlur}
-                            placeholder="Masukkan volume diterima"
-                          />
-                          <FormErrorMessage>{errors.volume}</FormErrorMessage>
                         </FormControl>
 
                         <FormControl isInvalid={touched.api && errors.api}>
@@ -2326,6 +2833,26 @@ const SuratJalan = () => {
                             placeholder="Contoh: 0,5"
                           />
                           <FormErrorMessage>{errors.BSNW}</FormErrorMessage>
+                        </FormControl>
+
+                        <FormControl isInvalid={touched.SG && errors.SG}>
+                          <FormLabel>SG</FormLabel>
+                          <Input
+                            name="SG"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.SG}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "SG",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Contoh: 0,850"
+                          />
+                          <FormErrorMessage>{errors.SG}</FormErrorMessage>
                         </FormControl>
 
                         <FormControl gridColumn={{ md: "span 2" }}>
@@ -2384,7 +2911,8 @@ const SuratJalan = () => {
                       </>
                     )}
 
-                    {konfirmasiMode !== "tiba" && (
+                    {(konfirmasiMode === "bongkar" ||
+                      konfirmasiMode === "edit") && (
                       <Box gridColumn={{ md: "span 2" }}>
                         <FileUploadField
                           label="Foto Lab"
@@ -2429,12 +2957,27 @@ const SuratJalan = () => {
                       setTouched(
                         konfirmasiMode === "tiba"
                           ? { jamKedatangan: true }
-                          : {
-                              tanggal: true,
-                              volume: true,
-                              api: true,
-                              BSNW: true,
-                            },
+                          : konfirmasiMode === "volume"
+                            ? {
+                                tinggiCairan: true,
+                                volumeAir: true,
+                              }
+                            : konfirmasiMode === "bongkar"
+                              ? {
+                                  tanggal: true,
+                                  api: true,
+                                  BSNW: true,
+                                  SG: true,
+                                }
+                              : {
+                                  nomor: true,
+                                  tanggal: true,
+                                  volume: true,
+                                  volumeAir: true,
+                                  api: true,
+                                  BSNW: true,
+                                  SG: true,
+                                },
                       );
                       if (Object.keys(formErrors || {}).length) {
                         toast({
@@ -2499,23 +3042,31 @@ const SuratJalan = () => {
                     borderColor="gray.200"
                     bg="gray.50"
                   >
-                    {selectedSuratJalanDetail?.statusSuratJalanId === 5 &&
-                      !isPetugasKeamanan && (
-                        <Flex justify="flex-end" mb={3}>
+                    {selectedSuratJalanDetail?.statusSuratJalanId === 5 && (
+                        <Flex justify="flex-end" mb={3} gap={2}>
                           <Button
                             size="sm"
                             variant="outline"
-                            colorScheme="yellow"
-                            onClick={() =>
-                              openEditKonfirmasiModal(
-                                kp,
-                                selectedSuratJalanDetail,
-                                "edit",
-                              )
-                            }
+                            onClick={() => unduhBeritaAcaraDenganPesan(kp.id)}
                           >
-                            Edit
+                            Unduh Berita Acara
                           </Button>
+                          {!isPetugasKeamanan && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="yellow"
+                              onClick={() =>
+                                openEditKonfirmasiModal(
+                                  kp,
+                                  selectedSuratJalanDetail,
+                                  "edit",
+                                )
+                              }
+                            >
+                              Edit
+                            </Button>
+                          )}
                         </Flex>
                       )}
                     {selectedSuratJalanDetail?.statusSuratJalanId === 3 &&
@@ -2524,17 +3075,44 @@ const SuratJalan = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            colorScheme="orange"
+                            colorScheme="purple"
                             onClick={() =>
                               openEditKonfirmasiModal(
                                 kp,
                                 selectedSuratJalanDetail,
-                                "bongkar",
+                                "volume",
                               )
                             }
                           >
-                            Konfirmasi Bongkar
+                            Konfirmasi Volume
                           </Button>
+                        </Flex>
+                      )}
+                    {selectedSuratJalanDetail?.statusSuratJalanId === 6 && (
+                        <Flex justify="flex-end" mb={3} gap={2}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => unduhBeritaAcaraDenganPesan(kp.id)}
+                          >
+                            Unduh Berita Acara
+                          </Button>
+                          {!isPetugasKeamanan && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="orange"
+                              onClick={() =>
+                                openEditKonfirmasiModal(
+                                  kp,
+                                  selectedSuratJalanDetail,
+                                  "bongkar",
+                                )
+                              }
+                            >
+                              Konfirmasi Bongkar
+                            </Button>
+                          )}
                         </Flex>
                       )}
                     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
@@ -2558,6 +3136,16 @@ const SuratJalan = () => {
                           primarySatuan="drum"
                         />
                       </MobileField>
+                      <MobileField label="Volume Air">
+                        {kp.volumeAir != null && kp.volumeAir !== ""
+                          ? formatVolumeNumber(Number(kp.volumeAir))
+                          : "-"}
+                      </MobileField>
+                      <MobileField label="Volume Akhir">
+                        {kp.volumeAkhir != null && kp.volumeAkhir !== ""
+                          ? formatVolumeNumber(Number(kp.volumeAkhir))
+                          : "-"}
+                      </MobileField>
 
                       <MobileField label="API">
                         {kp.api != null && kp.api !== ""
@@ -2567,6 +3155,11 @@ const SuratJalan = () => {
                       <MobileField label="BSNW">
                         {kp.BSNW != null && kp.BSNW !== ""
                           ? formatVolumeNumber(Number(kp.BSNW))
+                          : "-"}
+                      </MobileField>
+                      <MobileField label="SG">
+                        {kp.SG != null && kp.SG !== ""
+                          ? formatVolumeNumber(Number(kp.SG))
                           : "-"}
                       </MobileField>
                       <MobileField label="Mitra">
@@ -2761,8 +3354,8 @@ const SuratJalan = () => {
             </Text>
             <Text fontSize="sm" color="gray.500" mt={2}>
               Status surat jalan akan diubah menjadi BATAL. Surat jalan yang
-              sudah tiba, dibongkar, atau dipakai pada pengisian tanki tidak
-              dapat dibatalkan.
+              sudah tiba, dikonfirmasi volumenya, dibongkar, atau dipakai pada
+              pengisian tanki tidak dapat dibatalkan.
             </Text>
           </ModalBody>
           <ModalFooter

@@ -21,6 +21,7 @@ import verifikasi from "./pages/Verifikasi.jsx";
 import Unauthorized from "./pages/Unauthorized.jsx";
 import DaftarMitra from "./pages/MitraKPBPN/DaftarMitra.jsx";
 import SuratJalan from "./pages/PengirimanAdminKPBPN/SuratJalan.jsx";
+import KonfirmasiPenerimaan from "./pages/PengirimanAdminKPBPN/KonfirmasiPenerimaan.jsx";
 import SuratJalanMitra from "./pages/PengirimanMitraKPBPN/SuratJalanMitra.jsx";
 import PengisianTanki from "./pages/Tanki/PengisianTanki.jsx";
 import BABongkar from "./pages/Tanki/BABongkar.jsx";
@@ -121,6 +122,13 @@ function App() {
           <ProtectedRoute
             component={SuratJalan}
             path="/pengiriman-kpbpn/surat-jalan"
+            exact
+            roleRoute={[1, 2, 5]}
+          />
+
+          <ProtectedRoute
+            component={KonfirmasiPenerimaan}
+            path="/pengiriman-kpbpn/konfirmasi-penerimaan"
             exact
             roleRoute={[1, 2, 5]}
           />

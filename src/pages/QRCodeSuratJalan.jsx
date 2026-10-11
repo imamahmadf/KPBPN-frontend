@@ -49,6 +49,7 @@ const formatJam = (value) => {
 const statusColor = (status) => {
   const value = String(status || "").toUpperCase();
   if (value === "TIBA") return "green";
+  if (value === "VOLUME") return "purple";
   if (value === "BONGKAR") return "orange";
   if (value === "KIRIM") return "blue";
   if (value === "BATAL") return "red";

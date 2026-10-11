@@ -102,6 +102,131 @@ const emptyPemilik = {
   kontakPemilikSumur: "",
 };
 
+const ProduksiTable = ({ title, total, rows, page, limit, emptyText }) => (
+  <Box>
+    <Flex
+      justify="space-between"
+      align={{ base: "flex-start", sm: "center" }}
+      gap={2}
+      mb={3}
+      wrap="wrap"
+    >
+      <Heading size="sm" color="kpbpn" mb={0}>
+        {title}
+      </Heading>
+      <Text fontSize="sm" color="gray.600" fontWeight="semibold">
+        Total {formatVolumeLabel(total, "Barrel")}
+      </Text>
+    </Flex>
+    <Box overflowX="auto" borderWidth="1px" borderRadius="lg" bg="white">
+      <Table size="sm" minW="760px">
+        <Thead bg="gray.50">
+          <Tr>
+            <Th>No</Th>
+            <Th>Tanggal Produksi</Th>
+            <Th>Produksi</Th>
+            <Th>Referensi</Th>
+            <Th>Tanggal Referensi</Th>
+            <Th>Volume Referensi</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {rows.length === 0 ? (
+            <Tr>
+              <Td colSpan={6} textAlign="center" py={6}>
+                {emptyText}
+              </Td>
+            </Tr>
+          ) : (
+            rows.map((item, index) => (
+              <Tr key={item.rowKey || `${item.sumber}-${item.id}`}>
+                <Td>{page * limit + index + 1}</Td>
+                <Td>{formatTanggal(item.tanggal)}</Td>
+                <Td fontWeight="medium">
+                  {formatVolumeLabel(item.produksi, item.satuanVolume?.satuan)}
+                </Td>
+                <Td>
+                  {item.referensi ||
+                    item.suratJalan?.nomor ||
+                    (item.BAK3SId ? `BAK3S #${item.BAK3SId}` : "-")}
+                </Td>
+                <Td>
+                  {formatTanggal(
+                    item.tanggalReferensi ||
+                      item.suratJalan?.tanggal ||
+                      item.BAK3S?.BABongkar?.tanggal ||
+                      item.BAK3?.BABongkar?.tanggal,
+                  )}
+                </Td>
+                <Td>
+                  {formatVolumeLabel(
+                    item.volumeReferensi ??
+                      item.suratJalan?.volume ??
+                      item.BAK3S?.produksi ??
+                      item.BAK3?.produksi,
+                    item.satuanReferensi ||
+                      item.suratJalan?.satuanVolume?.satuan ||
+                      (item.sumber === "BAK3S" ? "Barrel" : ""),
+                  )}
+                </Td>
+              </Tr>
+            ))
+          )}
+        </Tbody>
+      </Table>
+    </Box>
+  </Box>
+);
+
+const ProduksiPagination = ({ rows, page, pages, limit, onPageChange }) => (
+  <Flex
+    className="pengeluaran-pagination"
+    mt={4}
+    justify="space-between"
+    align={{ base: "stretch", md: "center" }}
+    direction={{ base: "column", md: "row" }}
+    gap={4}
+  >
+    <Text fontSize="sm" color="gray.600">
+      {rows > 0 ? (
+        <>
+          Menampilkan {page * limit + 1}–{Math.min((page + 1) * limit, rows)}{" "}
+          dari {rows} data
+          {pages > 1 && (
+            <>
+              {" "}
+              · Halaman {page + 1} dari {pages}
+            </>
+          )}
+        </>
+      ) : (
+        "Tidak ada data untuk ditampilkan"
+      )}
+    </Text>
+    {rows > 0 && (
+      <Box overflowX="auto" py={1}>
+        <ReactPaginate
+          previousLabel="←"
+          nextLabel="→"
+          pageCount={Math.max(pages, 1)}
+          onPageChange={onPageChange}
+          forcePage={page}
+          activeClassName="item active"
+          breakClassName="item break-me"
+          breakLabel="..."
+          containerClassName="pagination"
+          disabledClassName="disabled-page"
+          marginPagesDisplayed={1}
+          nextClassName="item next"
+          pageClassName="item pagination-page"
+          pageRangeDisplayed={3}
+          previousClassName="item previous"
+        />
+      </Box>
+    )}
+  </Flex>
+);
+
 const pemilikFromSumur = (sumur) => ({
   namaPemilikLahan: sumur?.namaPemilikLahan ?? "",
   namaPemilikSumur: sumur?.namaPemilikSumur ?? "",
@@ -118,12 +243,18 @@ function ProduksiSumur({ match }) {
   const pemilikSyncedId = useRef(null);
 
   const [sumurMinyak, setSumurMinyak] = useState(null);
-  const [dataProduksi, setDataProduksi] = useState([]);
+  const [dataSuratJalan, setDataSuratJalan] = useState([]);
+  const [dataK3S, setDataK3S] = useState([]);
   const [totalProduksi, setTotalProduksi] = useState(0);
+  const [totalProduksiSuratJalan, setTotalProduksiSuratJalan] = useState(0);
+  const [totalProduksiK3S, setTotalProduksiK3S] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageK3s, setPageK3s] = useState(0);
   const [limit] = useState(20);
   const [pages, setPages] = useState(0);
+  const [pagesK3s, setPagesK3s] = useState(0);
   const [rows, setRows] = useState(0);
+  const [rowsK3s, setRowsK3s] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const [tanggalAwal, setTanggalAwal] = useState("");
@@ -162,6 +293,11 @@ function ProduksiSumur({ match }) {
     scrollToDataList();
   };
 
+  const changePageK3s = ({ selected }) => {
+    setPageK3s(selected);
+    scrollToDataList();
+  };
+
   const fetchDataProduksi = async () => {
     setIsLoading(true);
     try {
@@ -170,6 +306,7 @@ function ProduksiSumur({ match }) {
         {
           params: {
             page,
+            pageK3s,
             limit,
             startDate: appliedStartDate || undefined,
             endDate: appliedEndDate || undefined,
@@ -186,11 +323,17 @@ function ProduksiSumur({ match }) {
         setPemilikForm(pemilikFromSumur(sumur));
         pemilikSyncedId.current = sumurMinyakId;
       }
-      setDataProduksi(res.data.result || []);
+      setDataSuratJalan(res.data.resultSuratJalan || []);
+      setDataK3S(res.data.resultK3S || []);
       setTotalProduksi(res.data.totalProduksi || 0);
+      setTotalProduksiSuratJalan(res.data.totalProduksiSuratJalan || 0);
+      setTotalProduksiK3S(res.data.totalProduksiK3S || 0);
       setPage(res.data.page ?? page);
       setPages(res.data.totalPage || 0);
       setRows(res.data.totalRows || 0);
+      setPageK3s(res.data.pageK3s ?? pageK3s);
+      setPagesK3s(res.data.totalPageK3S || 0);
+      setRowsK3s(res.data.totalRowsK3S || 0);
     } catch (err) {
       console.error(err);
       if (err.response?.status === 403) {
@@ -218,10 +361,11 @@ function ProduksiSumur({ match }) {
 
   useEffect(() => {
     fetchDataProduksi();
-  }, [sumurMinyakId, page, limit, appliedStartDate, appliedEndDate]);
+  }, [sumurMinyakId, page, pageK3s, limit, appliedStartDate, appliedEndDate]);
 
   const handleFilter = () => {
     setPage(0);
+    setPageK3s(0);
     setAppliedStartDate(tanggalAwal);
     setAppliedEndDate(tanggalAkhir);
   };
@@ -380,6 +524,7 @@ function ProduksiSumur({ match }) {
     setAppliedStartDate("");
     setAppliedEndDate("");
     setPage(0);
+    setPageK3s(0);
   };
 
   return (
@@ -819,138 +964,50 @@ function ProduksiSumur({ match }) {
             </Stack>
           </Box>
 
-          <Box ref={dataListRef}>
+          <Stack ref={dataListRef} spacing={8}>
             {isLoading ? (
               <Center py={10}>
                 <Spinner size="lg" color="kpbpn" />
               </Center>
             ) : (
-              <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
-                <Table size="sm" minW="880px">
-                  <Thead bg="gray.50">
-                    <Tr>
-                      <Th>No</Th>
-                      <Th>Tanggal Produksi</Th>
-                      <Th>Sumber</Th>
-                      <Th>Produksi</Th>
-                      <Th>Referensi</Th>
-                      <Th>Tanggal Referensi</Th>
-                      <Th>Volume Referensi</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {dataProduksi.length === 0 ? (
-                      <Tr>
-                        <Td colSpan={7} textAlign="center" py={6}>
-                          Belum ada data produksi untuk sumur ini
-                        </Td>
-                      </Tr>
-                    ) : (
-                      dataProduksi.map((item, index) => (
-                        <Tr key={item.rowKey || `${item.sumber}-${item.id}`}>
-                          <Td>{page * limit + index + 1}</Td>
-                          <Td>{formatTanggal(item.tanggal)}</Td>
-                          <Td>
-                            <Badge
-                              colorScheme={
-                                item.sumber === "BAK3S" ? "orange" : "blue"
-                              }
-                              variant="subtle"
-                            >
-                              {item.sumberLabel ||
-                                (item.sumber === "BAK3S"
-                                  ? "BAK3S"
-                                  : "Surat Jalan")}
-                            </Badge>
-                          </Td>
-                          <Td fontWeight="medium">
-                            {formatVolumeLabel(
-                              item.produksi,
-                              item.satuanVolume?.satuan,
-                            )}
-                          </Td>
-                          <Td>
-                            {item.referensi ||
-                              item.suratJalan?.nomor ||
-                              (item.BAK3SId ? `BAK3S #${item.BAK3SId}` : "-")}
-                          </Td>
-                          <Td>
-                            {formatTanggal(
-                              item.tanggalReferensi ||
-                                item.suratJalan?.tanggal ||
-                                item.BAK3S?.BABongkar?.tanggal,
-                            )}
-                          </Td>
-                          <Td>
-                            {formatVolumeLabel(
-                              item.volumeReferensi ??
-                                item.suratJalan?.volume ??
-                                item.BAK3S?.produksi,
-                              item.satuanReferensi ||
-                                item.suratJalan?.satuanVolume?.satuan ||
-                                (item.sumber === "BAK3S" ? "Barrel" : ""),
-                            )}
-                          </Td>
-                        </Tr>
-                      ))
-                    )}
-                  </Tbody>
-                </Table>
-              </Box>
-            )}
-          </Box>
-
-          {!isLoading && (
-            <Flex
-              className="pengeluaran-pagination"
-              mt={6}
-              pt={4}
-              borderTop="1px solid"
-              borderColor="gray.200"
-              justify="space-between"
-              align={{ base: "stretch", md: "center" }}
-              direction={{ base: "column", md: "row" }}
-              gap={4}
-            >
-              <Text fontSize="sm" color="gray.600">
-                {rows > 0 ? (
-                  <>
-                    Menampilkan {page * limit + 1}–
-                    {Math.min((page + 1) * limit, rows)} dari {rows} data
-                    {pages > 1 && (
-                      <>
-                        {" "}
-                        · Halaman {page + 1} dari {pages}
-                      </>
-                    )}
-                  </>
-                ) : (
-                  "Tidak ada data untuk ditampilkan"
-                )}
-              </Text>
-              {rows > 0 && (
-                <Box overflowX="auto" py={1}>
-                  <ReactPaginate
-                    previousLabel="←"
-                    nextLabel="→"
-                    pageCount={Math.max(pages, 1)}
+              <>
+                <Box>
+                  <ProduksiTable
+                    title="Produksi Surat Jalan"
+                    total={totalProduksiSuratJalan}
+                    rows={dataSuratJalan}
+                    page={page}
+                    limit={limit}
+                    emptyText="Belum ada data produksi surat jalan untuk sumur ini"
+                  />
+                  <ProduksiPagination
+                    rows={rows}
+                    page={page}
+                    pages={pages}
+                    limit={limit}
                     onPageChange={changePage}
-                    forcePage={page}
-                    activeClassName="item active"
-                    breakClassName="item break-me"
-                    breakLabel="..."
-                    containerClassName="pagination"
-                    disabledClassName="disabled-page"
-                    marginPagesDisplayed={1}
-                    nextClassName="item next"
-                    pageClassName="item pagination-page"
-                    pageRangeDisplayed={3}
-                    previousClassName="item previous"
                   />
                 </Box>
-              )}
-            </Flex>
-          )}
+                <Box>
+                  <ProduksiTable
+                    title="Produksi BAK3S"
+                    total={totalProduksiK3S}
+                    rows={dataK3S}
+                    page={pageK3s}
+                    limit={limit}
+                    emptyText="Belum ada data produksi BAK3S untuk sumur ini"
+                  />
+                  <ProduksiPagination
+                    rows={rowsK3s}
+                    page={pageK3s}
+                    pages={pagesK3s}
+                    limit={limit}
+                    onPageChange={changePageK3s}
+                  />
+                </Box>
+              </>
+            )}
+          </Stack>
         </Container>
       </Box>
     </LayoutKPBPN>

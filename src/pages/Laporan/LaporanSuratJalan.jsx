@@ -10,6 +10,7 @@ const statusColor = {
   DRAFT: "gray",
   KIRIM: "blue",
   TIBA: "orange",
+  VOLUME: "purple",
   BATAL: "red",
   BONGKAR: "green",
 };
