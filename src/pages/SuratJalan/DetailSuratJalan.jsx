@@ -224,6 +224,7 @@ function DetailSuratJalan({
     loading: false,
     saving: false,
     sumurList: [],
+    sumurTerisiHariIni: [],
     inputs: {},
     volume: 0,
     satuan: "",
@@ -269,6 +270,7 @@ function DetailSuratJalan({
       ...prev,
       loading: true,
       sumurList: [],
+      sumurTerisiHariIni: [],
       inputs: {},
     }));
 
@@ -299,6 +301,7 @@ function DetailSuratJalan({
         ...prev,
         loading: false,
         sumurList,
+        sumurTerisiHariIni: res.data.sumurTerisiHariIni || [],
         inputs,
         volume: res.data.suratJalan?.volume ?? 0,
         satuan: res.data.suratJalan?.satuanVolume?.satuan || "",
@@ -502,30 +505,70 @@ function DetailSuratJalan({
     }
 
     const maxProduksiPerSumur = 4;
-    const eligibleCount = sumurList.filter(
-      (sumur) => getTingkatProduksi(sumur) > 0,
-    ).length;
+    const filledToday = new Set(
+      (produksiPanel.sumurTerisiHariIni || []).map((id) => Number(id)),
+    );
+    const belumTerisi = sumurList.filter(
+      (sumur) =>
+        !filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
+    );
+    const sudahTerisi = sumurList.filter(
+      (sumur) =>
+        filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
+    );
+    const utama = belumTerisi.length > 0 ? belumTerisi : sudahTerisi;
+    const cadangan = belumTerisi.length > 0 ? sudahTerisi : [];
+    const eligibleCount = belumTerisi.length + sudahTerisi.length;
     const maxTotal = eligibleCount * maxProduksiPerSumur;
 
-    setProduksiPanel((prev) => ({
-      ...prev,
-      inputs: distributeRandomVolume(
-        targetVolume,
-        sumurList,
+    const distribusi = (volume, wells) =>
+      distributeRandomVolume(
+        volume,
+        wells,
         (sumur) => getTingkatProduksi(sumur),
         0.1,
         { maxPerWell: maxProduksiPerSumur, leaveSomeEmpty: true },
-      ),
+      );
+
+    const inputs = {};
+    sumurList.forEach((sumur) => {
+      inputs[sumur.id] = 0;
+    });
+
+    const hasilUtama = distribusi(targetVolume, utama);
+    Object.assign(inputs, hasilUtama);
+
+    const terisiUtama = Object.values(hasilUtama).reduce(
+      (sum, value) => sum + (Number(value) || 0),
+      0,
+    );
+    const sisaVolume = targetVolume - terisiUtama;
+    let pakaiCadangan = false;
+
+    if (sisaVolume >= 0.1 - 1e-9 && cadangan.length > 0) {
+      Object.assign(inputs, distribusi(sisaVolume, cadangan));
+      pakaiCadangan = true;
+    }
+
+    setProduksiPanel((prev) => ({
+      ...prev,
+      inputs,
     }));
+
+    let description = `Produksi diisi pada sumur yang belum punya produksi di hari ini, lalu dibagi acak berdasar tingkat produksi. Tidak semua sumur terisi, nilai maksimal ${maxProduksiPerSumur} per sumur.`;
+    if (maxTotal < targetVolume) {
+      description = `Sumur yang belum punya produksi di hari ini diutamakan, maksimal ${maxProduksiPerSumur} per sumur. Total tidak cukup mencapai volume surat jalan karena batas tersebut.`;
+    } else if (belumTerisi.length === 0) {
+      description = `Semua sumur yang bisa diisi sudah punya produksi pada tanggal ini dari surat jalan lain. Produksi diisi berdasar tingkat produksi, maksimal ${maxProduksiPerSumur} per sumur.`;
+    } else if (pakaiCadangan) {
+      description = `Sumur yang belum punya produksi di hari ini diutamakan. Sisa volume diisi ke sumur yang sudah punya produksi karena batas ${maxProduksiPerSumur} per sumur.`;
+    }
 
     toast({
       title: maxTotal < targetVolume ? "Isi otomatis terbatas" : "Isi otomatis",
-      description:
-        maxTotal < targetVolume
-          ? `Produksi diisi acak berdasar tingkat produksi, maksimal ${maxProduksiPerSumur} per sumur. Total tidak cukup mencapai volume surat jalan karena batas tersebut.`
-          : `Produksi diisi acak berdasar tingkat produksi. Tidak semua sumur terisi, nilai maksimal ${maxProduksiPerSumur} per sumur.`,
+      description,
       status: maxTotal < targetVolume ? "warning" : "success",
-      duration: 3000,
+      duration: 4000,
       isClosable: true,
     });
   };

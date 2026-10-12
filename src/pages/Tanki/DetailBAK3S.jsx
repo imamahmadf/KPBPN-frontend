@@ -913,6 +913,7 @@ function DetailBAK3S({ match }) {
   const perubahanVolume = useMemo(() => {
     const bak3sLiter = toLiter(data?.produksi, "barrel");
     const suratJalanMap = new Map();
+    const konfirmasiMap = new Map();
     const grossList = [];
     const airList = [];
 
@@ -931,10 +932,16 @@ function DetailBAK3S({ match }) {
             toLiter(sj.volume, sj.satuanVolume?.satuan || "Barrel"),
           );
         }
+        if (kp?.id && !konfirmasiMap.has(kp.id)) {
+          const satuanKonfirmasi =
+            kp.satuanVolume?.satuan || sj?.satuanVolume?.satuan || "Drum";
+          konfirmasiMap.set(kp.id, toLiter(kp.volume, satuanKonfirmasi));
+        }
       });
     });
 
     const totalSuratJalan = sumLiter(Array.from(suratJalanMap.values()));
+    const totalKonfirmasi = sumLiter(Array.from(konfirmasiMap.values()));
     const totalGross = sumLiter(grossList);
     const totalAir = sumLiter(airList);
     const totalNett =
@@ -949,7 +956,14 @@ function DetailBAK3S({ match }) {
     });
 
     const suratJalan = stage(totalSuratJalan);
+    const konfirmasi = stage(totalKonfirmasi);
     const gross = stage(totalGross);
+    const acuanGross =
+      konfirmasi.barrel !== null ? konfirmasi.barrel : suratJalan.barrel;
+    const captionGross =
+      konfirmasi.barrel !== null
+        ? "terhadap konfirmasi penerimaan"
+        : "terhadap surat jalan";
     const nett = stage(totalNett);
     const bak3s = {
       volume: data?.produksi ?? null,
@@ -968,13 +982,22 @@ function DetailBAK3S({ match }) {
         selisihCaption: "Tahap awal",
       },
       {
+        key: "konfirmasi",
+        tahap: "Konfirmasi Penerimaan",
+        keterangan: `${konfirmasiMap.size} konfirmasi, gross pengukuran`,
+        ...konfirmasi,
+        selisih: selisihBarrel(konfirmasi.barrel, suratJalan.barrel),
+        persen: persenPerubahan(konfirmasi.barrel, suratJalan.barrel),
+        selisihCaption: "terhadap surat jalan",
+      },
+      {
         key: "gross",
         tahap: "Gross",
         keterangan: `${pengisianList.length} pengisian`,
         ...gross,
-        selisih: selisihBarrel(gross.barrel, suratJalan.barrel),
-        persen: persenPerubahan(gross.barrel, suratJalan.barrel),
-        selisihCaption: "terhadap surat jalan",
+        selisih: selisihBarrel(gross.barrel, acuanGross),
+        persen: persenPerubahan(gross.barrel, acuanGross),
+        selisihCaption: captionGross,
       },
       {
         key: "nett",
@@ -1165,11 +1188,12 @@ function DetailBAK3S({ match }) {
 
               <SectionCard title="Perubahan Volume Minyak">
                 <Text fontSize="sm" color="gray.600" mb={3}>
-                  Urutan volume dimulai dari total surat jalan, total gross,
-                  total nett (gross dikurangi air), sampai volume BAK3S.
-                  Perubahan menampilkan selisih volume dan persentasenya.
-                  Baris terakhir membandingkan surat jalan langsung dengan
-                  BAK3S.
+                  Urutan volume dimulai dari total surat jalan, gross konfirmasi
+                  penerimaan, total gross pengisian, total nett (gross dikurangi
+                  air), sampai volume BAK3S. Perubahan menampilkan selisih
+                  volume dan persentasenya. Baris konfirmasi penerimaan
+                  membandingkan volume surat jalan dengan gross pengukuran.
+                  Baris terakhir membandingkan surat jalan langsung dengan BAK3S.
                 </Text>
                 <Box overflowX="auto" maxW="100%">
                   <Table size="sm" variant="simple" minW="640px" bg="white">

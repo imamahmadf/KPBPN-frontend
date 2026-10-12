@@ -167,9 +167,20 @@ const tinggiCairanSchema = Yup.string()
     return num !== null && num > 0;
   });
 
+const optionalDecimalFieldSchema = (label) =>
+  Yup.string()
+    .nullable()
+    .test("is-decimal", `${label} harus angka valid`, (value) => {
+      const str = String(value ?? "").trim();
+      if (!str) return true;
+      if (/^\d+[.,]$/.test(str)) return true;
+      const num = parseDecimalInput(str);
+      return num !== null && num >= 0;
+    });
+
 const konfirmasiVolumeSchema = Yup.object({
   tinggiCairan: tinggiCairanSchema,
-  volumeAir: decimalFieldSchema("Volume air"),
+  volumeAir: optionalDecimalFieldSchema("Volume air"),
 });
 
 const calcVolumeDrum = (tinggiCm, panjangCm, lebarCm) => {
@@ -621,6 +632,7 @@ const SuratJalan = () => {
           toTimeInput(editingKonfirmasi.jamKedatangan) ||
           toTimeInput(new Date()),
         volume: editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
+        tinggiCairan: toDecimalInput(editingKonfirmasi.tinggiCairan),
         volumeAir: toDecimalInput(editingKonfirmasi.volumeAir),
         volumeAkhir: toDecimalInput(editingKonfirmasi.volumeAkhir),
         nomor: editingKonfirmasi.nomor || "",
@@ -1277,6 +1289,7 @@ const SuratJalan = () => {
       }
 
       let savedKonfirmasiId = editingKonfirmasi?.id;
+      let volumeLengkap = true;
 
       if (isTiba) {
         if (values.foto instanceof File) formData.append("foto", values.foto);
@@ -1302,31 +1315,32 @@ const SuratJalan = () => {
           });
           return;
         }
+        const volumeAirParsed = parseDecimalInput(values.volumeAir);
         formData.append("tahap", "volume");
         formData.append("tinggiCairan", parseDecimalInput(values.tinggiCairan));
-        const volumeAkhir = calcVolumeAkhir(volumeDrum, values.volumeAir);
-        if (volumeAkhir === null) {
-          setSubmitting(false);
-          toast({
-            title: "Volume akhir tidak valid",
-            description: "Volume air tidak boleh lebih besar dari volume",
-            status: "error",
-            duration: 5000,
-            isClosable: true,
-          });
-          return;
-        }
         formData.append("volume", volumeDrum);
-        formData.append(
-          "volumeAir",
-          parseDecimalInput(values.volumeAir) ?? "",
-        );
-        formData.append("volumeAkhir", volumeAkhir);
+        if (volumeAirParsed !== null) {
+          const volumeAkhir = calcVolumeAkhir(volumeDrum, values.volumeAir);
+          if (volumeAkhir === null) {
+            setSubmitting(false);
+            toast({
+              title: "Volume akhir tidak valid",
+              description: "Volume air tidak boleh lebih besar dari volume",
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+            return;
+          }
+          formData.append("volumeAir", volumeAirParsed);
+          formData.append("volumeAkhir", volumeAkhir);
+        }
         const res = await axios.post(
           `${API_BASE}/pengiriman/edit/konfirmasi/${editingKonfirmasi.id}`,
           formData,
         );
         savedKonfirmasiId = res.data?.result?.id || editingKonfirmasi.id;
+        volumeLengkap = Boolean(res.data?.lengkap);
       } else {
         formData.append("tahap", isBongkar ? "bongkar" : "edit");
         formData.append("tanggal", values.tanggal);
@@ -1368,7 +1382,7 @@ const SuratJalan = () => {
       }
 
       let dokumenGagal = "";
-      if (isVolume && savedKonfirmasiId) {
+      if (isVolume && volumeLengkap && savedKonfirmasiId) {
         try {
           await unduhBeritaAcara(savedKonfirmasiId);
         } catch (downloadErr) {
@@ -1387,7 +1401,9 @@ const SuratJalan = () => {
           : isTiba
             ? "Konfirmasi kedatangan berhasil disimpan"
             : isVolume
-              ? "Konfirmasi volume berhasil disimpan dan berita acara pengukuran diunduh"
+              ? volumeLengkap
+                ? "Konfirmasi volume berhasil disimpan dan berita acara pengukuran diunduh"
+                : "Tinggi cairan tersimpan. Status belum berubah. Isi volume air untuk menyelesaikan dan mengunduh berita acara"
               : isBongkar
                 ? "Konfirmasi bongkar berhasil disimpan"
                 : "Konfirmasi penerimaan berhasil diperbarui",
@@ -2547,7 +2563,7 @@ const SuratJalan = () => {
                 {konfirmasiMode === "tiba"
                   ? "Langkah 1 dari 3: isi jam kedatangan. Foto bukti penerimaan opsional"
                   : konfirmasiMode === "volume"
-                    ? "Langkah 2 dari 3: isi tinggi cairan. Volume drum dihitung dari panjang dan lebar transportir"
+                    ? "Langkah 2 dari 3: isi tinggi cairan untuk menyimpan volume. Isi volume air jika data sudah lengkap agar status berubah dan berita acara terunduh"
                     : konfirmasiMode === "bongkar"
                       ? "Langkah 3 dari 3: isi data bongkar. Foto lab opsional"
                       : "Perbarui data konfirmasi penerimaan"}
@@ -2742,8 +2758,18 @@ const SuratJalan = () => {
                               "volumeAir",
                             )}
                             onBlur={handleBlur}
-                            placeholder="Contoh: 0,5"
+                            placeholder={
+                              konfirmasiMode === "volume"
+                                ? "Opsional, isi jika sudah diukur"
+                                : "Contoh: 0,5"
+                            }
                           />
+                          {konfirmasiMode === "volume" && (
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                              Jika dikosongkan, tinggi cairan tetap tersimpan
+                              dan status surat jalan tidak berubah
+                            </Text>
+                          )}
                           <FormErrorMessage>{errors.volumeAir}</FormErrorMessage>
                         </FormControl>
 
@@ -2992,7 +3018,12 @@ const SuratJalan = () => {
                       await submitForm();
                     }}
                   >
-                    {konfirmasiMode === "edit" ? "Simpan Perubahan" : "Simpan"}
+                    {konfirmasiMode === "edit"
+                      ? "Simpan Perubahan"
+                      : konfirmasiMode === "volume" &&
+                          !String(values.volumeAir || "").trim()
+                        ? "Simpan Tinggi Cairan"
+                        : "Simpan"}
                   </Button>
                 </ModalFooter>
               </Box>
