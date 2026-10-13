@@ -450,8 +450,8 @@ function DetailSuratJalan({
       return;
     }
 
-    const getProduksiHarian = (sumur) => {
-      const raw = sumur?.produksiHarian;
+    const getTingkatProduksi = (sumur) => {
+      const raw = sumur?.tingkatProduksi;
       if (raw === null || raw === undefined || String(raw).trim() === "") {
         return 0;
       }
@@ -461,13 +461,13 @@ function DetailSuratJalan({
     };
 
     const hasFillableWell = sumurList.some(
-      (sumur) => getProduksiHarian(sumur) > 0,
+      (sumur) => getTingkatProduksi(sumur) > 0,
     );
     if (!hasFillableWell) {
       toast({
-        title: "Produksi harian kosong",
+        title: "Tingkat produksi kosong",
         description:
-          "Semua sumur memiliki produksi harian 0. Isi produksi harian di data sumur terlebih dahulu.",
+          "Semua sumur memiliki tingkat produksi 0. Isi tingkat produksi di data klasifikasi sumur terlebih dahulu.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -511,11 +511,11 @@ function DetailSuratJalan({
     );
     const belumTerisi = sumurList.filter(
       (sumur) =>
-        !filledToday.has(Number(sumur.id)) && getProduksiHarian(sumur) > 0,
+        !filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
     );
     const sudahTerisi = sumurList.filter(
       (sumur) =>
-        filledToday.has(Number(sumur.id)) && getProduksiHarian(sumur) > 0,
+        filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
     );
     const eligibleCount = belumTerisi.length + sudahTerisi.length;
     const maxTotal = eligibleCount * maxProduksiPerSumur;
@@ -524,7 +524,7 @@ function DetailSuratJalan({
       distributeRandomVolume(
         volume,
         wells,
-        (sumur) => getProduksiHarian(sumur),
+        (sumur) => getTingkatProduksi(sumur),
         0.1,
         {
           minPerWell: minProduksiPerSumur,
@@ -568,13 +568,13 @@ function DetailSuratJalan({
     }));
 
     let description =
-      "Produksi diisi acak pada sumur yang belum punya produksi hari ini. Besaran mengikuti produksi harian. Angka terisi 0,5 sampai 2, dan sebagian sumur bisa tetap 0.";
+      "Produksi diisi acak pada sumur yang belum punya produksi hari ini. Besaran mengikuti tingkat produksi. Angka terisi 0,5 sampai 2, dan sebagian sumur bisa tetap 0.";
     if (maxTotal + 1e-9 < targetVolume) {
       description =
         "Sumur yang belum punya produksi hari ini diutamakan. Setiap sumur paling banyak 2, jadi total belum mencapai volume surat jalan.";
     } else if (belumTerisi.length === 0) {
       description =
-        "Semua sumur dengan produksi harian di atas 0 sudah punya produksi pada tanggal ini. Produksi diisi acak 0,5 sampai 2 berdasar produksi harian.";
+        "Semua sumur dengan tingkat produksi di atas 0 sudah punya produksi pada tanggal ini. Produksi diisi acak 0,5 sampai 2 berdasar tingkat produksi.";
     } else if (pakaiCadangan) {
       description =
         "Sumur yang belum punya produksi hari ini sudah diisi sampai batas 2. Sisa volume diisi ke sumur yang sudah punya produksi.";
