@@ -450,8 +450,8 @@ function DetailSuratJalan({
       return;
     }
 
-    const getTingkatProduksi = (sumur) => {
-      const raw = sumur?.tingkatProduksi;
+    const getProduksiHarian = (sumur) => {
+      const raw = sumur?.produksiHarian;
       if (raw === null || raw === undefined || String(raw).trim() === "") {
         return 0;
       }
@@ -461,13 +461,13 @@ function DetailSuratJalan({
     };
 
     const hasFillableWell = sumurList.some(
-      (sumur) => getTingkatProduksi(sumur) > 0,
+      (sumur) => getProduksiHarian(sumur) > 0,
     );
     if (!hasFillableWell) {
       toast({
-        title: "Tingkat produksi kosong",
+        title: "Produksi harian kosong",
         description:
-          "Semua sumur memiliki tingkatProduksi 0. Isi tingkat produksi di data klasifikasi sumur terlebih dahulu.",
+          "Semua sumur memiliki produksi harian 0. Isi produksi harian di data sumur terlebih dahulu.",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -504,20 +504,19 @@ function DetailSuratJalan({
       return;
     }
 
+    const minProduksiPerSumur = 0.5;
     const maxProduksiPerSumur = 2;
     const filledToday = new Set(
       (produksiPanel.sumurTerisiHariIni || []).map((id) => Number(id)),
     );
     const belumTerisi = sumurList.filter(
       (sumur) =>
-        !filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
+        !filledToday.has(Number(sumur.id)) && getProduksiHarian(sumur) > 0,
     );
     const sudahTerisi = sumurList.filter(
       (sumur) =>
-        filledToday.has(Number(sumur.id)) && getTingkatProduksi(sumur) > 0,
+        filledToday.has(Number(sumur.id)) && getProduksiHarian(sumur) > 0,
     );
-    const utama = belumTerisi.length > 0 ? belumTerisi : sudahTerisi;
-    const cadangan = belumTerisi.length > 0 ? sudahTerisi : [];
     const eligibleCount = belumTerisi.length + sudahTerisi.length;
     const maxTotal = eligibleCount * maxProduksiPerSumur;
 
@@ -525,9 +524,13 @@ function DetailSuratJalan({
       distributeRandomVolume(
         volume,
         wells,
-        (sumur) => getTingkatProduksi(sumur),
+        (sumur) => getProduksiHarian(sumur),
         0.1,
-        { maxPerWell: maxProduksiPerSumur, leaveSomeEmpty: true },
+        {
+          minPerWell: minProduksiPerSumur,
+          maxPerWell: maxProduksiPerSumur,
+          leaveSomeEmpty: true,
+        },
       );
 
     const inputs = {};
@@ -535,18 +538,27 @@ function DetailSuratJalan({
       inputs[sumur.id] = 0;
     });
 
-    const hasilUtama = distribusi(targetVolume, utama);
+    const hasilUtama = belumTerisi.length
+      ? distribusi(targetVolume, belumTerisi)
+      : {};
     Object.assign(inputs, hasilUtama);
 
     const terisiUtama = Object.values(hasilUtama).reduce(
       (sum, value) => sum + (Number(value) || 0),
       0,
     );
-    const sisaVolume = targetVolume - terisiUtama;
+    const sisaVolume = roundVolumeNumber(targetVolume - terisiUtama, 1) ?? 0;
+    const utamaMasihMuat = belumTerisi.some(
+      (sumur) => (Number(hasilUtama[sumur.id]) || 0) < maxProduksiPerSumur - 1e-9,
+    );
     let pakaiCadangan = false;
 
-    if (sisaVolume >= 0.1 - 1e-9 && cadangan.length > 0) {
-      Object.assign(inputs, distribusi(sisaVolume, cadangan));
+    if (
+      sisaVolume >= minProduksiPerSumur - 1e-9 &&
+      sudahTerisi.length > 0 &&
+      !utamaMasihMuat
+    ) {
+      Object.assign(inputs, distribusi(sisaVolume, sudahTerisi));
       pakaiCadangan = true;
     }
 
@@ -555,13 +567,17 @@ function DetailSuratJalan({
       inputs,
     }));
 
-    let description = `Produksi diisi pada sumur yang belum punya produksi di hari ini, lalu dibagi acak berdasar tingkat produksi. Tidak semua sumur terisi, nilai maksimal ${maxProduksiPerSumur} per sumur.`;
-    if (maxTotal < targetVolume) {
-      description = `Sumur yang belum punya produksi di hari ini diutamakan, maksimal ${maxProduksiPerSumur} per sumur. Total tidak cukup mencapai volume surat jalan karena batas tersebut.`;
+    let description =
+      "Produksi diisi acak pada sumur yang belum punya produksi hari ini. Besaran mengikuti produksi harian. Angka terisi 0,5 sampai 2, dan sebagian sumur bisa tetap 0.";
+    if (maxTotal + 1e-9 < targetVolume) {
+      description =
+        "Sumur yang belum punya produksi hari ini diutamakan. Setiap sumur paling banyak 2, jadi total belum mencapai volume surat jalan.";
     } else if (belumTerisi.length === 0) {
-      description = `Semua sumur yang bisa diisi sudah punya produksi pada tanggal ini dari surat jalan lain. Produksi diisi berdasar tingkat produksi, maksimal ${maxProduksiPerSumur} per sumur.`;
+      description =
+        "Semua sumur dengan produksi harian di atas 0 sudah punya produksi pada tanggal ini. Produksi diisi acak 0,5 sampai 2 berdasar produksi harian.";
     } else if (pakaiCadangan) {
-      description = `Sumur yang belum punya produksi di hari ini diutamakan. Sisa volume diisi ke sumur yang sudah punya produksi karena batas ${maxProduksiPerSumur} per sumur.`;
+      description =
+        "Sumur yang belum punya produksi hari ini sudah diisi sampai batas 2. Sisa volume diisi ke sumur yang sudah punya produksi.";
     }
 
     toast({

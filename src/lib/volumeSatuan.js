@@ -97,11 +97,101 @@ const pickWeightedItem = (items, getWeight) => {
 };
 
 /**
+ * Isi sebagian sumur. Nilai terisi minimal `minUnits`, maksimal `maxUnits`.
+ * Sumur yang tidak terpilih tetap 0. Sisa di bawah minimum tidak dipakai
+ * untuk membuka sumur baru.
+ */
+const distributeLeaveSomeEmptyWithMinimum = ({
+  active,
+  inputs,
+  totalUnits,
+  factor,
+  decimals,
+  minUnits,
+  maxUnits,
+}) => {
+  let budget = totalUnits;
+  if (maxUnits) {
+    budget = Math.min(budget, active.length * maxUnits);
+  }
+
+  const maxByMin = Math.min(active.length, Math.floor(budget / minUnits));
+  if (maxByMin <= 0) return inputs;
+
+  const minNeeded = maxUnits
+    ? Math.min(maxByMin, Math.ceil(budget / maxUnits))
+    : 1;
+  const maxValue = maxUnits ? maxUnits / factor : Number.POSITIVE_INFINITY;
+  const minValue = minUnits / factor;
+  const typicalFill = Math.min(
+    maxValue,
+    Math.max(minValue, 0.8 + Math.random() * 0.8),
+  );
+  let selectedCount = Math.ceil(budget / factor / typicalFill);
+  selectedCount = Math.max(minNeeded, Math.min(selectedCount, maxByMin));
+
+  const pool = [...active];
+  const selected = [];
+  const units = {};
+
+  const takeWell = () => {
+    const picked = pickWeightedItem(pool, (well) => well.weight);
+    if (!picked) return null;
+    const index = pool.findIndex((well) => well.id === picked.id);
+    if (index >= 0) pool.splice(index, 1);
+    selected.push(picked);
+    units[picked.id] = 0;
+    return picked;
+  };
+
+  while (selected.length < selectedCount) {
+    if (!takeWell()) break;
+  }
+
+  let leftover = budget;
+  selected.forEach((well) => {
+    if (leftover < minUnits) return;
+    units[well.id] = Math.min(minUnits, maxUnits || minUnits);
+    leftover -= units[well.id];
+  });
+
+  for (let i = selected.length - 1; i >= 0; i -= 1) {
+    if ((units[selected[i].id] || 0) > 0) continue;
+    pool.push(selected.splice(i, 1)[0]);
+  }
+
+  while (leftover > 0) {
+    const candidates = selected.filter(
+      (well) => !maxUnits || units[well.id] < maxUnits,
+    );
+    if (candidates.length) {
+      const picked = pickWeightedItem(candidates, (well) => well.weight);
+      units[picked.id] += 1;
+      leftover -= 1;
+      continue;
+    }
+    if (leftover < minUnits || !pool.length) break;
+    const picked = takeWell();
+    if (!picked) break;
+    units[picked.id] = minUnits;
+    leftover -= minUnits;
+  }
+
+  selected.forEach((well) => {
+    const raw = (units[well.id] || 0) / factor;
+    inputs[well.id] = raw === 0 ? 0 : roundVolumeNumber(raw, decimals);
+  });
+
+  return inputs;
+};
+
+/**
  * Bagi volume ke sumur secara acak.
  * Bobot default dari produksiHarian; bisa diganti lewat getWeight.
- * `step` 1 = angka bulat, 0.1 = satu desimal (contoh 4.5, 5.9).
+ * `step` 1 = angka bulat, 0.1 = satu desimal (contoh 0.5, 2.1).
  * Nilai 0 tetap 0. Total tidak melebihi target.
  * options.maxPerWell: batas nilai per sumur.
+ * options.minPerWell: nilai terisi terkecil. Di bawah itu sumur tetap 0.
  * options.leaveSomeEmpty: tidak memaksa semua sumur terisi; bobot hanya peluang.
  */
 export const distributeRandomVolume = (
@@ -134,9 +224,30 @@ export const distributeRandomVolume = (
     maxPerWell != null && Number.isFinite(maxPerWell) && maxPerWell > 0
       ? Math.round(maxPerWell * factor)
       : null;
+  const minPerWell =
+    options.minPerWell == null || options.minPerWell === ""
+      ? null
+      : Number(options.minPerWell);
+  let minUnits =
+    minPerWell != null && Number.isFinite(minPerWell) && minPerWell > 0
+      ? Math.round(minPerWell * factor)
+      : 0;
+  if (maxUnits && minUnits > maxUnits) minUnits = maxUnits;
 
   if (!active.length || Number.isNaN(totalUnits) || totalUnits <= 0) {
     return inputs;
+  }
+
+  if (options.leaveSomeEmpty && minUnits > 0) {
+    return distributeLeaveSomeEmptyWithMinimum({
+      active,
+      inputs,
+      totalUnits,
+      factor,
+      decimals,
+      minUnits,
+      maxUnits,
+    });
   }
 
   if (options.leaveSomeEmpty) {
