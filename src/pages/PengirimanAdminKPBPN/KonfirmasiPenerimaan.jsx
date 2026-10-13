@@ -641,6 +641,9 @@ function KonfirmasiPenerimaan() {
                       <Field label="Volume">
                         {formatVolume(item.volume, satuanOf(item))}
                       </Field>
+                      <Field label="Tinggi Cairan (cm)">
+                        {formatAngka(item.tinggiCairan)}
+                      </Field>
                       <Field label="Volume Air">{formatAngka(item.volumeAir)}</Field>
                       <Field label="Volume Akhir">
                         {formatAngka(item.volumeAkhir)}
@@ -689,6 +692,7 @@ function KonfirmasiPenerimaan() {
                   <Th>Status</Th>
                   <Th>Volume Surat Jalan</Th>
                   <Th>Volume</Th>
+                  <Th>Tinggi Cairan (cm)</Th>
                   <Th>Volume Air</Th>
                   <Th>Volume Akhir</Th>
                   <Th>API</Th>
@@ -700,14 +704,14 @@ function KonfirmasiPenerimaan() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, index) => (
                     <Tr key={index}>
-                      <Td colSpan={14}>
+                      <Td colSpan={15}>
                         <Skeleton height="24px" />
                       </Td>
                     </Tr>
                   ))
                 ) : rows.length === 0 ? (
                   <Tr>
-                    <Td colSpan={14} textAlign="center" py={8}>
+                    <Td colSpan={15} textAlign="center" py={8}>
                       Belum ada data konfirmasi penerimaan
                     </Td>
                   </Tr>
@@ -745,6 +749,7 @@ function KonfirmasiPenerimaan() {
                         )}
                       </Td>
                       <Td>{formatVolume(item.volume, satuanOf(item))}</Td>
+                      <Td>{formatAngka(item.tinggiCairan)}</Td>
                       <Td>{formatAngka(item.volumeAir)}</Td>
                       <Td>{formatAngka(item.volumeAkhir)}</Td>
                       <Td>{formatAngka(item.api)}</Td>
@@ -852,6 +857,9 @@ function KonfirmasiPenerimaan() {
                 </Field>
                 <Field label="Volume">
                   {formatVolume(selected.volume, satuanOf(selected))}
+                </Field>
+                <Field label="Tinggi Cairan (cm)">
+                  {formatAngka(selected.tinggiCairan)}
                 </Field>
                 <Field label="Volume Air">{formatAngka(selected.volumeAir)}</Field>
                 <Field label="Volume Akhir">
@@ -1002,6 +1010,15 @@ function KonfirmasiPenerimaan() {
                         <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
                       </FormControl>
                     )}
+
+                    <FormControl>
+                      <FormLabel>Tinggi Cairan (cm)</FormLabel>
+                      <Input
+                        isReadOnly
+                        bgColor="gray.50"
+                        value={formatAngka(editing?.tinggiCairan)}
+                      />
+                    </FormControl>
 
                     <FormControl isInvalid={touched.volume && errors.volume}>
                       <FormLabel>Volume</FormLabel>

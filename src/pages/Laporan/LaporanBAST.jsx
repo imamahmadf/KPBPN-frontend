@@ -1,6 +1,30 @@
 import React from "react";
 import LaporanPage, { formatAngka, formatTanggal } from "./LaporanPage";
 
+const formatDaftarAngka = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  const list = Array.isArray(value) ? value : [value];
+  const formatted = list
+    .filter((item) => item !== null && item !== undefined && item !== "")
+    .map((item) => formatAngka(item));
+  return formatted.length ? formatted.join(", ") : "-";
+};
+
+const kolomAngka = (key, header) => ({
+  key,
+  header,
+  isNumeric: true,
+  render: (item) => formatAngka(item[key]),
+});
+
+const kolomDaftarAngka = (key, header) => ({
+  key,
+  header,
+  isNumeric: true,
+  render: (item) => formatDaftarAngka(item[key]),
+  excelValue: (item) => formatDaftarAngka(item[key]),
+});
+
 function LaporanBAST() {
   return (
     <LaporanPage
@@ -8,6 +32,7 @@ function LaporanBAST() {
       description="Rekap Berita Acara Serah Terima (pengisian tanki) yang dibuat akun ini."
       endpoint="/laporan-kpbpn/bast"
       searchPlaceholder="Nomor BAST / catatan"
+      tableMinW="1680px"
       columns={[
         {
           key: "tanggal",
@@ -16,41 +41,26 @@ function LaporanBAST() {
           excelValue: (item) => formatTanggal(item.tanggal),
         },
         { key: "nomorSurat", header: "Nomor BAST" },
-        { key: "tanki", header: "Tanki" },
         { key: "mitra", header: "Mitra" },
-        { key: "nomorSuratJalan", header: "Surat Jalan" },
+        { key: "tanki", header: "Tanki" },
+        kolomAngka("gross", "Gross"),
+        kolomAngka("net", "Net"),
+        kolomAngka("loss", "Loss"),
+        kolomAngka("netBarrel", "In"),
+        kolomDaftarAngka("api", "API"),
+        kolomDaftarAngka("sg", "SG"),
+        kolomDaftarAngka("suhu", "SUHU"),
+        kolomDaftarAngka("bsnw", "BSNW"),
+        { key: "plat", header: "Plat Nomor" },
+        { key: "supir", header: "Supir" },
+        kolomAngka("jumlahMobil", "Jumlah Mobil"),
         {
-          key: "flowMeter",
-          header: "Flow Meter",
-          isNumeric: true,
-          render: (item) => formatAngka(item.flowMeter),
-        },
-        {
-          key: "gross",
-          header: "Gross",
-          isNumeric: true,
-          render: (item) => formatAngka(item.gross),
-        },
-        {
-          key: "net",
-          header: "Net",
-          isNumeric: true,
-          render: (item) => formatAngka(item.net),
-        },
-        {
-          key: "volumeKonfirmasi",
-          header: "Volume Diterima",
+          key: "volumeSuratJalan",
+          header: "Volume Surat Jalan",
           isNumeric: true,
           render: (item) =>
-            `${formatAngka(item.volumeKonfirmasi)} ${item.satuan || ""}`.trim(),
-          excelValue: (item) => item.volumeKonfirmasi ?? "-",
-        },
-        { key: "pembuat", header: "Pembuat" },
-        {
-          key: "baBongkarId",
-          header: "BA Bongkar",
-          render: (item) => (item.baBongkarId ? `#${item.baBongkarId}` : "-"),
-          excelValue: (item) => item.baBongkarId || "-",
+            `${formatAngka(item.volumeSuratJalan)} ${item.satuanSuratJalan || ""}`.trim(),
+          excelValue: (item) => item.volumeSuratJalan ?? "-",
         },
       ]}
     />

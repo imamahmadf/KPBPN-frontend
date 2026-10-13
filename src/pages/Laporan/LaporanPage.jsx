@@ -109,6 +109,7 @@ function LaporanPage({
   columns,
   searchPlaceholder = "Cari data",
   filters = [],
+  tableMinW = "900px",
 }) {
   const toast = useToast();
   const dataListRef = useRef(null);
@@ -451,7 +452,7 @@ function LaporanPage({
               </Center>
             ) : (
               <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
-                <Table size="sm" variant="simple" minW="900px">
+                <Table size="sm" variant="simple" minW={tableMinW}>
                   <Thead bg="gray.50">
                     <Tr>
                       <Th>No</Th>
