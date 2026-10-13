@@ -504,7 +504,7 @@ function DetailSuratJalan({
       return;
     }
 
-    const maxProduksiPerSumur = 4;
+    const maxProduksiPerSumur = 2;
     const filledToday = new Set(
       (produksiPanel.sumurTerisiHariIni || []).map((id) => Number(id)),
     );

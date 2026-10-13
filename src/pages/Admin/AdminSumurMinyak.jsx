@@ -14,7 +14,6 @@ import {
   useToast,
   FormLabel,
   Select,
-  Container,
   Thead,
   Table,
   Tr,
@@ -38,7 +37,7 @@ import {
   Spinner,
   Center,
 } from "@chakra-ui/react";
-import { BsPencil, BsTrash, BsEyeFill, BsQrCode } from "react-icons/bs";
+import { BsTrash, BsEyeFill, BsQrCode } from "react-icons/bs";
 import { Link as RouterLink } from "react-router-dom";
 import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
@@ -131,10 +130,6 @@ const createSchema = Yup.object({
   pic: Yup.mixed().required("Foto sumur wajib diunggah"),
 });
 
-const editSchema = createSchema.shape({
-  pic: Yup.mixed().nullable(),
-});
-
 const formatTanggal = (d) =>
   d
     ? new Date(d).toLocaleDateString("id-ID", {
@@ -143,6 +138,105 @@ const formatTanggal = (d) =>
         year: "numeric",
       })
     : "-";
+
+const displayValue = (value) =>
+  value === null || value === undefined || value === "" ? "-" : String(value);
+
+const toDateInput = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const PRESERVED_KEYS = [
+  "area",
+  "operasional",
+  "lingkungan",
+  "penyaluran",
+  "statusKepemilikan",
+  "tingkatProduksi",
+  "namaPemilikLahan",
+  "namaPemilikSumur",
+  "kontakPemilikLahan",
+  "kontakPemilikSumur",
+];
+
+const COMPARE_KEYS = [
+  "nama",
+  "mitraId",
+  "nomor",
+  "statusVerifikasi",
+  "tanggalVerifikasi",
+  "longitude",
+  "latitude",
+  "alamat",
+  "produksiHarian",
+];
+
+const draftFromSumur = (sumur) => ({
+  nama: sumur?.nama ?? "",
+  mitraId: sumur?.mitraId != null ? String(sumur.mitraId) : "",
+  nomor: sumur?.nomor ?? "",
+  statusVerifikasi: sumur?.statusVerifikasi ?? "belum",
+  tanggalVerifikasi: toDateInput(sumur?.tanggalVerifikasi),
+  longitude: sumur?.longitude != null ? String(sumur.longitude) : "",
+  latitude: sumur?.latitude != null ? String(sumur.latitude) : "",
+  alamat: sumur?.alamat ?? "",
+  produksiHarian:
+    sumur?.produksiHarian != null ? String(sumur.produksiHarian) : "",
+  pic: null,
+  picPreview: null,
+});
+
+const isSumurChanged = (item, draft) => {
+  if (!draft) return false;
+  if (draft.pic) return true;
+  const original = draftFromSumur(item);
+  return COMPARE_KEYS.some(
+    (key) => String(original[key] ?? "") !== String(draft[key] ?? ""),
+  );
+};
+
+const validateDraft = (item, draft) => {
+  const label = String(draft?.nama || "").trim() || item?.nama || `ID ${item?.id}`;
+  if (!String(draft?.nama || "").trim()) {
+    return `Nama sumur wajib diisi (${label})`;
+  }
+  if (!draft?.mitraId) {
+    return `Mitra wajib dipilih untuk ${label}`;
+  }
+  if (!["sudah", "belum", "tidak"].includes(draft?.statusVerifikasi)) {
+    return `Status verifikasi tidak valid untuk ${label}`;
+  }
+  if (draft.longitude !== "" && Number.isNaN(Number(draft.longitude))) {
+    return `Longitude harus angka untuk ${label}`;
+  }
+  if (draft.latitude !== "" && Number.isNaN(Number(draft.latitude))) {
+    return `Latitude harus angka untuk ${label}`;
+  }
+  if (draft.produksiHarian !== "") {
+    const produksi = Number(draft.produksiHarian);
+    if (Number.isNaN(produksi)) {
+      return `Produksi harian harus angka untuk ${label}`;
+    }
+    if (produksi < 0) {
+      return `Produksi harian tidak boleh negatif untuk ${label}`;
+    }
+  }
+  return null;
+};
+
+const revokeDraftPreviews = (draftMap) => {
+  Object.values(draftMap || {}).forEach((draft) => {
+    if (draft?.picPreview?.startsWith("blob:")) {
+      window.URL.revokeObjectURL(draft.picPreview);
+    }
+  });
+};
 
 function AdminSumurMinyak() {
   const toast = useToast();
@@ -165,8 +259,10 @@ function AdminSumurMinyak() {
   const [searchInput, setSearchInput] = useState("");
 
   const [previewFoto, setPreviewFoto] = useState(null);
-  const [editingSumur, setEditingSumur] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [drafts, setDrafts] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [loadingQr, setLoadingQr] = useState({});
   const [qrPreview, setQrPreview] = useState(null);
@@ -197,6 +293,7 @@ function AdminSumurMinyak() {
   };
 
   const changePage = ({ selected }) => {
+    if (isEditing) return;
     setPage(selected);
     scrollToDataList();
   };
@@ -245,6 +342,7 @@ function AdminSumurMinyak() {
   }, []);
 
   useEffect(() => {
+    if (isEditing) return;
     fetchDataSumur();
   }, [page, limit, mitraFilterId, statusFilter, search, scopedMitraId]);
 
@@ -275,18 +373,146 @@ function AdminSumurMinyak() {
   };
 
   const openAddSumur = () => {
-    setEditingSumur(null);
-    onFormOpen();
-  };
-
-  const openEditSumur = (item) => {
-    setEditingSumur(item);
+    if (isEditing) return;
     onFormOpen();
   };
 
   const closeFormModal = () => {
-    setEditingSumur(null);
     onFormClose();
+  };
+
+  const startEdit = () => {
+    const next = {};
+    dataSumur.forEach((item) => {
+      next[item.id] = draftFromSumur(item);
+    });
+    setDrafts(next);
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    revokeDraftPreviews(drafts);
+    setDrafts({});
+    setIsEditing(false);
+  };
+
+  const updateDraft = (id, key, value) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [key]: value,
+      },
+    }));
+  };
+
+  const updateDraftFoto = (item, file) => {
+    setDrafts((prev) => {
+      const current = prev[item.id] || draftFromSumur(item);
+      if (current.picPreview?.startsWith("blob:")) {
+        window.URL.revokeObjectURL(current.picPreview);
+      }
+      return {
+        ...prev,
+        [item.id]: {
+          ...current,
+          pic: file,
+          picPreview: file ? URL.createObjectURL(file) : null,
+        },
+      };
+    });
+  };
+
+  const handleSaveAll = async () => {
+    const changed = dataSumur.filter((item) =>
+      isSumurChanged(item, drafts[item.id]),
+    );
+
+    if (!changed.length) {
+      toast({
+        title: "Tidak ada perubahan",
+        status: "info",
+        duration: 2500,
+        isClosable: true,
+      });
+      cancelEdit();
+      return;
+    }
+
+    for (const item of changed) {
+      const error = validateDraft(item, drafts[item.id]);
+      if (error) {
+        toast({
+          title: "Data belum lengkap",
+          description: error,
+          status: "warning",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      await Promise.all(
+        changed.map((item) => {
+          const draft = drafts[item.id];
+          const formData = new FormData();
+          formData.append("nama", draft.nama.trim());
+          formData.append("mitraId", draft.mitraId);
+          formData.append("nomor", draft.nomor || "");
+          formData.append("statusVerifikasi", draft.statusVerifikasi);
+          if (draft.tanggalVerifikasi) {
+            formData.append("tanggalVerifikasi", draft.tanggalVerifikasi);
+          }
+          if (draft.longitude !== "") {
+            formData.append("longitude", draft.longitude);
+          }
+          if (draft.latitude !== "") {
+            formData.append("latitude", draft.latitude);
+          }
+          formData.append("alamat", draft.alamat || "");
+          if (draft.produksiHarian !== "") {
+            formData.append("produksiHarian", draft.produksiHarian);
+          }
+          PRESERVED_KEYS.forEach((key) => {
+            const value = item[key];
+            if (value !== null && value !== undefined && value !== "") {
+              formData.append(key, value);
+            }
+          });
+          if (draft.pic) formData.append("pic", draft.pic);
+
+          return axios.post(
+            `${API_BASE}/sumur-minyak/edit/${item.id}`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } },
+          );
+        }),
+      );
+      toast({
+        title: "Data sumur minyak berhasil disimpan",
+        description: `${changed.length} data diperbarui`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      revokeDraftPreviews(drafts);
+      setIsEditing(false);
+      setDrafts({});
+      await fetchDataSumur();
+    } catch (err) {
+      toast({
+        title: "Gagal menyimpan data sumur",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openDeleteConfirm = (item) => {
@@ -352,11 +578,13 @@ function AdminSumurMinyak() {
   };
 
   const handleFilter = () => {
+    if (isEditing) return;
     setPage(0);
     setSearch(searchInput.trim());
   };
 
   const resetFilter = () => {
+    if (isEditing) return;
     setMitraFilterId("");
     setStatusFilter("");
     setSearchInput("");
@@ -366,13 +594,42 @@ function AdminSumurMinyak() {
 
   return (
     <LayoutKPBPN>
-      <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
-        <Container variant="primary" p="30px" my="30px" minW="1000px">
-          <HStack justify="space-between" mb={6}>
+      <Box bgColor="secondary" pt="30px" pb="40px" px="30px" minH="90vh">
+          <HStack justify="space-between" mb={6} align="center">
             <Heading color="kpbpn">Data Sumur Minyak</Heading>
-            <Button variant="primary" onClick={openAddSumur}>
-              + Tambah Sumur Minyak
-            </Button>
+            <HStack spacing={3}>
+              {isEditing ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    onClick={cancelEdit}
+                    isDisabled={isSaving}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveAll}
+                    isLoading={isSaving}
+                  >
+                    Simpan
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="primary"
+                    onClick={startEdit}
+                    isDisabled={isLoading || dataSumur.length === 0}
+                  >
+                    Edit
+                  </Button>
+                  <Button variant="primary" onClick={openAddSumur}>
+                    + Tambah Sumur Minyak
+                  </Button>
+                </>
+              )}
+            </HStack>
           </HStack>
 
           <Box
@@ -389,6 +646,7 @@ function AdminSumurMinyak() {
                 <Select
                   placeholder="Semua mitra"
                   value={mitraFilterId}
+                  isDisabled={isEditing}
                   onChange={(e) => {
                     setMitraFilterId(e.target.value);
                     setPage(0);
@@ -408,6 +666,7 @@ function AdminSumurMinyak() {
                 <Select
                   placeholder="Semua status"
                   value={statusFilter}
+                  isDisabled={isEditing}
                   onChange={(e) => {
                     setStatusFilter(e.target.value);
                     setPage(0);
@@ -426,15 +685,20 @@ function AdminSumurMinyak() {
                 <Input
                   placeholder="Nama, nomor, atau alamat..."
                   value={searchInput}
+                  isDisabled={isEditing}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleFilter()}
                 />
               </FormControl>
 
-              <Button variant="primary" onClick={handleFilter}>
+              <Button
+                variant="primary"
+                onClick={handleFilter}
+                isDisabled={isEditing}
+              >
                 Terapkan
               </Button>
-              <Button variant="ghost" onClick={resetFilter}>
+              <Button variant="ghost" onClick={resetFilter} isDisabled={isEditing}>
                 Reset
               </Button>
             </HStack>
@@ -456,6 +720,8 @@ function AdminSumurMinyak() {
                       <Th>Mitra</Th>
                       <Th>Alamat</Th>
                       <Th>Produksi Harian</Th>
+                      <Th>Longitude</Th>
+                      <Th>Latitude</Th>
                       <Th>Status</Th>
                       <Th>Tgl Verifikasi</Th>
                       <Th>Foto</Th>
@@ -465,40 +731,218 @@ function AdminSumurMinyak() {
                   <Tbody>
                     {dataSumur.length === 0 ? (
                       <Tr>
-                        <Td colSpan={10} textAlign="center" py={6}>
+                        <Td colSpan={12} textAlign="center" py={6}>
                           Belum ada data sumur minyak
                         </Td>
                       </Tr>
                     ) : (
-                      dataSumur.map((item, index) => (
+                      dataSumur.map((item, index) => {
+                        const draft = drafts[item.id];
+                        return (
                         <Tr key={item.id}>
                           <Td>{page * limit + index + 1}</Td>
-                          <Td fontWeight="medium">{item.nama || "-"}</Td>
-                          <Td>{item.nomor || "-"}</Td>
-                          <Td>{item.mitra?.nama || "-"}</Td>
-                          <Td maxW="200px" isTruncated title={item.alamat}>
-                            {item.alamat || "-"}
+                          <Td fontWeight="medium" minW={isEditing ? "160px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                size="sm"
+                                bg="white"
+                                value={draft?.nama ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "nama", e.target.value)
+                                }
+                              />
+                            ) : (
+                              displayValue(item.nama)
+                            )}
                           </Td>
-                          <Td>
-                            {item.produksiHarian != null
-                              ? item.produksiHarian
-                              : "-"}
+                          <Td minW={isEditing ? "120px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                size="sm"
+                                bg="white"
+                                value={draft?.nomor ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "nomor", e.target.value)
+                                }
+                              />
+                            ) : (
+                              displayValue(item.nomor)
+                            )}
                           </Td>
-                          <Td>
-                            <Badge
-                              colorScheme={
-                                statusBadgeColor[item.statusVerifikasi] ||
-                                "gray"
-                              }
-                              variant="subtle"
-                              textTransform="capitalize"
-                            >
-                              {item.statusVerifikasi || "-"}
-                            </Badge>
+                          <Td minW={isEditing ? "160px" : undefined}>
+                            {isEditing && isKpbpnAdmin ? (
+                              <Select
+                                size="sm"
+                                bg="white"
+                                value={draft?.mitraId ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "mitraId", e.target.value)
+                                }
+                              >
+                                <option value="">Pilih mitra</option>
+                                {dataMitra.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.nama}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
+                              item.mitra?.nama || "-"
+                            )}
                           </Td>
-                          <Td>{formatTanggal(item.tanggalVerifikasi)}</Td>
-                          <Td>
-                            {item.foto ? (
+                          <Td
+                            maxW={isEditing ? undefined : "200px"}
+                            minW={isEditing ? "180px" : undefined}
+                            isTruncated={!isEditing}
+                            title={item.alamat}
+                          >
+                            {isEditing ? (
+                              <Input
+                                size="sm"
+                                bg="white"
+                                value={draft?.alamat ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "alamat", e.target.value)
+                                }
+                              />
+                            ) : (
+                              displayValue(item.alamat)
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "120px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                step="any"
+                                size="sm"
+                                bg="white"
+                                value={draft?.produksiHarian ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(
+                                    item.id,
+                                    "produksiHarian",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            ) : (
+                              displayValue(item.produksiHarian)
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "130px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                step="any"
+                                size="sm"
+                                bg="white"
+                                value={draft?.longitude ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "longitude", e.target.value)
+                                }
+                              />
+                            ) : (
+                              displayValue(item.longitude)
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "130px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                step="any"
+                                size="sm"
+                                bg="white"
+                                value={draft?.latitude ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(item.id, "latitude", e.target.value)
+                                }
+                              />
+                            ) : (
+                              displayValue(item.latitude)
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "130px" : undefined}>
+                            {isEditing ? (
+                              <Select
+                                size="sm"
+                                bg="white"
+                                value={draft?.statusVerifikasi ?? "belum"}
+                                onChange={(e) =>
+                                  updateDraft(
+                                    item.id,
+                                    "statusVerifikasi",
+                                    e.target.value,
+                                  )
+                                }
+                              >
+                                {STATUS_VERIFIKASI.map((s) => (
+                                  <option key={s.value} value={s.value}>
+                                    {s.label}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
+                              <Badge
+                                colorScheme={
+                                  statusBadgeColor[item.statusVerifikasi] ||
+                                  "gray"
+                                }
+                                variant="subtle"
+                                textTransform="capitalize"
+                              >
+                                {item.statusVerifikasi || "-"}
+                              </Badge>
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "150px" : undefined}>
+                            {isEditing ? (
+                              <Input
+                                type="date"
+                                size="sm"
+                                bg="white"
+                                value={draft?.tanggalVerifikasi ?? ""}
+                                onChange={(e) =>
+                                  updateDraft(
+                                    item.id,
+                                    "tanggalVerifikasi",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            ) : (
+                              formatTanggal(item.tanggalVerifikasi)
+                            )}
+                          </Td>
+                          <Td minW={isEditing ? "160px" : undefined}>
+                            {isEditing ? (
+                              <HStack spacing={2} align="center">
+                                {(draft?.picPreview || item.foto) && (
+                                  <Image
+                                    src={
+                                      draft?.picPreview || getImageUrl(item.foto)
+                                    }
+                                    alt={item.nama}
+                                    boxSize="40px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                  />
+                                )}
+                                <Input
+                                  type="file"
+                                  accept="image/png, image/jpeg, image/jpg"
+                                  size="sm"
+                                  p={1}
+                                  bg="white"
+                                  maxW="140px"
+                                  onChange={(e) =>
+                                    updateDraftFoto(
+                                      item,
+                                      e.target.files?.[0] || null,
+                                    )
+                                  }
+                                />
+                              </HStack>
+                            ) : item.foto ? (
                               <Image
                                 src={getImageUrl(item.foto)}
                                 alt={item.nama}
@@ -515,13 +959,18 @@ function AdminSumurMinyak() {
                           <Td>
                             <HStack spacing={1}>
                               <IconButton
-                                as={RouterLink}
-                                to={`/sumur/produksi-sumur/${item.id}`}
+                                as={isEditing ? undefined : RouterLink}
+                                to={
+                                  isEditing
+                                    ? undefined
+                                    : `/sumur/produksi-sumur/${item.id}`
+                                }
                                 aria-label="Detail produksi sumur"
                                 icon={<BsEyeFill />}
                                 size="sm"
                                 variant="ghost"
                                 colorScheme="teal"
+                                isDisabled={isEditing}
                               />
                               <IconButton
                                 aria-label="Generate QR Code"
@@ -530,15 +979,8 @@ function AdminSumurMinyak() {
                                 variant="ghost"
                                 colorScheme="purple"
                                 isLoading={!!loadingQr[item.id]}
+                                isDisabled={isEditing}
                                 onClick={() => generateQrCode(item)}
-                              />
-                              <IconButton
-                                aria-label="Edit sumur minyak"
-                                icon={<BsPencil />}
-                                size="sm"
-                                variant="ghost"
-                                colorScheme="blue"
-                                onClick={() => openEditSumur(item)}
                               />
                               <IconButton
                                 aria-label="Hapus sumur minyak"
@@ -546,12 +988,14 @@ function AdminSumurMinyak() {
                                 size="sm"
                                 variant="ghost"
                                 colorScheme="red"
+                                isDisabled={isEditing}
                                 onClick={() => openDeleteConfirm(item)}
                               />
                             </HStack>
                           </Td>
                         </Tr>
-                      ))
+                        );
+                      })
                     )}
                   </Tbody>
                 </Table>
@@ -588,7 +1032,12 @@ function AdminSumurMinyak() {
                 )}
               </Text>
               {rows > 0 && (
-                <Box overflowX="auto" py={1}>
+                <Box
+                  overflowX="auto"
+                  py={1}
+                  pointerEvents={isEditing ? "none" : "auto"}
+                  opacity={isEditing ? 0.5 : 1}
+                >
                   <ReactPaginate
                     previousLabel="←"
                     nextLabel="→"
@@ -610,40 +1059,29 @@ function AdminSumurMinyak() {
               )}
             </Flex>
           )}
-        </Container>
       </Box>
 
       <Modal isOpen={isFormOpen} onClose={closeFormModal} size="lg">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
-            {editingSumur ? "Edit Sumur Minyak" : "Tambah Sumur Minyak"}
-          </ModalHeader>
+          <ModalHeader>Tambah Sumur Minyak</ModalHeader>
           <ModalCloseButton />
           <Formik
             enableReinitialize
             initialValues={{
-              nama: editingSumur?.nama || "",
-              mitraId:
-                editingSumur?.mitraId?.toString() ||
-                (scopedMitraId ? String(scopedMitraId) : ""),
-              nomor: editingSumur?.nomor || "",
-              statusVerifikasi: editingSumur?.statusVerifikasi || "belum",
-              tanggalVerifikasi: editingSumur?.tanggalVerifikasi
-                ? new Date(editingSumur.tanggalVerifikasi)
-                    .toISOString()
-                    .slice(0, 10)
-                : "",
-              longitude: editingSumur?.longitude?.toString() || "",
-              latitude: editingSumur?.latitude?.toString() || "",
-              alamat: editingSumur?.alamat || "",
-              produksiHarian: editingSumur?.produksiHarian?.toString() || "",
+              nama: "",
+              mitraId: scopedMitraId ? String(scopedMitraId) : "",
+              nomor: "",
+              statusVerifikasi: "belum",
+              tanggalVerifikasi: "",
+              longitude: "",
+              latitude: "",
+              alamat: "",
+              produksiHarian: "",
               pic: null,
-              picPreview: editingSumur?.foto
-                ? getImageUrl(editingSumur.foto)
-                : null,
+              picPreview: null,
             }}
-            validationSchema={editingSumur ? editSchema : createSchema}
+            validationSchema={createSchema}
             onSubmit={async (values, { setSubmitting, resetForm }) => {
               try {
                 const formData = new FormData();
@@ -669,21 +1107,10 @@ function AdminSumurMinyak() {
                 }
                 if (values.pic) formData.append("pic", values.pic);
 
-                if (editingSumur) {
-                  await axios.post(
-                    `${API_BASE}/sumur-minyak/edit/${editingSumur.id}`,
-                    formData,
-                    {
-                      headers: { "Content-Type": "multipart/form-data" },
-                    },
-                  );
-                  showSuccess("Sumur minyak berhasil diperbarui");
-                } else {
-                  await axios.post(`${API_BASE}/sumur-minyak/post`, formData, {
-                    headers: { "Content-Type": "multipart/form-data" },
-                  });
-                  showSuccess("Sumur minyak berhasil ditambahkan");
-                }
+                await axios.post(`${API_BASE}/sumur-minyak/post`, formData, {
+                  headers: { "Content-Type": "multipart/form-data" },
+                });
+                showSuccess("Sumur minyak berhasil ditambahkan");
                 resetForm();
                 closeFormModal();
               } catch (err) {
@@ -860,11 +1287,7 @@ function AdminSumurMinyak() {
                     </FormControl>
 
                     <FileUploadField
-                      label={
-                        editingSumur
-                          ? "Foto Sumur (opsional)"
-                          : "Foto Sumur *"
-                      }
+                      label="Foto Sumur *"
                       preview={values.picPreview}
                       touched={touched.pic}
                       error={errors.pic}
@@ -887,7 +1310,7 @@ function AdminSumurMinyak() {
                     type="submit"
                     isLoading={isSubmitting}
                   >
-                    {editingSumur ? "Perbarui" : "Simpan"}
+                    Simpan
                   </Button>
                 </ModalFooter>
               </Form>

@@ -85,6 +85,26 @@ const formatAngka = (value) => {
   }).format(angka);
 };
 
+const formatNilaiUnik = (items, field) => {
+  const seen = new Set();
+  const values = [];
+  for (const item of items || []) {
+    const raw = item?.[field];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const key = String(raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(formatAngka(raw));
+  }
+  return values.length ? values.join(", ") : "-";
+};
+
+const formatBswPengisian = (item) => {
+  const fromKonfirmasi = formatNilaiUnik(item?.konfirmasiPenerimaans, "BSNW");
+  if (fromKonfirmasi !== "-") return fromKonfirmasi;
+  return formatAngka(item?.BSW);
+};
+
 const formatVolumeLabel = (volume, satuan) => {
   if (volume === null || volume === undefined || volume === "") return "-";
   return satuan ? `${volume} ${satuan}` : String(volume);
@@ -574,7 +594,7 @@ const BABongkar = () => {
             item.penampilanVisual || "-",
             item.warna || "-",
             item.kandunganAir ?? "-",
-            item.BSW ?? "-",
+            formatBswPengisian(item),
             item.catatan || "-",
             item.saksi || "-",
             getKonfirmasiLabel(item),
@@ -1506,7 +1526,7 @@ const BABongkar = () => {
                       <MobileField label="Kandungan Air">
                         {item.kandunganAir ?? "-"}
                       </MobileField>
-                      <MobileField label="BSW">{item.BSW ?? "-"}</MobileField>
+                      <MobileField label="BSW">{formatBswPengisian(item)}</MobileField>
                       <MobileField label="Saksi">{item.saksi || "-"}</MobileField>
                       <MobileField label="Konfirmasi Penerimaan">
                         {getKonfirmasiLabel(item)}
@@ -1586,7 +1606,7 @@ const BABongkar = () => {
                         <Td>{item.penampilanVisual || "-"}</Td>
                         <Td>{item.warna || "-"}</Td>
                         <Td>{item.kandunganAir ?? "-"}</Td>
-                        <Td>{item.BSW ?? "-"}</Td>
+                        <Td>{formatBswPengisian(item)}</Td>
                         <Td>{item.catatan || "-"}</Td>
                         <Td>{item.saksi || "-"}</Td>
                         <Td>

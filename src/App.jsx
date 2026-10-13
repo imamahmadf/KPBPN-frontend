@@ -51,6 +51,7 @@ import LaporanSuratJalan from "./pages/Laporan/LaporanSuratJalan.jsx";
 import LaporanBABongkar from "./pages/Laporan/LaporanBABongkar.jsx";
 import LaporanKonfirmasiPenerimaan from "./pages/Laporan/LaporanKonfirmasiPenerimaan.jsx";
 import LaporanKeuangan from "./pages/Laporan/LaporanKeuangan.jsx";
+import LaporanProduksiSumur from "./pages/Laporan/LaporanProduksiSumur.jsx";
 import RiwayatTanki from "./pages/Tanki/RiwayatTanki.jsx";
 import KlasifikasiSumur from "./pages/Admin/KlasifikasiSumur.jsx";
 function App() {
@@ -294,6 +295,12 @@ function App() {
             path="/laporan/keuangan"
             exact
             roleRoute={[1, 2, 4]}
+          />
+          <ProtectedRoute
+            component={LaporanProduksiSumur}
+            path="/laporan/produksi-sumur"
+            exact
+            roleRoute={[1, 2, 3]}
           />
           <Redirect from="/admin/icp" to="/keuangan/icp" exact />
           <ProtectedRoute

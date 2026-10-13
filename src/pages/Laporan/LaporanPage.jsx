@@ -13,6 +13,7 @@ import {
   Heading,
   HStack,
   Input,
+  Select,
   Spinner,
   Table,
   Tbody,
@@ -107,6 +108,7 @@ function LaporanPage({
   endpoint,
   columns,
   searchPlaceholder = "Cari data",
+  filters = [],
 }) {
   const toast = useToast();
   const dataListRef = useRef(null);
@@ -124,22 +126,39 @@ function LaporanPage({
   const [endDateInput, setEndDateInput] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const emptyFilters = Object.fromEntries(
+    filters.map((filter) => [filter.key, ""]),
+  );
+  const [filterInput, setFilterInput] = useState(emptyFilters);
+  const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
+  const appliedFilterKey = filters
+    .map((filter) => appliedFilters[filter.key] || "")
+    .join("|");
 
   const scrollToDataList = () => {
     dataListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const buildParams = (override = {}) => {
+    const params = {
+      page: override.page ?? page,
+      limit: override.limit ?? limit,
+      search: (override.search ?? search) || undefined,
+      startDate: (override.startDate ?? startDate) || undefined,
+      endDate: (override.endDate ?? endDate) || undefined,
+    };
+    filters.forEach((filter) => {
+      const value = override[filter.key] ?? appliedFilters[filter.key];
+      if (value) params[filter.key] = value;
+    });
+    return params;
   };
 
   const fetchData = async (override = {}) => {
     setIsLoading(true);
     try {
       const res = await axios.get(`${API_BASE}${endpoint}`, {
-        params: {
-          page: override.page ?? page,
-          limit: override.limit ?? limit,
-          search: (override.search ?? search) || undefined,
-          startDate: (override.startDate ?? startDate) || undefined,
-          endDate: (override.endDate ?? endDate) || undefined,
-        },
+        params: buildParams(override),
       });
       setData(res.data.result || []);
       setPage(res.data.page ?? page);
@@ -162,7 +181,7 @@ function LaporanPage({
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit, search, startDate, endDate]);
+  }, [page, limit, search, startDate, endDate, appliedFilterKey]);
 
   const handleFilter = () => {
     setPage(0);
@@ -178,6 +197,8 @@ function LaporanPage({
     setEndDateInput("");
     setStartDate("");
     setEndDate("");
+    setFilterInput(emptyFilters);
+    setAppliedFilters(emptyFilters);
     setPage(0);
   };
 
@@ -190,13 +211,7 @@ function LaporanPage({
     setIsExporting(true);
     try {
       const res = await axios.get(`${API_BASE}${endpoint}`, {
-        params: {
-          page: 0,
-          limit: 10000,
-          search: search || undefined,
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-        },
+        params: buildParams({ page: 0, limit: 10000 }),
       });
       const exportData = res.data.result || [];
       if (!exportData.length) {
@@ -244,6 +259,14 @@ function LaporanPage({
           : "Periode: semua data",
       ]);
       if (search) worksheet.addRow([`Pencarian: ${search}`]);
+      filters.forEach((filter) => {
+        const value = appliedFilters[filter.key];
+        if (!value) return;
+        const label =
+          filter.options?.find((option) => option.value === value)?.label ||
+          value;
+        worksheet.addRow([`${filter.label}: ${label}`]);
+      });
       worksheet.addRow([]);
 
       const excelColumns = columns.filter((col) => !col.hideExcel);
@@ -372,6 +395,30 @@ function LaporanPage({
                   }}
                 />
               </FormControl>
+              {filters.map((filter) => (
+                <FormControl key={filter.key} maxW="200px">
+                  <FormLabel fontSize="sm">{filter.label}</FormLabel>
+                  <Select
+                    bg="white"
+                    value={filterInput[filter.key] || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFilterInput((prev) => ({ ...prev, [filter.key]: value }));
+                      setAppliedFilters((prev) => ({
+                        ...prev,
+                        [filter.key]: value,
+                      }));
+                      setPage(0);
+                    }}
+                  >
+                    {(filter.options || []).map((option) => (
+                      <option key={option.value || "all"} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+              ))}
               <FormControl maxW="180px">
                 <FormLabel fontSize="sm">Dari tanggal</FormLabel>
                 <Input

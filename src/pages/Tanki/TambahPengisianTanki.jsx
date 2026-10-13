@@ -80,14 +80,6 @@ const pengisianSchema = Yup.object({
         return Number(value) <= Number(gross);
       },
     ),
-  BSW: Yup.number()
-    .transform((value, originalValue) =>
-      originalValue === "" || originalValue === null || originalValue === undefined
-        ? null
-        : value,
-    )
-    .nullable()
-    .typeError("BSW harus angka"),
   satuanVolumeId: Yup.string().required("Satuan volume wajib dipilih"),
   catatan: Yup.string(),
   saksi: Yup.string(),
@@ -107,7 +99,6 @@ const initialValues = {
   penampilanVisual: "",
   warna: "",
   kandunganAir: "",
-  BSW: "",
   catatan: "",
   saksi: "",
   satuanVolumeId: "",
@@ -139,6 +130,20 @@ const formatAngka = (value) => {
     maximumFractionDigits: 3,
     minimumFractionDigits: 0,
   }).format(angka);
+};
+
+const formatNilaiUnik = (items, field) => {
+  const seen = new Set();
+  const values = [];
+  for (const item of items || []) {
+    const raw = item?.[field];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const key = String(raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(formatAngka(raw));
+  }
+  return values.length ? values.join(", ") : "-";
 };
 
 const toggleKonfirmasiId = (ids, id) => {
@@ -253,10 +258,6 @@ const TambahPengisianTanki = () => {
         penampilanVisual: values.penampilanVisual,
         warna: values.warna,
         kandunganAir,
-        BSW:
-          values.BSW === "" || values.BSW === null || values.BSW === undefined
-            ? null
-            : parseInt(values.BSW, 10),
         catatan: values.catatan,
         saksi: values.saksi || null,
         satuanVolumeId: parseInt(values.satuanVolumeId, 10),
@@ -371,6 +372,9 @@ const TambahPengisianTanki = () => {
                 setFieldTouched,
               }) => {
                 const literSatuanId = getLiterSatuanId(dataSatuanVolume);
+                const selectedKonfirmasi = dataKonfirmasi.filter((item) =>
+                  values.ids.includes(String(item.id)),
+                );
                 const isAllSelected =
                   dataKonfirmasi.length > 0 &&
                   dataKonfirmasi.every((item) =>
@@ -550,18 +554,6 @@ const TambahPengisianTanki = () => {
                         <FormErrorMessage>{errors.warna}</FormErrorMessage>
                       </FormControl>
 
-                      <FormControl isInvalid={touched.BSW && errors.BSW}>
-                        <FormLabel>BSW</FormLabel>
-                        <Input
-                          name="BSW"
-                          type="number"
-                          value={values.BSW}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                        />
-                        <FormErrorMessage>{errors.BSW}</FormErrorMessage>
-                      </FormControl>
-
                       <FormControl isInvalid={touched.saksi && errors.saksi}>
                         <FormLabel>Saksi</FormLabel>
                         <Input
@@ -573,6 +565,43 @@ const TambahPengisianTanki = () => {
                         <FormErrorMessage>{errors.saksi}</FormErrorMessage>
                       </FormControl>
                     </SimpleGrid>
+
+                    <Box>
+                      <FormLabel mb={1}>Kualitas dari konfirmasi</FormLabel>
+                      <Text fontSize="sm" color="gray.500" mb={3}>
+                        BSW, GS, dan API mengikuti konfirmasi penerimaan yang
+                        dipilih. BSW diambil dari BSNW, GS dari SG.
+                      </Text>
+                      <SimpleGrid
+                        columns={{ base: 1, sm: 3 }}
+                        spacing={{ base: 3, md: 4 }}
+                      >
+                        <FormControl>
+                          <FormLabel>BSW</FormLabel>
+                          <Input
+                            value={formatNilaiUnik(selectedKonfirmasi, "BSNW")}
+                            isReadOnly
+                            bg="gray.50"
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>GS</FormLabel>
+                          <Input
+                            value={formatNilaiUnik(selectedKonfirmasi, "SG")}
+                            isReadOnly
+                            bg="gray.50"
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>API</FormLabel>
+                          <Input
+                            value={formatNilaiUnik(selectedKonfirmasi, "api")}
+                            isReadOnly
+                            bg="gray.50"
+                          />
+                        </FormControl>
+                      </SimpleGrid>
+                    </Box>
 
                     <FormControl isInvalid={touched.catatan && errors.catatan}>
                       <FormLabel>Catatan</FormLabel>
@@ -740,8 +769,11 @@ const TambahPengisianTanki = () => {
                                     <MobileField label="API">
                                       {formatAngka(item.api)}
                                     </MobileField>
-                                    <MobileField label="BSNW">
+                                    <MobileField label="BSW">
                                       {formatAngka(item.BSNW)}
+                                    </MobileField>
+                                    <MobileField label="GS">
+                                      {formatAngka(item.SG)}
                                     </MobileField>
                                     <MobileField label="Petugas PK">
                                       {item.userPK?.nama || "-"}
@@ -764,7 +796,7 @@ const TambahPengisianTanki = () => {
                             overflowY="auto"
                             overflowX="auto"
                           >
-                            <Table size="sm" variant="simple" minW="1200px">
+                            <Table size="sm" variant="simple" minW="1320px">
                               <Thead
                                 bg="gray.50"
                                 position="sticky"
@@ -795,7 +827,8 @@ const TambahPengisianTanki = () => {
                                   </Th>
                                   <Th textTransform="capitalize">Volume</Th>
                                   <Th textTransform="capitalize">API</Th>
-                                  <Th textTransform="capitalize">BSNW</Th>
+                                  <Th textTransform="capitalize">BSW</Th>
+                                  <Th textTransform="capitalize">GS</Th>
                                   <Th textTransform="capitalize">Petugas PK</Th>
                                   <Th textTransform="capitalize">
                                     Petugas Lab
@@ -877,6 +910,7 @@ const TambahPengisianTanki = () => {
                                       </Td>
                                       <Td>{formatAngka(item.api)}</Td>
                                       <Td>{formatAngka(item.BSNW)}</Td>
+                                      <Td>{formatAngka(item.SG)}</Td>
                                       <Td>{item.userPK?.nama || "-"}</Td>
                                       <Td>{item.userLab?.nama || "-"}</Td>
                                       <Td>

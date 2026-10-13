@@ -49,7 +49,7 @@ import {
   MenuItem,
   MenuDivider,
 } from "@chakra-ui/react";
-import { BsChevronDown } from "react-icons/bs";
+import { BsChevronDown, BsX } from "react-icons/bs";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import "../../Style/pagination.css";
@@ -71,7 +71,6 @@ const emptyEditForm = () => ({
   penampilanVisual: "",
   warna: "",
   kandunganAir: "",
-  BSW: "",
   catatan: "",
   saksi: "",
   satuanVolumeId: "",
@@ -89,6 +88,18 @@ const formatDate = (date) => {
 };
 
 const getTangkiId = (item) => item.tangkiId ?? item.tanki?.id;
+
+const getKonfirmasiNomorFromPengisian = (item) => {
+  const nomors = [];
+  const seen = new Set();
+  (item.konfirmasiPenerimaans || []).forEach((kp) => {
+    const nomor = kp.nomor;
+    if (!nomor || seen.has(nomor)) return;
+    seen.add(nomor);
+    nomors.push(nomor);
+  });
+  return nomors;
+};
 
 const getMitraNamesFromPengisian = (item) => {
   const names = new Set();
@@ -124,6 +135,39 @@ const getPengisianSatuanOrDefault = (item) =>
 
 const getPembuatNama = (item) => item.userKPBPN?.nama || "-";
 
+const formatAngka = (value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  const angka = Number(value);
+  if (Number.isNaN(angka)) return String(value);
+  return new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0,
+  }).format(angka);
+};
+
+const formatNilaiUnik = (items, field) => {
+  const seen = new Set();
+  const values = [];
+  for (const item of items || []) {
+    const raw = item?.[field];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const key = String(raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(formatAngka(raw));
+  }
+  return values.length ? values.join(", ") : "-";
+};
+
+const formatBswPengisian = (item) => {
+  const fromKonfirmasi = formatNilaiUnik(item?.konfirmasiPenerimaans, "BSNW");
+  if (fromKonfirmasi !== "-") return fromKonfirmasi;
+  return formatAngka(item?.BSW);
+};
+
+const getSelectedKonfirmasi = (ids, options) =>
+  (options || []).filter((item) => (ids || []).includes(String(item.id)));
+
 const getLinkedTankiKode = (kp) =>
   Array.from(
     new Set(
@@ -133,7 +177,7 @@ const getLinkedTankiKode = (kp) =>
     ),
   );
 
-const PENGISIAN_TANKI_COL_COUNT = 17;
+const PENGISIAN_TANKI_COL_COUNT = 18;
 
 const MobileField = ({ label, children }) => (
   <Box>
@@ -187,7 +231,26 @@ const PengisianTanki = () => {
     loading: false,
     groups: [],
   });
+  const [tanggalAwal, setTanggalAwal] = useState("");
+  const [tanggalAkhir, setTanggalAkhir] = useState("");
+  const [tangkiFilterId, setTangkiFilterId] = useState("");
+  const [statusBA, setStatusBA] = useState("");
+  const [mitraInput, setMitraInput] = useState("");
+  const [platInput, setPlatInput] = useState("");
+  const [nomorSuratInput, setNomorSuratInput] = useState("");
+  const [mitra, setMitra] = useState("");
+  const [plat, setPlat] = useState("");
+  const [nomorSurat, setNomorSurat] = useState("");
   const limit = 50;
+
+  const hasActiveFilter =
+    Boolean(tanggalAwal) ||
+    Boolean(tanggalAkhir) ||
+    Boolean(tangkiFilterId) ||
+    Boolean(statusBA) ||
+    Boolean(mitraInput) ||
+    Boolean(platInput) ||
+    Boolean(nomorSuratInput);
 
   const changePage = ({ selected }) => {
     setPage(selected);
@@ -195,17 +258,50 @@ const PengisianTanki = () => {
     dataListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const resetPageForFilter = () => {
+    setPage(0);
+    setExpandedProduksiId(null);
+  };
+
+  const resetFilter = () => {
+    setTanggalAwal("");
+    setTanggalAkhir("");
+    setTangkiFilterId("");
+    setStatusBA("");
+    setMitraInput("");
+    setPlatInput("");
+    setNomorSuratInput("");
+    setMitra("");
+    setPlat("");
+    setNomorSurat("");
+    resetPageForFilter();
+  };
+
   const fetchDataPengisianTanki = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get(
-        `${API_BASE}/tanki/get?page=${page}&limit=${limit}`,
-      );
+      const params = { page, limit };
+      if (tanggalAwal) params.startDate = tanggalAwal;
+      if (tanggalAkhir) params.endDate = tanggalAkhir;
+      if (tangkiFilterId) params.tangkiId = tangkiFilterId;
+      if (statusBA) params.statusBA = statusBA;
+      if (mitra) params.mitra = mitra;
+      if (plat) params.plat = plat;
+      if (nomorSurat) params.nomorSurat = nomorSurat;
+
+      const res = await axios.get(`${API_BASE}/tanki/get`, { params });
       setDataPengisian(res.data.result || []);
       setTotalRows(res.data.totalRows || 0);
       setPages(res.data.totalPage || 0);
     } catch (err) {
       console.error(err);
+      toast({
+        title: "Gagal memuat data",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -259,7 +355,6 @@ const PengisianTanki = () => {
       penampilanVisual: item.penampilanVisual || "",
       warna: item.warna || "",
       kandunganAir: item.kandunganAir?.toString() || "",
-      BSW: item.BSW?.toString() || "",
       catatan: item.catatan || "",
       saksi: item.saksi || "",
       satuanVolumeId: item.satuanVolumeId
@@ -306,7 +401,6 @@ const PengisianTanki = () => {
       ["penampilanVisual", "Penampilan visual"],
       ["warna", "Warna"],
       ["kandunganAir", "Kandungan air"],
-      ["BSW", "BSW"],
       ["saksi", "Saksi"],
       ["satuanVolumeId", "Satuan volume"],
     ];
@@ -334,7 +428,6 @@ const PengisianTanki = () => {
         penampilanVisual: editForm.penampilanVisual,
         warna: editForm.warna,
         kandunganAir: parseInt(editForm.kandunganAir, 10),
-        BSW: parseInt(editForm.BSW, 10),
         catatan: editForm.catatan,
         saksi: editForm.saksi,
         satuanVolumeId: parseInt(editForm.satuanVolumeId, 10),
@@ -674,8 +767,59 @@ const PengisianTanki = () => {
   };
 
   useEffect(() => {
+    const loadTanki = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/tanki/get/tanki`);
+        setDataTanki(res.data.result || []);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadTanki();
+  }, []);
+
+  useEffect(() => {
+    const next = mitraInput.trim();
+    if (next === mitra) return undefined;
+    const timer = setTimeout(() => {
+      setMitra(next);
+      resetPageForFilter();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [mitraInput, mitra]);
+
+  useEffect(() => {
+    const next = platInput.trim();
+    if (next === plat) return undefined;
+    const timer = setTimeout(() => {
+      setPlat(next);
+      resetPageForFilter();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [platInput, plat]);
+
+  useEffect(() => {
+    const next = nomorSuratInput.trim();
+    if (next === nomorSurat) return undefined;
+    const timer = setTimeout(() => {
+      setNomorSurat(next);
+      resetPageForFilter();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [nomorSuratInput, nomorSurat]);
+
+  useEffect(() => {
     fetchDataPengisianTanki();
-  }, [page]);
+  }, [
+    page,
+    tanggalAwal,
+    tanggalAkhir,
+    tangkiFilterId,
+    statusBA,
+    mitra,
+    plat,
+    nomorSurat,
+  ]);
 
   const colSpan = PENGISIAN_TANKI_COL_COUNT + 1;
 
@@ -760,18 +904,17 @@ const PengisianTanki = () => {
       </Box>
     );
 
-  const renderPlatCell = (item) =>
-    (item.konfirmasiPenerimaans || []).length === 0 ? (
-      "-"
-    ) : (
-      <Box>
-        {item.konfirmasiPenerimaans.map((kp) => (
-          <Badge key={kp.id} colorScheme="orange" mr={1} mb={1}>
-            {kp.nomor || kp.suratJalan?.transportir?.plat || `ID ${kp.id}`}
-          </Badge>
-        ))}
-      </Box>
-    );
+  const renderPlatCell = (item) => {
+    const plats = [];
+    const seen = new Set();
+    (item.konfirmasiPenerimaans || []).forEach((kp) => {
+      const plat = kp.suratJalan?.transportir?.plat;
+      if (!plat || seen.has(plat)) return;
+      seen.add(plat);
+      plats.push(plat);
+    });
+    return renderNameListCell(plats);
+  };
 
   return (
     <LayoutKPBPN>
@@ -827,6 +970,112 @@ const PengisianTanki = () => {
             </Flex>
           </Flex>
 
+          <Box mb={6} p={{ base: 3, md: 4 }} bg="gray.50" borderRadius="lg">
+            <Heading size="sm" mb={4} color="gray.700">
+              Filter Data
+            </Heading>
+            <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+              <FormControl>
+                <FormLabel fontSize="sm">Tanggal Awal</FormLabel>
+                <Input
+                  type="date"
+                  bg="white"
+                  value={tanggalAwal}
+                  onChange={(e) => {
+                    setTanggalAwal(e.target.value);
+                    resetPageForFilter();
+                  }}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Tanggal Akhir</FormLabel>
+                <Input
+                  type="date"
+                  bg="white"
+                  value={tanggalAkhir}
+                  onChange={(e) => {
+                    setTanggalAkhir(e.target.value);
+                    resetPageForFilter();
+                  }}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Tanki</FormLabel>
+                <Select
+                  bg="white"
+                  placeholder="Semua tanki"
+                  value={tangkiFilterId}
+                  onChange={(e) => {
+                    setTangkiFilterId(e.target.value);
+                    resetPageForFilter();
+                  }}
+                >
+                  {dataTanki.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.kode}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Status BA</FormLabel>
+                <Select
+                  bg="white"
+                  value={statusBA}
+                  onChange={(e) => {
+                    setStatusBA(e.target.value);
+                    resetPageForFilter();
+                  }}
+                >
+                  <option value="">Semua status</option>
+                  <option value="sudah">Sudah BA</option>
+                  <option value="belum">Belum BA</option>
+                </Select>
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Mitra</FormLabel>
+                <Input
+                  bg="white"
+                  placeholder="Cari nama mitra"
+                  value={mitraInput}
+                  onChange={(e) => setMitraInput(e.target.value)}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">No. Plat Kendaraan</FormLabel>
+                <Input
+                  bg="white"
+                  placeholder="Cari plat kendaraan"
+                  value={platInput}
+                  onChange={(e) => setPlatInput(e.target.value)}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Nomor Surat BAST</FormLabel>
+                <Input
+                  bg="white"
+                  placeholder="Cari nomor surat"
+                  value={nomorSuratInput}
+                  onChange={(e) => setNomorSuratInput(e.target.value)}
+                />
+              </FormControl>
+            </SimpleGrid>
+            <Flex mt={4} justify={{ base: "stretch", sm: "flex-end" }}>
+              <Button
+                leftIcon={<BsX />}
+                variant="outline"
+                colorScheme="gray"
+                onClick={resetFilter}
+                isDisabled={!hasActiveFilter}
+                w={{ base: "full", sm: "auto" }}
+              >
+                Reset Filter
+              </Button>
+            </Flex>
+          </Box>
+
+          <Divider mb={6} />
+
           <Box ref={dataListRef} scrollMarginTop={{ base: "72px", md: "88px" }}>
             <Box display={{ base: "block", lg: "none" }}>
               {isLoading ? (
@@ -859,13 +1108,16 @@ const PengisianTanki = () => {
                   bg="white"
                 >
                   <Text fontSize="lg" color="gray.500">
-                    Belum ada data pengisian tanki
+                    {hasActiveFilter
+                      ? "Tidak ada data BAST sesuai filter"
+                      : "Belum ada data pengisian tanki"}
                   </Text>
                 </Box>
               ) : (
                 <Stack spacing={4}>
                   {dataPengisian.map((item, index) => {
                     const sudahAdaBA = Boolean(item.BABongkarId);
+                    const konfirmasiNomors = getKonfirmasiNomorFromPengisian(item);
                     const mitraNames = getMitraNamesFromPengisian(item);
                     const supirNames = getSupirNamesFromPengisian(item);
                     const isProduksiExpanded = expandedProduksiId === item.id;
@@ -902,6 +1154,9 @@ const PengisianTanki = () => {
                         </HStack>
 
                         <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                          <MobileField label="No. Konfirmasi">
+                            {renderNameListCell(konfirmasiNomors)}
+                          </MobileField>
                           <MobileField label="Mitra">
                             {renderNameListCell(mitraNames)}
                           </MobileField>
@@ -918,19 +1173,6 @@ const PengisianTanki = () => {
                               primarySatuan="liter"
                             />
                           </MobileField>
-                          <MobileField label="Net">
-                            <VolumeMultiSatuan
-                              volume={item.net}
-                              satuan={getPengisianSatuanOrDefault(item)}
-                              primarySatuan="liter"
-                            />
-                          </MobileField>
-                          <MobileField label="Penampilan Visual">
-                            {item.penampilanVisual || "-"}
-                          </MobileField>
-                          <MobileField label="Warna">
-                            {item.warna || "-"}
-                          </MobileField>
                           <MobileField label="Kandungan Air">
                             <VolumeMultiSatuan
                               volume={item.kandunganAir}
@@ -938,8 +1180,21 @@ const PengisianTanki = () => {
                               primarySatuan="liter"
                             />
                           </MobileField>
+                          <MobileField label="Net">
+                            <VolumeMultiSatuan
+                              volume={item.net}
+                              satuan={getPengisianSatuanOrDefault(item)}
+                              primarySatuan="liter"
+                            />
+                          </MobileField>
                           <MobileField label="BSW">
-                            {item.BSW ?? "-"}
+                            {formatBswPengisian(item)}
+                          </MobileField>
+                          <MobileField label="GS">
+                            {formatNilaiUnik(item.konfirmasiPenerimaans, "SG")}
+                          </MobileField>
+                          <MobileField label="API">
+                            {formatNilaiUnik(item.konfirmasiPenerimaans, "api")}
                           </MobileField>
                           <MobileField label="Saksi">
                             {item.saksi || "-"}
@@ -1004,20 +1259,21 @@ const PengisianTanki = () => {
                   <Spinner size="lg" color="kpbpn" />
                 </Center>
               ) : (
-                <Table size="sm" minW="1400px">
+                <Table size="sm" minW="1560px">
                   <Thead bg="gray.50">
                     <Tr>
                       <Th>No</Th>
                       <Th>Tanggal</Th>
                       <Th>Tangki</Th>
+                      <Th>No. Konfirmasi</Th>
                       <Th>Mitra</Th>
                       <Th>Supir</Th>
                       <Th>Gross</Th>
-                      <Th>Net</Th>
-                      <Th>Penampilan Visual</Th>
-                      <Th>Warna</Th>
                       <Th>Kandungan Air</Th>
+                      <Th>Net</Th>
                       <Th>BSW</Th>
+                      <Th>GS</Th>
+                      <Th>API</Th>
                       <Th>Catatan</Th>
                       <Th>Saksi</Th>
                       <Th>Dibuat oleh</Th>
@@ -1031,12 +1287,16 @@ const PengisianTanki = () => {
                     {dataPengisian.length === 0 ? (
                       <Tr>
                         <Td colSpan={colSpan} textAlign="center" py={6}>
-                          Belum ada data pengisian tanki
+                          {hasActiveFilter
+                            ? "Tidak ada data BAST sesuai filter"
+                            : "Belum ada data pengisian tanki"}
                         </Td>
                       </Tr>
                     ) : (
                       dataPengisian.map((item, index) => {
                         const sudahAdaBA = Boolean(item.BABongkarId);
+                        const konfirmasiNomors =
+                          getKonfirmasiNomorFromPengisian(item);
                         const mitraNames = getMitraNamesFromPengisian(item);
                         const supirNames = getSupirNamesFromPengisian(item);
                         const isProduksiExpanded =
@@ -1050,6 +1310,9 @@ const PengisianTanki = () => {
                                 {formatDate(item.tanggal || item.createdAt)}
                               </Td>
                               <Td>{item.tanki?.kode || "-"}</Td>
+                              <Td whiteSpace="nowrap">
+                                {renderNameListCell(konfirmasiNomors)}
+                              </Td>
                               <Td>{renderNameListCell(mitraNames)}</Td>
                               <Td>{renderNameListCell(supirNames)}</Td>
                               <Td>
@@ -1061,21 +1324,31 @@ const PengisianTanki = () => {
                               </Td>
                               <Td>
                                 <VolumeMultiSatuan
-                                  volume={item.net}
-                                  satuan={getPengisianSatuanOrDefault(item)}
-                                  primarySatuan="liter"
-                                />
-                              </Td>
-                              <Td>{item.penampilanVisual || "-"}</Td>
-                              <Td>{item.warna || "-"}</Td>
-                              <Td>
-                                <VolumeMultiSatuan
                                   volume={item.kandunganAir}
                                   satuan={getPengisianSatuanOrDefault(item)}
                                   primarySatuan="liter"
                                 />
                               </Td>
-                              <Td>{item.BSW ?? "-"}</Td>
+                              <Td>
+                                <VolumeMultiSatuan
+                                  volume={item.net}
+                                  satuan={getPengisianSatuanOrDefault(item)}
+                                  primarySatuan="liter"
+                                />
+                              </Td>
+                              <Td>{formatBswPengisian(item)}</Td>
+                              <Td>
+                                {formatNilaiUnik(
+                                  item.konfirmasiPenerimaans,
+                                  "SG",
+                                )}
+                              </Td>
+                              <Td>
+                                {formatNilaiUnik(
+                                  item.konfirmasiPenerimaans,
+                                  "api",
+                                )}
+                              </Td>
                               <Td maxW="180px" whiteSpace="normal">
                                 {item.catatan || "-"}
                               </Td>
@@ -1319,16 +1592,6 @@ const PengisianTanki = () => {
                   </FormControl>
 
                   <FormControl isRequired>
-                    <FormLabel>BSW</FormLabel>
-                    <Input
-                      name="BSW"
-                      type="number"
-                      value={editForm.BSW}
-                      onChange={handleEditFieldChange}
-                    />
-                  </FormControl>
-
-                  <FormControl isRequired>
                     <FormLabel>Saksi</FormLabel>
                     <Input
                       name="saksi"
@@ -1337,6 +1600,58 @@ const PengisianTanki = () => {
                     />
                   </FormControl>
                 </SimpleGrid>
+
+                <Box>
+                  <FormLabel mb={1}>Kualitas dari konfirmasi</FormLabel>
+                  <Text fontSize="sm" color="gray.500" mb={3}>
+                    BSW, GS, dan API mengikuti konfirmasi penerimaan yang
+                    dipilih. BSW diambil dari BSNW, GS dari SG.
+                  </Text>
+                  <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                    <FormControl>
+                      <FormLabel>BSW</FormLabel>
+                      <Input
+                        value={formatNilaiUnik(
+                          getSelectedKonfirmasi(
+                            editForm.ids,
+                            editKonfirmasiOptions,
+                          ),
+                          "BSNW",
+                        )}
+                        isReadOnly
+                        bg="gray.50"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>GS</FormLabel>
+                      <Input
+                        value={formatNilaiUnik(
+                          getSelectedKonfirmasi(
+                            editForm.ids,
+                            editKonfirmasiOptions,
+                          ),
+                          "SG",
+                        )}
+                        isReadOnly
+                        bg="gray.50"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>API</FormLabel>
+                      <Input
+                        value={formatNilaiUnik(
+                          getSelectedKonfirmasi(
+                            editForm.ids,
+                            editKonfirmasiOptions,
+                          ),
+                          "api",
+                        )}
+                        isReadOnly
+                        bg="gray.50"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                </Box>
 
                 <FormControl>
                   <FormLabel>Catatan</FormLabel>

@@ -318,6 +318,15 @@ const menuData = [
         ],
       },
       {
+        label: "Produksi Sumur",
+        path: "/laporan/produksi-sumur",
+        allowedRoles: [
+          ROLE_KPBPN.SUPER_ADMIN,
+          ROLE_KPBPN.ADMIN,
+          ROLE_KPBPN.MITRA,
+        ],
+      },
+      {
         label: "Keuangan",
         path: "/laporan/keuangan",
         allowedRoles: [
