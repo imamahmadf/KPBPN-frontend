@@ -39,10 +39,7 @@ import {
 import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
-import {
-  convertVolumeToLiter,
-  normalizeSatuan,
-} from "../../lib/volumeSatuan";
+import { normalizeSatuan } from "../../lib/volumeSatuan";
 import { userRedux } from "../../Redux/Reducers/auth";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
@@ -167,22 +164,6 @@ const getLiterSatuanId = (satuanList = []) => {
     (item) => normalizeSatuan(item.satuan) === "liter",
   );
   return found ? String(found.id) : "";
-};
-
-const getVolumeSuratJalanLiter = (kp) => {
-  const volume = kp?.volume ?? kp?.suratJalan?.volume;
-  const satuan = kp?.suratJalan?.satuanVolume?.satuan || "Barrel";
-  const liter = convertVolumeToLiter(volume, satuan);
-  if (liter === null) return 0;
-  return Math.round(liter);
-};
-
-const sumGrossLiterFromIds = (ids, konfirmasiList = []) => {
-  const selected = new Set((ids || []).map(String));
-  return konfirmasiList.reduce((sum, item) => {
-    if (!selected.has(String(item.id))) return sum;
-    return sum + getVolumeSuratJalanLiter(item);
-  }, 0);
 };
 
 const MobileField = ({ label, children }) => (
@@ -389,14 +370,6 @@ const TambahPengisianTanki = () => {
                   if (literSatuanId) {
                     setFieldValue("satuanVolumeId", literSatuanId);
                   }
-                  const gross = nextIds.length
-                    ? sumGrossLiterFromIds(nextIds, dataKonfirmasi)
-                    : "";
-                  setFieldValue("gross", gross);
-                  setFieldValue(
-                    "net",
-                    hitungNet(gross === "" ? "" : gross, values.kandunganAir),
-                  );
                 };
                 const toggleSemua = (checked) => {
                   applyKonfirmasiIds(
@@ -459,9 +432,6 @@ const TambahPengisianTanki = () => {
                           }}
                           onBlur={handleBlur}
                         />
-                        <FormHelperText>
-                          Terisi otomatis dari volume surat jalan (Liter)
-                        </FormHelperText>
                         <FormErrorMessage>{errors.gross}</FormErrorMessage>
                       </FormControl>
 

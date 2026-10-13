@@ -178,10 +178,53 @@ const optionalDecimalFieldSchema = (label) =>
       return num !== null && num >= 0;
     });
 
+const volumeInputSchema = Yup.string()
+  .required("Volume wajib diisi")
+  .test("is-decimal", "Volume harus angka valid", (value) => {
+    const str = String(value ?? "").trim();
+    if (!str) return false;
+    if (/^\d+[.,]$/.test(str)) return true;
+    const num = parseDecimalInput(str);
+    return num !== null && num > 0;
+  });
+
+const volumeAirTidakMelebihiVolume = optionalDecimalFieldSchema(
+  "Volume air",
+).test(
+  "lte-volume",
+  "Volume air tidak boleh lebih besar dari volume",
+  function (value) {
+    const air = parseDecimalInput(value);
+    const volume = parseDecimalInput(this.parent.volume);
+    if (air === null || volume === null) return true;
+    return air <= volume;
+  },
+);
+
+const optionalPositiveDecimalFieldSchema = (label) =>
+  Yup.string()
+    .nullable()
+    .test("is-decimal", `${label} harus angka lebih dari 0`, (value) => {
+      const str = String(value ?? "").trim();
+      if (!str) return true;
+      if (/^\d+[.,]$/.test(str)) return true;
+      const num = parseDecimalInput(str);
+      return num !== null && num > 0;
+    });
+
 const konfirmasiVolumeSchema = Yup.object({
   tinggiCairan: tinggiCairanSchema,
-  volumeAir: optionalDecimalFieldSchema("Volume air"),
+  panjangTransportir: optionalPositiveDecimalFieldSchema("Panjang"),
+  lebarTransportir: optionalPositiveDecimalFieldSchema("Lebar"),
+  volume: volumeInputSchema,
+  volumeAir: volumeAirTidakMelebihiVolume,
 });
+
+const isDimensiKosong = (value) => {
+  if (value === null || value === undefined || value === "") return true;
+  const num = parseDecimalInput(value);
+  return num === null || num <= 0;
+};
 
 const calcVolumeDrum = (tinggiCm, panjangCm, lebarCm) => {
   const tinggi = parseDecimalInput(tinggiCm);
@@ -240,6 +283,8 @@ const initialValuesKonfirmasi = {
   jamKedatangan: "",
   volume: "",
   tinggiCairan: "",
+  panjangTransportir: "",
+  lebarTransportir: "",
   volumeAir: "",
   volumeAkhir: "",
   catatan: "",
@@ -631,7 +676,14 @@ const SuratJalan = () => {
         jamKedatangan:
           toTimeInput(editingKonfirmasi.jamKedatangan) ||
           toTimeInput(new Date()),
-        volume: editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? "",
+        volume:
+          konfirmasiMode === "volume"
+            ? toDecimalInput(editingKonfirmasi.volume)
+            : (editingKonfirmasi.volume ?? selectedSuratJalan?.volume ?? ""),
+        panjangTransportir: toDecimalInput(
+          selectedSuratJalan?.transportir?.panjang,
+        ),
+        lebarTransportir: toDecimalInput(selectedSuratJalan?.transportir?.lebar),
         tinggiCairan: toDecimalInput(editingKonfirmasi.tinggiCairan),
         volumeAir: toDecimalInput(editingKonfirmasi.volumeAir),
         volumeAkhir: toDecimalInput(editingKonfirmasi.volumeAkhir),
@@ -650,9 +702,12 @@ const SuratJalan = () => {
     return {
       ...initialValuesKonfirmasi,
       jamKedatangan: toTimeInput(new Date()),
-      volume: selectedSuratJalan?.volume ?? "",
+      volume:
+        konfirmasiMode === "volume"
+          ? ""
+          : (selectedSuratJalan?.volume ?? ""),
     };
-  }, [editingKonfirmasi, selectedSuratJalan]);
+  }, [editingKonfirmasi, selectedSuratJalan, konfirmasiMode]);
 
   const formatTanggal = (d) =>
     d
@@ -1298,17 +1353,13 @@ const SuratJalan = () => {
         if (user?.id) formData.append("userPKId", user.id);
         await axios.post(`${API_BASE}/pengiriman/post/konfirmasi`, formData);
       } else if (isVolume) {
-        const volumeDrum = calcVolumeDrum(
-          values.tinggiCairan,
-          selectedSuratJalan?.transportir?.panjang,
-          selectedSuratJalan?.transportir?.lebar,
-        );
-        if (volumeDrum === null || volumeDrum <= 0) {
+        const volumeParsed = parseDecimalInput(values.volume);
+        if (volumeParsed === null || volumeParsed <= 0) {
           setSubmitting(false);
           toast({
-            title: "Volume tidak dapat dihitung",
+            title: "Volume wajib diisi",
             description:
-              "Panjang dan lebar transportir harus terisi, dan tinggi cairan harus lebih dari 0",
+              "Isi volume secara manual, atau lengkapi tinggi cairan beserta panjang dan lebar transportir",
             status: "error",
             duration: 5000,
             isClosable: true,
@@ -1318,9 +1369,17 @@ const SuratJalan = () => {
         const volumeAirParsed = parseDecimalInput(values.volumeAir);
         formData.append("tahap", "volume");
         formData.append("tinggiCairan", parseDecimalInput(values.tinggiCairan));
-        formData.append("volume", volumeDrum);
+        formData.append("volume", volumeParsed);
+        const panjangDiisi = parseDecimalInput(values.panjangTransportir);
+        const lebarDiisi = parseDecimalInput(values.lebarTransportir);
+        if (panjangDiisi !== null) {
+          formData.append("panjangTransportir", panjangDiisi);
+        }
+        if (lebarDiisi !== null) {
+          formData.append("lebarTransportir", lebarDiisi);
+        }
         if (volumeAirParsed !== null) {
-          const volumeAkhir = calcVolumeAkhir(volumeDrum, values.volumeAir);
+          const volumeAkhir = calcVolumeAkhir(volumeParsed, values.volumeAir);
           if (volumeAkhir === null) {
             setSubmitting(false);
             toast({
@@ -2563,7 +2622,7 @@ const SuratJalan = () => {
                 {konfirmasiMode === "tiba"
                   ? "Langkah 1 dari 3: isi jam kedatangan. Foto bukti penerimaan opsional"
                   : konfirmasiMode === "volume"
-                    ? "Langkah 2 dari 3: isi tinggi cairan untuk menyimpan volume. Isi volume air jika data sudah lengkap agar status berubah dan berita acara terunduh"
+                    ? "Langkah 2 dari 3: isi tinggi cairan agar volume terisi otomatis. Volume tetap bisa diubah manual. Isi volume air jika data sudah lengkap agar status berubah dan berita acara terunduh"
                     : konfirmasiMode === "bongkar"
                       ? "Langkah 3 dari 3: isi data bongkar. Foto lab opsional"
                       : "Perbarui data konfirmasi penerimaan"}
@@ -2635,38 +2694,131 @@ const SuratJalan = () => {
 
                     {konfirmasiMode === "volume" && (
                       <>
-                        <FormControl>
+                        <FormControl
+                          isInvalid={
+                            touched.panjangTransportir &&
+                            errors.panjangTransportir
+                          }
+                        >
                           <FormLabel>Panjang transportir (cm)</FormLabel>
-                          <Input
-                            isReadOnly
-                            bgColor="gray.50"
-                            value={
-                              selectedSuratJalan?.transportir?.panjang !=
-                                null &&
-                              selectedSuratJalan?.transportir?.panjang !== ""
-                                ? formatVolumeNumber(
-                                    Number(
-                                      selectedSuratJalan.transportir.panjang,
-                                    ),
-                                  )
-                                : "-"
-                            }
-                          />
+                          {isDimensiKosong(
+                            selectedSuratJalan?.transportir?.panjang,
+                          ) ? (
+                            <>
+                              <Input
+                                name="panjangTransportir"
+                                type="text"
+                                inputMode="decimal"
+                                lang="id-ID"
+                                autoComplete="off"
+                                bgColor="terang"
+                                value={values.panjangTransportir}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (
+                                    raw !== "" &&
+                                    !DECIMAL_INPUT_PATTERN.test(raw)
+                                  ) {
+                                    return;
+                                  }
+                                  const nextPanjang = raw.replace(".", ",");
+                                  setFieldValue(
+                                    "panjangTransportir",
+                                    nextPanjang,
+                                  );
+                                  const volumeDrum = calcVolumeDrum(
+                                    values.tinggiCairan,
+                                    nextPanjang,
+                                    values.lebarTransportir,
+                                  );
+                                  if (volumeDrum != null) {
+                                    setFieldValue(
+                                      "volume",
+                                      toDecimalInput(volumeDrum),
+                                    );
+                                  }
+                                }}
+                                onBlur={handleBlur}
+                                placeholder="Masukkan panjang"
+                              />
+                              <Text fontSize="xs" color="gray.500" mt={1}>
+                                Belum ada di data transportir. Nilai yang diisi
+                                akan disimpan
+                              </Text>
+                            </>
+                          ) : (
+                            <Input
+                              isReadOnly
+                              bgColor="gray.50"
+                              value={formatVolumeNumber(
+                                Number(selectedSuratJalan.transportir.panjang),
+                              )}
+                            />
+                          )}
+                          <FormErrorMessage>
+                            {errors.panjangTransportir}
+                          </FormErrorMessage>
                         </FormControl>
-                        <FormControl>
+                        <FormControl
+                          isInvalid={
+                            touched.lebarTransportir && errors.lebarTransportir
+                          }
+                        >
                           <FormLabel>Lebar transportir (cm)</FormLabel>
-                          <Input
-                            isReadOnly
-                            bgColor="gray.50"
-                            value={
-                              selectedSuratJalan?.transportir?.lebar != null &&
-                              selectedSuratJalan?.transportir?.lebar !== ""
-                                ? formatVolumeNumber(
-                                    Number(selectedSuratJalan.transportir.lebar),
-                                  )
-                                : "-"
-                            }
-                          />
+                          {isDimensiKosong(
+                            selectedSuratJalan?.transportir?.lebar,
+                          ) ? (
+                            <>
+                              <Input
+                                name="lebarTransportir"
+                                type="text"
+                                inputMode="decimal"
+                                lang="id-ID"
+                                autoComplete="off"
+                                bgColor="terang"
+                                value={values.lebarTransportir}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (
+                                    raw !== "" &&
+                                    !DECIMAL_INPUT_PATTERN.test(raw)
+                                  ) {
+                                    return;
+                                  }
+                                  const nextLebar = raw.replace(".", ",");
+                                  setFieldValue("lebarTransportir", nextLebar);
+                                  const volumeDrum = calcVolumeDrum(
+                                    values.tinggiCairan,
+                                    values.panjangTransportir,
+                                    nextLebar,
+                                  );
+                                  if (volumeDrum != null) {
+                                    setFieldValue(
+                                      "volume",
+                                      toDecimalInput(volumeDrum),
+                                    );
+                                  }
+                                }}
+                                onBlur={handleBlur}
+                                placeholder="Masukkan lebar"
+                              />
+                              <Text fontSize="xs" color="gray.500" mt={1}>
+                                Belum ada di data transportir. Nilai yang diisi
+                                akan disimpan
+                              </Text>
+                            </>
+                          ) : (
+                            <Input
+                              isReadOnly
+                              bgColor="gray.50"
+                              value={formatVolumeNumber(
+                                Number(selectedSuratJalan.transportir.lebar),
+                              )}
+                            />
+                          )}
+                          <FormErrorMessage>
+                            {errors.lebarTransportir}
+                          </FormErrorMessage>
                         </FormControl>
                         <FormControl
                           isInvalid={
@@ -2683,10 +2835,28 @@ const SuratJalan = () => {
                             autoComplete="off"
                             bgColor="terang"
                             value={values.tinggiCairan}
-                            onChange={handleDecimalFieldChange(
-                              setFieldValue,
-                              "tinggiCairan",
-                            )}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (
+                                raw !== "" &&
+                                !DECIMAL_INPUT_PATTERN.test(raw)
+                              ) {
+                                return;
+                              }
+                              const nextTinggi = raw.replace(".", ",");
+                              setFieldValue("tinggiCairan", nextTinggi);
+                              const volumeDrum = calcVolumeDrum(
+                                nextTinggi,
+                                values.panjangTransportir,
+                                values.lebarTransportir,
+                              );
+                              if (volumeDrum != null) {
+                                setFieldValue(
+                                  "volume",
+                                  toDecimalInput(volumeDrum),
+                                );
+                              }
+                            }}
                             onBlur={handleBlur}
                             placeholder="Masukkan tinggi cairan"
                           />
@@ -2698,22 +2868,31 @@ const SuratJalan = () => {
                             {errors.tinggiCairan}
                           </FormErrorMessage>
                         </FormControl>
-                        <FormControl gridColumn={{ md: "span 2" }}>
+                        <FormControl
+                          isInvalid={touched.volume && errors.volume}
+                          gridColumn={{ md: "span 2" }}
+                        >
                           <FormLabel>Volume (drum)</FormLabel>
                           <Input
-                            isReadOnly
-                            bgColor="gray.50"
-                            value={(() => {
-                              const volumeDrum = calcVolumeDrum(
-                                values.tinggiCairan,
-                                selectedSuratJalan?.transportir?.panjang,
-                                selectedSuratJalan?.transportir?.lebar,
-                              );
-                              return volumeDrum == null
-                                ? ""
-                                : formatVolumeNumber(volumeDrum);
-                            })()}
+                            name="volume"
+                            type="text"
+                            inputMode="decimal"
+                            lang="id-ID"
+                            autoComplete="off"
+                            bgColor="terang"
+                            value={values.volume}
+                            onChange={handleDecimalFieldChange(
+                              setFieldValue,
+                              "volume",
+                            )}
+                            onBlur={handleBlur}
+                            placeholder="Terisi otomatis, bisa diubah"
                           />
+                          <Text fontSize="xs" color="gray.500" mt={1}>
+                            Terisi otomatis dari tinggi cairan. Nilai ini tetap
+                            bisa diubah manual
+                          </Text>
+                          <FormErrorMessage>{errors.volume}</FormErrorMessage>
                         </FormControl>
                       </>
                     )}
@@ -2779,16 +2958,8 @@ const SuratJalan = () => {
                             isReadOnly
                             bgColor="gray.50"
                             value={(() => {
-                              const dasar =
-                                konfirmasiMode === "volume"
-                                  ? calcVolumeDrum(
-                                      values.tinggiCairan,
-                                      selectedSuratJalan?.transportir?.panjang,
-                                      selectedSuratJalan?.transportir?.lebar,
-                                    )
-                                  : values.volume;
                               const akhir = calcVolumeAkhir(
-                                dasar,
+                                values.volume,
                                 values.volumeAir,
                               );
                               return akhir == null
@@ -2986,6 +3157,9 @@ const SuratJalan = () => {
                           : konfirmasiMode === "volume"
                             ? {
                                 tinggiCairan: true,
+                                panjangTransportir: true,
+                                lebarTransportir: true,
+                                volume: true,
                                 volumeAir: true,
                               }
                             : konfirmasiMode === "bongkar"
