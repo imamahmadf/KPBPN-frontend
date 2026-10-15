@@ -307,8 +307,6 @@ const PengisianTanki = () => {
     }
   };
 
-  const canModifyPengisian = (item) => !item.BABongkarId && !item.nomorSurat;
-
   const fetchEditFormData = async (item) => {
     setIsLoadingEditForm(true);
     try {
@@ -463,18 +461,6 @@ const PengisianTanki = () => {
   };
 
   const handleOpenDelete = (item) => {
-    if (!canModifyPengisian(item)) {
-      toast({
-        title: "Tidak dapat dihapus",
-        description:
-          "Data yang sudah memiliki BA Bongkar atau nomor surat BAST tidak dapat dihapus",
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
-
     setDeleteTarget(item);
     onDeleteOpen();
   };
@@ -846,16 +832,13 @@ const PengisianTanki = () => {
         },
         isDisabled: isCetakLoading,
       },
-    ];
-
-    if (canModifyPengisian(item)) {
-      actions.push({
+      {
         key: "hapus",
         label: "Hapus",
         onClick: () => handleOpenDelete(item),
         destructive: true,
-      });
-    }
+      },
+    ];
 
     const destructiveIndex = actions.findIndex((action) => action.destructive);
 
