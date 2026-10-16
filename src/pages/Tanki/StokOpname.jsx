@@ -58,11 +58,14 @@ import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const SATUAN = "barrel";
-const TABLE_COL_SPAN = 17;
-const EXPAND_COL_SPAN = 14;
+const TABLE_COL_SPAN = 16;
+const EXPAND_COL_SPAN = 13;
 
 const roundBarrel = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+
+const calcVolumeAkhir = (volumeCairan, masuk) =>
+  roundBarrel((Number(volumeCairan) || 0) + (Number(masuk) || 0));
 
 const calcBsnwGabungan = (sedimen, volume) => {
   const totalVolume = Number(volume) || 0;
@@ -1091,7 +1094,8 @@ const StokOpname = () => {
               {formatBarrel(row.bsnwMasukSedimen)}
             </Text>
             <Text fontSize="xs" color="gray.500">
-              (Total BS&W ÷ total volume) × 100%
+              (Total BS&W ÷ total volume) × 100%. Termasuk pengisian hari
+              sebelumnya yang belum ada BA bongkar.
             </Text>
           </Box>
         )}
@@ -1136,6 +1140,9 @@ const StokOpname = () => {
                           {sj.mitraNama ? ` · ${sj.mitraNama}` : ""}
                         </Text>
                         <Text fontSize="xs" color="gray.600">
+                          Plat: {sj.plat || "-"} · Sopir: {sj.namaSupir || "-"}
+                        </Text>
+                        <Text fontSize="xs" color="gray.600">
                           Volume:{" "}
                           {sj.satuan &&
                           String(sj.satuan).toLowerCase() !== "barrel"
@@ -1159,6 +1166,55 @@ const StokOpname = () => {
           <Text fontSize="sm" color="gray.500">
             Tidak ada pengisian tanki pada tanggal ini
           </Text>
+        )}
+        {(row.detailBsnwDibawa || []).length > 0 && (
+          <Box mt={4}>
+            <Text fontSize="xs" fontWeight="semibold" color="orange.700" mb={2}>
+              Dibawa dari hari sebelumnya (belum keluar)
+            </Text>
+            <Stack spacing={2}>
+              {row.detailBsnwDibawa.map((item) => (
+                <Box
+                  key={`dibawa-${item.id}`}
+                  p={3}
+                  borderRadius="md"
+                  bg="orange.50"
+                  border="1px solid"
+                  borderColor="orange.100"
+                >
+                  <Text fontSize="sm" fontWeight="medium">
+                    {item.nomorSurat || `Pengisian #${item.id}`}
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    {formatDate(item.tanggal)}
+                  </Text>
+                  {(item.suratJalans || []).length > 0 && (
+                    <Stack spacing={1} mt={1}>
+                      {item.suratJalans.map((sj) => (
+                        <Text
+                          key={`dibawa-sj-${item.id}-${sj.id}`}
+                          fontSize="xs"
+                          color="gray.600"
+                        >
+                          {sj.nomor || "Surat jalan"}
+                          {sj.mitraNama ? ` · ${sj.mitraNama}` : ""}
+                          {" · "}Plat: {sj.plat || "-"} · Sopir:{" "}
+                          {sj.namaSupir || "-"}
+                        </Text>
+                      ))}
+                    </Stack>
+                  )}
+                  <Text fontSize="sm" mt={1}>
+                    BSNW gabungan:{" "}
+                    {formatBsnwPercent(item.BSNWGabungan ?? getMasukBsnw(item))}
+                  </Text>
+                  <Text fontSize="sm">
+                    Volume: {formatBarrel(item.bsnwVolumeBarrel)}
+                  </Text>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
         )}
       </Box>
       <Box>
@@ -1346,7 +1402,8 @@ const StokOpname = () => {
                 Pengukuran manual harian (tinggi × panjang × lebar / 1000 =
                 liter, lalu dikonversi ke barrel), plus minyak masuk dari
                 pengisian tanki, keluar dari BA bongkar, dan BSNW gabungan
-                minyak masuk (rata-rata tertimbang volume).
+                minyak masuk (rata-rata tertimbang volume), termasuk pengisian
+                hari sebelumnya yang belum keluar.
               </Text>
               <Text fontSize="sm" color="gray.500">
                 Total: {rows} data
@@ -1391,7 +1448,7 @@ const StokOpname = () => {
               Keluar: {formatBarrel(totalKeluar)}
             </Badge>
             <Badge colorScheme="purple" px={3} py={1} borderRadius="md">
-              Stok terukur: {formatBarrel(totalStok)}
+              Volume minyak: {formatBarrel(totalStok)}
             </Badge>
             <Badge colorScheme="teal" px={3} py={1} borderRadius="md">
               BSNW gabungan: {formatBsnwPercent(totalBSNWGabunganMasuk)}
@@ -1541,28 +1598,22 @@ const StokOpname = () => {
                                   <MobileField label="Tinggi Air">
                                     {formatAngka(item.tinggiAir)}
                                   </MobileField>
-                                  <MobileField label="Suhu">
-                                    {item.suhu != null
-                                      ? `${formatAngka(item.suhu)} °C`
-                                      : "-"}
-                                  </MobileField>
-                                  <MobileField label="Panjang">
-                                    {formatAngka(item.panjang ?? item.tanki?.panjang)}
-                                  </MobileField>
-                                  <MobileField label="Lebar">
-                                    {formatAngka(item.lebar ?? item.tanki?.lebar)}
-                                  </MobileField>
-                                  <MobileField label="Volume Minyak">
+                                  <MobileField label="Volume Cairan">
                                     {formatBarrel(item.volumeMinyak)}
                                   </MobileField>
                                   <MobileField label="Volume Air">
                                     {formatBarrel(item.volumeAir)}
                                   </MobileField>
-                                  <MobileField label="Stok Terukur">
+                                  <MobileField label="Volume Minyak">
                                     {formatBarrel(item.volumeBersih)}
                                   </MobileField>
                                   <MobileField label="Masuk">
                                     {formatBarrel(item.masuk)}
+                                  </MobileField>
+                                  <MobileField label="Volume Akhir">
+                                    {formatBarrel(
+                                      calcVolumeAkhir(item.volumeMinyak, item.masuk),
+                                    )}
                                   </MobileField>
                                   <MobileField label="Keluar">
                                     {formatBarrel(item.keluar)}
@@ -1665,22 +1716,19 @@ const StokOpname = () => {
                       Tinggi Air
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
-                      Suhu
+                      Volume Cairan
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
-                      Panjang
-                    </Th>
-                    <Th textTransform="capitalize" isNumeric>
-                      Lebar
+                      Volume Air
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
                       Volume Minyak
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
-                      Stok Terukur
+                      Masuk
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
-                      Masuk
+                      Volume Akhir
                     </Th>
                     <Th textTransform="capitalize" isNumeric>
                       Keluar
@@ -1782,26 +1830,21 @@ const StokOpname = () => {
                               </Td>
                               <Td isNumeric>{formatAngka(item.tinggiAir)}</Td>
                               <Td isNumeric>
-                                {item.suhu != null
-                                  ? formatAngka(item.suhu)
-                                  : "-"}
-                              </Td>
-                              <Td isNumeric>
-                                {formatAngka(
-                                  item.panjang ?? item.tanki?.panjang,
-                                )}
-                              </Td>
-                              <Td isNumeric>
-                                {formatAngka(item.lebar ?? item.tanki?.lebar)}
-                              </Td>
-                              <Td isNumeric>
                                 {formatBarrel(item.volumeMinyak)}
+                              </Td>
+                              <Td isNumeric>
+                                {formatBarrel(item.volumeAir)}
                               </Td>
                               <Td isNumeric fontWeight="semibold">
                                 {formatBarrel(item.volumeBersih)}
                               </Td>
                               <Td isNumeric color="green.600">
                                 {formatBarrel(item.masuk)}
+                              </Td>
+                              <Td isNumeric fontWeight="semibold">
+                                {formatBarrel(
+                                  calcVolumeAkhir(item.volumeMinyak, item.masuk),
+                                )}
                               </Td>
                               <Td isNumeric color="red.600">
                                 {formatBarrel(item.keluar)}
@@ -2126,13 +2169,13 @@ const StokOpname = () => {
                         liter → barrel)
                       </Text>
                       <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
-                        <MobileField label="Volume Minyak">
+                        <MobileField label="Volume Cairan">
                           {formatBarrel(volumeMinyak)}
                         </MobileField>
                         <MobileField label="Volume Air">
                           {formatBarrel(volumeAir)}
                         </MobileField>
-                        <MobileField label="Stok Terukur">
+                        <MobileField label="Volume Minyak">
                           {formatBarrel(volumeBersih)}
                         </MobileField>
                       </SimpleGrid>

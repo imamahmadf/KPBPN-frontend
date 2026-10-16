@@ -632,6 +632,12 @@ function KonfirmasiPenerimaan() {
                       <Field label="Mitra">
                         {item.suratJalan?.mitra?.nama || "-"}
                       </Field>
+                      <Field label="Plat Kendaraan">
+                        {item.suratJalan?.transportir?.plat || "-"}
+                      </Field>
+                      <Field label="Nama Sopir">
+                        {item.suratJalan?.supir?.nama || "-"}
+                      </Field>
                       <Field label="Volume Surat Jalan">
                         {formatVolume(
                           item.suratJalan?.volume,
@@ -689,6 +695,8 @@ function KonfirmasiPenerimaan() {
                   <Th>Tanggal</Th>
                   <Th>Jam</Th>
                   <Th>Mitra</Th>
+                  <Th>Plat Kendaraan</Th>
+                  <Th>Nama Sopir</Th>
                   <Th>Status</Th>
                   <Th>Volume Surat Jalan</Th>
                   <Th>Volume</Th>
@@ -704,14 +712,14 @@ function KonfirmasiPenerimaan() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, index) => (
                     <Tr key={index}>
-                      <Td colSpan={15}>
+                      <Td colSpan={17}>
                         <Skeleton height="24px" />
                       </Td>
                     </Tr>
                   ))
                 ) : rows.length === 0 ? (
                   <Tr>
-                    <Td colSpan={15} textAlign="center" py={8}>
+                    <Td colSpan={17} textAlign="center" py={8}>
                       Belum ada data konfirmasi penerimaan
                     </Td>
                   </Tr>
@@ -737,6 +745,8 @@ function KonfirmasiPenerimaan() {
                       <Td>{formatTanggal(item.tanggal)}</Td>
                       <Td>{formatJam(item.jamKedatangan)}</Td>
                       <Td>{item.suratJalan?.mitra?.nama || "-"}</Td>
+                      <Td>{item.suratJalan?.transportir?.plat || "-"}</Td>
+                      <Td>{item.suratJalan?.supir?.nama || "-"}</Td>
                       <Td>
                         <Badge colorScheme={statusBadgeColor(statusLabel(item))}>
                           {statusLabel(item) || "-"}
@@ -847,6 +857,12 @@ function KonfirmasiPenerimaan() {
                 </Field>
                 <Field label="Mitra">
                   {selected.suratJalan?.mitra?.nama || "-"}
+                </Field>
+                <Field label="Plat Kendaraan">
+                  {selected.suratJalan?.transportir?.plat || "-"}
+                </Field>
+                <Field label="Nama Sopir">
+                  {selected.suratJalan?.supir?.nama || "-"}
                 </Field>
                 <Field label="Status">{statusLabel(selected) || "-"}</Field>
                 <Field label="Volume Surat Jalan">
