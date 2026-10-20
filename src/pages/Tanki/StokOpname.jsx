@@ -58,8 +58,8 @@ import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const SATUAN = "barrel";
-const TABLE_COL_SPAN = 16;
-const EXPAND_COL_SPAN = 13;
+const TABLE_COL_SPAN = 17;
+const EXPAND_COL_SPAN = 14;
 
 const roundBarrel = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -133,6 +133,13 @@ const getDefaultEndDate = () => toLocalInputDate(new Date());
 
 const getTodayInputDate = () => toLocalInputDate(new Date());
 
+const getNowInputTime = () => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}`;
+};
+
 const toDateKey = (date) => {
   if (!date) return "";
   if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date)) {
@@ -169,6 +176,27 @@ const formatDate = (date) => {
     year: "numeric",
   });
 };
+
+const toInputTime = (value) => {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2, "0")}:${String(
+      value.getMinutes(),
+    ).padStart(2, "0")}`;
+  }
+  const str = String(value).trim();
+  const timeOnly = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) {
+    return `${timeOnly[1].padStart(2, "0")}:${timeOnly[2]}`;
+  }
+  const date = new Date(str);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+};
+
+const formatJam = (value) => toInputTime(value) || "-";
 
 const formatDecimalInput = (value) => {
   if (value === null || value === undefined || value === "") return "";
@@ -262,6 +290,9 @@ const decimalFieldSchema = (label) =>
 
 const stockOpnameSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
+  jam: Yup.string()
+    .required("Jam pengukuran wajib diisi")
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/, "Format jam tidak valid"),
   tankiId: Yup.string().required("Tanki wajib dipilih"),
   tinggiMinyak: decimalFieldSchema("Tinggi minyak"),
   tinggiAir: decimalFieldSchema("Tinggi air").test(
@@ -284,6 +315,7 @@ const stockOpnameSchema = Yup.object({
 
 const emptyFormValues = () => ({
   tanggal: getTodayInputDate(),
+  jam: getNowInputTime(),
   tankiId: "",
   tinggiMinyak: "",
   tinggiAir: "",
@@ -332,6 +364,7 @@ const buildExportGroups = (items) => {
     if (!dateGroup.tankMap.has(tankKey)) {
       const tankGroup = {
         kode: item.kode || "-",
+        jam: item.jam || null,
         volumeMinyak: item.volumeMinyak,
         volumeAir: item.volumeAir,
         details: [],
@@ -787,7 +820,7 @@ const StokOpname = () => {
       workbook.created = new Date();
 
       const detailSheet = workbook.addWorksheet("Stok Opname");
-      const detailColCount = 10;
+      const detailColCount = 11;
       const mergeDetailTitle = (rowNumber) => {
         detailSheet.mergeCells(rowNumber, 1, rowNumber, detailColCount);
       };
@@ -805,6 +838,7 @@ const StokOpname = () => {
       const detailHeaders = [
         "No",
         "Tanggal",
+        "Jam Pengukuran",
         "Tanki",
         "Volume Minyak (Stok Opname) (barrel)",
         "Volume Air (Stok Opname) (barrel)",
@@ -846,6 +880,7 @@ const StokOpname = () => {
             const dataRow = detailSheet.addRow([
               isFirstTankRow ? groupNumber : "",
               isFirstDateRow ? formatDate(dateGroup.tanggal) : "",
+              isFirstTankRow ? formatJam(tankGroup.jam) : "",
               isFirstTankRow ? tankGroup.kode || "-" : "",
               isFirstTankRow ? excelNumber(tankGroup.volumeMinyak) : "",
               isFirstTankRow ? excelNumber(tankGroup.volumeAir) : "",
@@ -898,17 +933,17 @@ const StokOpname = () => {
         mergeAndCenter(detailSheet, startRow, endRow, 2, "D6EAF8");
       });
       tankMerges.forEach(({ startRow, endRow }) => {
-        [1, 3, 4, 5].forEach((col) => {
+        [1, 3, 4, 5, 6].forEach((col) => {
           mergeAndCenter(detailSheet, startRow, endRow, col, "D6EAF8");
         });
       });
       pengisianMerges.forEach(({ startRow, endRow }) => {
-        [6, 7, 8].forEach((col) => {
+        [7, 8, 9].forEach((col) => {
           mergeAndCenter(detailSheet, startRow, endRow, col, "E2EFDA");
         });
       });
       suratJalanMerges.forEach(({ startRow, endRow }) => {
-        mergeAndCenter(detailSheet, startRow, endRow, 10, "E2EFDA");
+        mergeAndCenter(detailSheet, startRow, endRow, 11, "E2EFDA");
       });
 
       autoFitColumns(detailSheet);
@@ -1026,6 +1061,7 @@ const StokOpname = () => {
     try {
       const payload = {
         tanggal: values.tanggal,
+        jam: values.jam,
         tankiId: values.tankiId,
         tinggiMinyak: parseDecimalInput(values.tinggiMinyak),
         tinggiAir: parseDecimalInput(values.tinggiAir),
@@ -1592,6 +1628,9 @@ const StokOpname = () => {
                                   </VStack>
                                 </HStack>
                                 <SimpleGrid columns={2} spacing={3}>
+                                  <MobileField label="Jam Pengukuran">
+                                    {formatJam(item.jam)}
+                                  </MobileField>
                                   <MobileField label="Tinggi Minyak">
                                     {formatAngka(item.tinggiMinyak)}
                                   </MobileField>
@@ -1612,7 +1651,10 @@ const StokOpname = () => {
                                   </MobileField>
                                   <MobileField label="Volume Akhir">
                                     {formatBarrel(
-                                      calcVolumeAkhir(item.volumeMinyak, item.masuk),
+                                      calcVolumeAkhir(
+                                        item.volumeMinyak,
+                                        item.masukUntukVolumeAkhir ?? item.masuk,
+                                      ),
                                     )}
                                   </MobileField>
                                   <MobileField label="Keluar">
@@ -1709,6 +1751,7 @@ const StokOpname = () => {
                     </Th>
                     <Th textTransform="capitalize">No.</Th>
                     <Th textTransform="capitalize">Tanki</Th>
+                    <Th textTransform="capitalize">Jam Pengukuran</Th>
                     <Th textTransform="capitalize" isNumeric>
                       Tinggi Minyak
                     </Th>
@@ -1825,6 +1868,7 @@ const StokOpname = () => {
                                 {page * limit + startIndex + itemIndex + 1}
                               </Td>
                               <Td fontWeight="medium">{item.kode || "-"}</Td>
+                              <Td whiteSpace="nowrap">{formatJam(item.jam)}</Td>
                               <Td isNumeric>
                                 {formatAngka(item.tinggiMinyak)}
                               </Td>
@@ -1843,7 +1887,10 @@ const StokOpname = () => {
                               </Td>
                               <Td isNumeric fontWeight="semibold">
                                 {formatBarrel(
-                                  calcVolumeAkhir(item.volumeMinyak, item.masuk),
+                                  calcVolumeAkhir(
+                                    item.volumeMinyak,
+                                    item.masukUntukVolumeAkhir ?? item.masuk,
+                                  ),
                                 )}
                               </Td>
                               <Td isNumeric color="red.600">
@@ -2017,6 +2064,7 @@ const StokOpname = () => {
               editingItem
                 ? {
                     tanggal: toInputDate(editingItem.tanggal),
+                    jam: toInputTime(editingItem.jam),
                     tankiId: editingItem.tankiId
                       ? String(editingItem.tankiId)
                       : "",
@@ -2079,6 +2127,18 @@ const StokOpname = () => {
                           onBlur={handleBlur}
                         />
                         <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
+                      </FormControl>
+                      <FormControl isInvalid={touched.jam && errors.jam}>
+                        <FormLabel>Jam Pengukuran</FormLabel>
+                        <Input
+                          name="jam"
+                          type="time"
+                          bgColor="terang"
+                          value={values.jam}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                        />
+                        <FormErrorMessage>{errors.jam}</FormErrorMessage>
                       </FormControl>
                       <FormControl
                         isInvalid={touched.tankiId && errors.tankiId}
@@ -2230,7 +2290,9 @@ const StokOpname = () => {
               <Text as="span" fontWeight="semibold">
                 {deleteTarget?.kode || "-"}
               </Text>{" "}
-              tanggal {formatDate(deleteTarget?.tanggal)}?
+              tanggal {formatDate(deleteTarget?.tanggal)}
+              {deleteTarget?.jam ? ` pukul ${formatJam(deleteTarget.jam)}` : ""}
+              ?
             </Text>
           </ModalBody>
           <ModalFooter>

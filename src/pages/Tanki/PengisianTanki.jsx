@@ -65,6 +65,7 @@ const toInputDate = (date) => {
 
 const emptyEditForm = () => ({
   tanggal: getTodayInputDate(),
+  jam: "",
   tangkiId: "",
   gross: "",
   net: "",
@@ -85,6 +86,33 @@ const formatDate = (date) => {
     month: "short",
     year: "numeric",
   });
+};
+
+const toInputTime = (value) => {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2, "0")}:${String(
+      value.getMinutes(),
+    ).padStart(2, "0")}`;
+  }
+  const str = String(value).trim();
+  const timeOnly = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) {
+    return `${timeOnly[1].padStart(2, "0")}:${timeOnly[2]}`;
+  }
+  const date = new Date(str);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+};
+
+const formatJam = (value) => toInputTime(value);
+
+const formatTanggalPengisian = (item) => {
+  const tanggal = formatDate(item?.tanggal || item?.createdAt);
+  const jam = formatJam(item?.jam);
+  return jam ? `${tanggal}, ${jam}` : tanggal;
 };
 
 const getTangkiId = (item) => item.tangkiId ?? item.tanki?.id;
@@ -347,6 +375,7 @@ const PengisianTanki = () => {
     setEditingItem(item);
     setEditForm({
       tanggal: toInputDate(item.tanggal || item.createdAt),
+      jam: toInputTime(item.jam),
       tangkiId: String(getTangkiId(item) || ""),
       gross: item.gross?.toString() || "",
       net: item.net?.toString() || "",
@@ -393,6 +422,7 @@ const PengisianTanki = () => {
 
     const requiredFields = [
       ["tanggal", "Tanggal"],
+      ["jam", "Jam"],
       ["tangkiId", "Tanki"],
       ["gross", "Gross"],
       ["net", "Net"],
@@ -420,6 +450,7 @@ const PengisianTanki = () => {
     try {
       await axios.post(`${API_BASE}/tanki/edit/${editingItem.id}`, {
         tanggal: editForm.tanggal,
+        jam: editForm.jam,
         tangkiId: parseInt(editForm.tangkiId, 10),
         gross: parseInt(editForm.gross, 10),
         net: parseInt(editForm.net, 10),
@@ -1124,7 +1155,7 @@ const PengisianTanki = () => {
                               {item.tanki?.kode || "-"}
                             </Text>
                             <Text fontSize="xs" color="gray.500">
-                              {formatDate(item.tanggal || item.createdAt)}
+                              {formatTanggalPengisian(item)}
                             </Text>
                           </VStack>
                           {sudahAdaBA ? (
@@ -1289,9 +1320,7 @@ const PengisianTanki = () => {
                           <React.Fragment key={item.id}>
                             <Tr bg={sudahAdaBA ? "gray.50" : undefined}>
                               <Td>{page * limit + index + 1}</Td>
-                              <Td>
-                                {formatDate(item.tanggal || item.createdAt)}
-                              </Td>
+                              <Td>{formatTanggalPengisian(item)}</Td>
                               <Td>{item.tanki?.kode || "-"}</Td>
                               <Td whiteSpace="nowrap">
                                 {renderNameListCell(konfirmasiNomors)}
@@ -1470,15 +1499,25 @@ const PengisianTanki = () => {
             ) : (
               <VStack spacing={4} align="stretch">
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                  <FormControl isRequired>
-                    <FormLabel>Tanggal</FormLabel>
-                    <Input
-                      name="tanggal"
-                      type="date"
-                      value={editForm.tanggal}
-                      onChange={handleEditFieldChange}
-                    />
-                  </FormControl>
+                    <FormControl isRequired>
+                      <FormLabel>Tanggal</FormLabel>
+                      <Input
+                        name="tanggal"
+                        type="date"
+                        value={editForm.tanggal}
+                        onChange={handleEditFieldChange}
+                      />
+                    </FormControl>
+
+                    <FormControl isRequired>
+                      <FormLabel>Jam</FormLabel>
+                      <Input
+                        name="jam"
+                        type="time"
+                        value={editForm.jam}
+                        onChange={handleEditFieldChange}
+                      />
+                    </FormControl>
 
                   <FormControl isRequired>
                     <FormLabel>Tangki</FormLabel>
@@ -1753,7 +1792,7 @@ const PengisianTanki = () => {
               </Text>{" "}
               tanggal{" "}
               <Text as="span" fontWeight="bold">
-                {formatDate(deleteTarget?.tanggal || deleteTarget?.createdAt)}
+                {formatTanggalPengisian(deleteTarget)}
               </Text>
               ?
             </Text>

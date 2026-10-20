@@ -46,6 +46,9 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const pengisianSchema = Yup.object({
   tanggal: Yup.string().required("Tanggal wajib diisi"),
+  jam: Yup.string()
+    .required("Jam wajib diisi")
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/, "Format jam tidak valid"),
   tangkiId: Yup.string().required("Tangki wajib dipilih"),
 
   gross: Yup.number()
@@ -87,8 +90,16 @@ const pengisianSchema = Yup.object({
 
 const getTodayInputDate = () => new Date().toISOString().split("T")[0];
 
+const getNowInputTime = () => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}`;
+};
+
 const initialValues = {
   tanggal: getTodayInputDate(),
+  jam: getNowInputTime(),
   tangkiId: "",
 
   gross: "",
@@ -232,6 +243,7 @@ const TambahPengisianTanki = () => {
 
       const res = await axios.post(`${API_BASE}/tanki/post`, {
         tanggal: values.tanggal,
+        jam: values.jam,
         tangkiId: parseInt(values.tangkiId, 10),
 
         gross,
@@ -395,6 +407,18 @@ const TambahPengisianTanki = () => {
                           onBlur={handleBlur}
                         />
                         <FormErrorMessage>{errors.tanggal}</FormErrorMessage>
+                      </FormControl>
+
+                      <FormControl isInvalid={touched.jam && errors.jam}>
+                        <FormLabel>Jam</FormLabel>
+                        <Input
+                          name="jam"
+                          type="time"
+                          value={values.jam}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                        />
+                        <FormErrorMessage>{errors.jam}</FormErrorMessage>
                       </FormControl>
 
                       <FormControl
