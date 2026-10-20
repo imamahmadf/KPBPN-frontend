@@ -1124,9 +1124,10 @@ function DetailBAK3S({ match }) {
             <Stack spacing={{ base: 4, md: 5 }}>
               <SectionCard title="Data BAK3S">
                 <Box overflowX="auto" maxW="100%">
-                  <Table size="sm" variant="simple" minW="720px" bg="white">
+                  <Table size="sm" variant="simple" minW="820px" bg="white">
                     <Thead bg="white">
                       <Tr>
+                        <Th textTransform="capitalize">Tanggal</Th>
                         <Th textTransform="capitalize">API</Th>
                         <Th textTransform="capitalize">BSNW</Th>
                         <Th textTransform="capitalize">Produksi</Th>
@@ -1137,6 +1138,7 @@ function DetailBAK3S({ match }) {
                     </Thead>
                     <Tbody>
                       <Tr>
+                        <Td whiteSpace="nowrap">{formatTanggal(data.tanggal)}</Td>
                         <Td>{formatAngka(data.api)}</Td>
                         <Td>{formatAngka(data.BSNW)}</Td>
                         <Td>

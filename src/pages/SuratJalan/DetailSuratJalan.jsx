@@ -1314,13 +1314,16 @@ function DetailSuratJalan({
                                   {bak.tankiKode || `BA #${bak.baId || bak.id}`}
                                 </Text>
                                 <Text fontSize="xs" color="gray.500">
-                                  {formatTanggal(bak.baTanggal)}
+                                  {formatTanggal(bak.tanggal || bak.baTanggal)}
                                 </Text>
                               </HStack>
                               <SimpleGrid
                                 columns={{ base: 1, sm: 2 }}
                                 spacing={3}
                               >
+                                <InfoField label="Tanggal">
+                                  {formatTanggal(bak.tanggal || bak.baTanggal)}
+                                </InfoField>
                                 <InfoField label="API">
                                   {formatAngka(bak.api)}
                                 </InfoField>

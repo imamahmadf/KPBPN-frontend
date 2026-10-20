@@ -238,6 +238,7 @@ const getDocumentName = (filePath) => {
 };
 
 const emptyBak3sForm = () => ({
+  tanggal: getTodayInputDate(),
   api: "",
   BSNW: "",
   produksi: "",
@@ -246,6 +247,55 @@ const emptyBak3sForm = () => ({
 });
 
 const getTodayInputDate = () => new Date().toISOString().split("T")[0];
+
+const toInputDate = (date) => {
+  if (!date) return getTodayInputDate();
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    return date.slice(0, 10);
+  }
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return getTodayInputDate();
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const buildUkuranStateFromBA = (ba) => {
+  const next = {};
+  for (const detail of ba?.BABongkarTankis || []) {
+    if (!detail.tangkiId) continue;
+    next[detail.tangkiId] = {
+      ukuranCairan:
+        detail.ukuranCairan === null || detail.ukuranCairan === undefined
+          ? ""
+          : String(detail.ukuranCairan),
+      ukuranAir:
+        detail.ukuranAir === null || detail.ukuranAir === undefined
+          ? ""
+          : String(detail.ukuranAir),
+    };
+  }
+
+  const fallback = {
+    ukuranCairan:
+      ba?.ukuranCairan === null || ba?.ukuranCairan === undefined
+        ? ""
+        : String(ba.ukuranCairan),
+    ukuranAir:
+      ba?.ukuranAir === null || ba?.ukuranAir === undefined
+        ? ""
+        : String(ba.ukuranAir),
+  };
+
+  for (const item of getPengisianList(ba)) {
+    const tangkiId = getTangkiId(item);
+    if (!tangkiId || next[tangkiId]) continue;
+    next[tangkiId] = { ...fallback };
+  }
+
+  return next;
+};
 
 const emptyBaUkuran = () => ({ ukuranCairan: "", ukuranAir: "" });
 
@@ -282,9 +332,6 @@ const getPengisianSatuan = (item) => {
 
 const getPengisianSatuanOrDefault = (item) =>
   getPengisianSatuan(item) || "Barrel";
-
-const getLatestUjiLab = (ujiLabs, tangkiId) =>
-  (ujiLabs || []).find((item) => item.tangkiId === tangkiId) || null;
 
 const isUjiLabSiapBA = (uji) =>
   Boolean(uji && uji.kualitas === "ONSPEC" && !uji.BABongkarId);
@@ -366,6 +413,7 @@ const BABongkar = () => {
   const [ujiLabForm, setUjiLabForm] = useState(emptyUjiLabForm());
   const [isSubmittingUjiLab, setIsSubmittingUjiLab] = useState(false);
   const [isSubmittingBA, setIsSubmittingBA] = useState(false);
+  const [editingBA, setEditingBA] = useState(null);
 
   const {
     isOpen: isBak3sOpen,
@@ -719,7 +767,10 @@ const BABongkar = () => {
 
   const openCreateBak3s = (ba) => {
     setBak3sTarget({ ba, bak3s: null });
-    setBak3sForm(emptyBak3sForm());
+    setBak3sForm({
+      ...emptyBak3sForm(),
+      tanggal: toInputDate(ba?.tanggal),
+    });
     onBak3sOpen();
   };
 
@@ -732,6 +783,9 @@ const BABongkar = () => {
 
     setBak3sTarget({ ba, bak3s });
     setBak3sForm({
+      tanggal: bak3s.tanggal
+        ? toInputDate(bak3s.tanggal)
+        : toInputDate(ba?.tanggal),
       api: bak3s.api ?? "",
       BSNW: bak3s.BSNW ?? "",
       produksi: bak3s.produksi ?? "",
@@ -755,6 +809,7 @@ const BABongkar = () => {
     if (!bak3sTarget?.ba?.id) return;
 
     if (
+      !bak3sForm.tanggal ||
       bak3sForm.api === "" ||
       bak3sForm.BSNW === "" ||
       bak3sForm.produksi === "" ||
@@ -762,7 +817,7 @@ const BABongkar = () => {
     ) {
       toast({
         title: "Data belum lengkap",
-        description: "API, BSNW, produksi, dan SG wajib diisi",
+        description: "Tanggal, API, BSNW, produksi, dan SG wajib diisi",
         status: "warning",
         duration: 3000,
         isClosable: true,
@@ -774,6 +829,7 @@ const BABongkar = () => {
     try {
       const formData = new FormData();
       formData.append("BABongkarId", bak3sTarget.ba.id);
+      formData.append("tanggal", bak3sForm.tanggal);
       formData.append("api", bak3sForm.api);
       formData.append("BSNW", bak3sForm.BSNW);
       formData.append("produksi", bak3sForm.produksi);
@@ -862,19 +918,25 @@ const BABongkar = () => {
     }
   };
 
-  const fetchEligiblePengisianForBA = async () => {
+  const fetchEligiblePengisianForBA = async (ba = null) => {
     setIsLoadingModal(true);
     try {
       const [pengisianRes, ujiRes] = await Promise.all([
         axios.get(`${API_BASE}/tanki/get?page=0&limit=1000`),
         axios.get(`${API_BASE}/tanki/get/uji-lab`),
       ]);
-      const eligible = (pengisianRes.data.result || []).filter(
-        (item) => !item.BABongkarId,
-      );
-      setModalPengisianData(eligible);
+      const eligible = (pengisianRes.data.result || []).filter((item) => {
+        if (!item.BABongkarId) return true;
+        return ba?.id && Number(item.BABongkarId) === Number(ba.id);
+      });
+      const merged = new Map(eligible.map((item) => [item.id, item]));
+      for (const item of ba ? getPengisianList(ba) : []) {
+        if (!merged.has(item.id)) merged.set(item.id, item);
+      }
+      const result = Array.from(merged.values());
+      setModalPengisianData(result);
       setUjiLabList(ujiRes.data.result || []);
-      return eligible;
+      return result;
     } catch (err) {
       console.error(err);
       toast({
@@ -897,6 +959,37 @@ const BABongkar = () => {
     setShowUkuranError(false);
     setModalPengisianData([]);
     setUjiLabList([]);
+    setEditingBA(null);
+  };
+
+  const isTangkiSelectable = (uji, tangkiId) => {
+    if (
+      editingBA &&
+      getPengisianList(editingBA).some(
+        (item) => getTangkiId(item) === tangkiId,
+      )
+    ) {
+      return true;
+    }
+    return isUjiLabSiapBA(uji);
+  };
+
+  const getUjiAcuan = (tangkiId) => {
+    const list = (ujiLabList || []).filter(
+      (item) => item.tangkiId === tangkiId,
+    );
+    if (editingBA) {
+      const sudahDiBA = getPengisianList(editingBA).some(
+        (item) => getTangkiId(item) === tangkiId,
+      );
+      if (sudahDiBA) {
+        const linked = list.find(
+          (item) => Number(item.BABongkarId) === Number(editingBA.id),
+        );
+        if (linked) return linked;
+      }
+    }
+    return list[0] || null;
   };
 
   const handleCloseModalBA = () => {
@@ -905,6 +998,16 @@ const BABongkar = () => {
     setUjiLabForm(emptyUjiLabForm());
     onCreateBAClose();
     resetModalBA();
+  };
+
+  const handleOpenEditBA = async (ba) => {
+    resetModalBA();
+    setEditingBA(ba);
+    setSelectedIds(getPengisianList(ba).map((item) => item.id));
+    setBaTanggal(toInputDate(ba.tanggal));
+    setBaUkuranByTangki(buildUkuranStateFromBA(ba));
+    onCreateBAOpen();
+    await fetchEligiblePengisianForBA(ba);
   };
 
   const handleOpenModalBA = async () => {
@@ -925,8 +1028,9 @@ const BABongkar = () => {
   };
 
   const toggleSelectModalItem = (item) => {
-    const latest = getLatestUjiLab(ujiLabList, getTangkiId(item));
-    if (!isUjiLabSiapBA(latest) && !selectedIds.includes(item.id)) {
+    const tangkiId = getTangkiId(item);
+    const latest = getUjiAcuan(tangkiId);
+    if (!isTangkiSelectable(latest, tangkiId) && !selectedIds.includes(item.id)) {
       toast({
         title: "Uji lab belum ONSPEC",
         description:
@@ -946,8 +1050,8 @@ const BABongkar = () => {
   };
 
   const toggleSelectTangkiGroup = (group, checked) => {
-    const latest = getLatestUjiLab(ujiLabList, group.tangkiId);
-    if (checked && !isUjiLabSiapBA(latest)) {
+    const latest = getUjiAcuan(group.tangkiId);
+    if (checked && !isTangkiSelectable(latest, group.tangkiId)) {
       toast({
         title: "Uji lab belum ONSPEC",
         description: `Tanki ${group.kode} belum siap BA Bongkar`,
@@ -1092,7 +1196,10 @@ const BABongkar = () => {
         selectedIds.includes(item.id),
       );
       if (!hasSelected) return false;
-      return !isUjiLabSiapBA(getLatestUjiLab(ujiLabList, group.tangkiId));
+      return !isTangkiSelectable(
+        getUjiAcuan(group.tangkiId),
+        group.tangkiId,
+      );
     });
 
     if (tankiBelumSiap.length) {
@@ -1165,41 +1272,60 @@ const BABongkar = () => {
         })
         .filter(Boolean);
 
-      const res = await axios.post(
-        `${API_BASE}/tanki/post/ba-bongkar`,
-        {
-          tanggal: baTanggal,
-          tanki: tankiPayload,
-          userKPBPNId: user?.id || null,
-        },
-        { responseType: "blob" },
-      );
+      const payload = {
+        tanggal: baTanggal,
+        tanki: tankiPayload,
+        userKPBPNId: user?.id || null,
+      };
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `BA_Bongkar_${baTanggal}_${Date.now()}.docx`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      if (editingBA?.id) {
+        await axios.post(
+          `${API_BASE}/tanki/edit/ba-bongkar/${editingBA.id}`,
+          payload,
+        );
 
-      toast({
-        title: "Berhasil",
-        description: "BA Bongkar berhasil dibuat dan diunduh",
-        status: "success",
-        duration: 4000,
-        isClosable: true,
-      });
+        toast({
+          title: "Berhasil",
+          description: "BA Bongkar berhasil diperbarui",
+          status: "success",
+          duration: 4000,
+          isClosable: true,
+        });
+      } else {
+        const res = await axios.post(
+          `${API_BASE}/tanki/post/ba-bongkar`,
+          payload,
+          { responseType: "blob" },
+        );
+
+        const url = window.URL.createObjectURL(new Blob([res.data]));
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute(
+          "download",
+          `BA_Bongkar_${baTanggal}_${Date.now()}.docx`,
+        );
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        toast({
+          title: "Berhasil",
+          description: "BA Bongkar berhasil dibuat dan diunduh",
+          status: "success",
+          duration: 4000,
+          isClosable: true,
+        });
+      }
 
       handleCloseModalBA();
       fetchDataBA();
     } catch (err) {
       console.error(err);
-      let message = "Gagal membuat BA Bongkar";
+      let message = editingBA?.id
+        ? "Gagal mengubah BA Bongkar"
+        : "Gagal membuat BA Bongkar";
       if (err.response?.data instanceof Blob) {
         try {
           const text = await err.response.data.text();
@@ -1246,6 +1372,15 @@ const BABongkar = () => {
       direction={isMobile ? "column" : "row"}
       align={isMobile ? "stretch" : "start"}
     >
+      <Button
+        size="sm"
+        variant="outline"
+        leftIcon={<BsPencil />}
+        onClick={() => handleOpenEditBA(ba)}
+        w={isMobile ? "full" : "auto"}
+      >
+        Edit BA
+      </Button>
       <Button
         size="sm"
         variant="outline"
@@ -1347,7 +1482,10 @@ const BABongkar = () => {
             </Flex>
           </Flex>
           {ba.BAK3S ? (
-            <SimpleGrid columns={{ base: 2, sm: 3, md: 6 }} spacing={3}>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={3}>
+              <MobileField label="Tanggal">
+                {formatDate(ba.BAK3S.tanggal)}
+              </MobileField>
               <MobileField label="API">
                 {formatAngka(ba.BAK3S.api)}
               </MobileField>
@@ -2093,8 +2231,8 @@ const BABongkar = () => {
           <ModalBody px={{ base: 4, md: 6 }}>
             <VStack spacing={4} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Setiap BA Bongkar hanya memiliki satu BAK3S. Isi API, BSNW,
-                produksi, SG, dan unggah dokumen.
+                Setiap BA Bongkar hanya memiliki satu BAK3S. Isi tanggal, API,
+                BSNW, produksi, SG, dan unggah dokumen.
               </Text>
               {!bak3sTarget?.bak3s?.id && (
                 <Text fontSize="sm" color="gray.500">
@@ -2104,6 +2242,16 @@ const BABongkar = () => {
                   </Text>
                 </Text>
               )}
+              <FormControl isRequired>
+                <FormLabel>Tanggal BAK3S</FormLabel>
+                <Input
+                  type="date"
+                  value={bak3sForm.tanggal}
+                  onChange={(e) =>
+                    handleBak3sFieldChange("tanggal", e.target.value)
+                  }
+                />
+              </FormControl>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
                 <FormControl isRequired>
                   <FormLabel>API</FormLabel>
@@ -2249,23 +2397,32 @@ const BABongkar = () => {
         <ModalOverlay />
         <ModalContent maxW={{ base: "100%", md: "1100px" }} mx={{ base: 0, md: 4 }}>
           <ModalHeader px={{ base: 4, md: 6 }} pr={12}>
-            Buat BA Bongkar
+            {editingBA?.id
+              ? `Edit BA Bongkar #${editingBA.id}`
+              : "Buat BA Bongkar"}
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody px={{ base: 4, md: 6 }}>
             <VStack spacing={5} align="stretch">
               <Text fontSize="sm" color="gray.600">
-                Uji lab K3S wajib ONSPEC per tanki sebelum BA Bongkar dibuat.
-                Jika OFFSPEC, lakukan pencampuran bahan kimia lalu uji ulang.
-                Setiap tanki menjadi satu baris terpisah dalam dokumen BA
-                Bongkar.
+                {editingBA?.id
+                  ? "Perbarui tanggal, ukuran cairan, ukuran air, dan pengisian tanki. Tanki yang sudah ada di BA ini tetap bisa dipilih. Tanki baru wajib uji lab ONSPEC."
+                  : "Uji lab K3S wajib ONSPEC per tanki sebelum BA Bongkar dibuat. Jika OFFSPEC, lakukan pencampuran bahan kimia lalu uji ulang. Setiap tanki menjadi satu baris terpisah dalam dokumen BA Bongkar."}
               </Text>
-              <Text fontSize="sm" color="gray.500">
-                Dokumen akan tercatat atas nama:{" "}
-                <Text as="span" fontWeight="semibold" color="gray.700">
-                  {user?.nama || "-"}
+              {editingBA?.BAK3S ? (
+                <Text fontSize="sm" color="orange.600">
+                  BA ini sudah memiliki BAK3S. Perubahan pengisian tidak
+                  mengubah data produksi BAK3S yang sudah tersimpan.
                 </Text>
-              </Text>
+              ) : null}
+              {!editingBA?.id && (
+                <Text fontSize="sm" color="gray.500">
+                  Dokumen akan tercatat atas nama:{" "}
+                  <Text as="span" fontWeight="semibold" color="gray.700">
+                    {user?.nama || "-"}
+                  </Text>
+                </Text>
+              )}
               {selectedIds.length > 0 && (
                 <Text fontSize="sm" color="kpbpn" fontWeight="medium">
                   Terpilih: {selectedIds.length} pengisian dari{" "}
@@ -2280,7 +2437,9 @@ const BABongkar = () => {
               ) : tangkiGroups.length === 0 ? (
                 <Center py={8}>
                   <Text color="gray.500">
-                    Tidak ada pengisian tanki yang belum memiliki BA Bongkar
+                    {editingBA?.id
+                      ? "Tidak ada pengisian tanki yang dapat dipilih"
+                      : "Tidak ada pengisian tanki yang belum memiliki BA Bongkar"}
                   </Text>
                 </Center>
               ) : (
@@ -2299,11 +2458,11 @@ const BABongkar = () => {
                       selectedInGroup === group.items.length;
                     const someSelected = selectedInGroup > 0 && !allSelected;
                     const ukuran = getBaUkuran(group.tangkiId);
-                    const latestUji = getLatestUjiLab(
-                      ujiLabList,
+                    const latestUji = getUjiAcuan(group.tangkiId);
+                    const siapBA = isTangkiSelectable(
+                      latestUji,
                       group.tangkiId,
                     );
-                    const siapBA = isUjiLabSiapBA(latestUji);
 
                     return (
                       <Box

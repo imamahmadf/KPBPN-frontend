@@ -154,7 +154,9 @@ const ProduksiTable = ({ title, total, rows, page, limit, emptyText }) => (
                   {formatTanggal(
                     item.tanggalReferensi ||
                       item.suratJalan?.tanggal ||
+                      item.BAK3S?.tanggal ||
                       item.BAK3S?.BABongkar?.tanggal ||
+                      item.BAK3?.tanggal ||
                       item.BAK3?.BABongkar?.tanggal,
                   )}
                 </Td>
