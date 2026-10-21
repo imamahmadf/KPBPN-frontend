@@ -866,21 +866,6 @@ const SuratJalan = () => {
       });
       return;
     }
-    if (
-      item.statusSuratJalanId === 3 ||
-      item.statusSuratJalanId === 5 ||
-      item.statusSuratJalanId === 6
-    ) {
-      toast({
-        title: "Tidak dapat dibatalkan",
-        description:
-          "Surat jalan yang sudah tiba, dikonfirmasi volumenya, atau dibongkar tidak dapat dibatalkan",
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
     setBatalTarget(item);
     onBatalOpen();
   };
@@ -1646,7 +1631,7 @@ const SuratJalan = () => {
       );
     }
 
-    if (item.statusSuratJalanId === 1 || item.statusSuratJalanId === 2) {
+    if (item.statusSuratJalanId !== 4) {
       actions.push({
         key: "batal",
         label: "Batalkan",
@@ -3558,9 +3543,9 @@ const SuratJalan = () => {
               ?
             </Text>
             <Text fontSize="sm" color="gray.500" mt={2}>
-              Status surat jalan akan diubah menjadi BATAL. Surat jalan yang
-              sudah tiba, dikonfirmasi volumenya, dibongkar, atau dipakai pada
-              pengisian tanki tidak dapat dibatalkan.
+              Status surat jalan akan diubah menjadi BATAL. Pembatalan dapat
+              dilakukan kapan saja, termasuk setelah tiba, volume dikonfirmasi,
+              dibongkar, atau dipakai pada pengisian tanki.
             </Text>
           </ModalBody>
           <ModalFooter
