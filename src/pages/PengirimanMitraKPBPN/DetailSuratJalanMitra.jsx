@@ -9,6 +9,7 @@ function DetailSuratJalanMitra(props) {
       showExtendedSections={false}
       allowEditProduksiAnytime
       showAutoFillProduksi
+      showHapusProduksi
     />
   );
 }

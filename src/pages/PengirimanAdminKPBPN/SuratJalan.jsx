@@ -901,10 +901,16 @@ const SuratJalan = () => {
 
     setIsCancelling(true);
     try {
-      await axios.post(`${API_BASE}/pengiriman/batal/${batalTarget.id}`);
+      const res = await axios.post(
+        `${API_BASE}/pengiriman/batal/${batalTarget.id}`,
+      );
+      const deletedProduksi = Number(res.data?.deletedProduksi) || 0;
       toast({
         title: "Berhasil",
-        description: "Surat jalan berhasil dibatalkan",
+        description:
+          deletedProduksi > 0
+            ? `Surat jalan berhasil dibatalkan. ${deletedProduksi} data produksi sumur dihapus.`
+            : "Surat jalan berhasil dibatalkan",
         status: "success",
         duration: 4000,
         isClosable: true,
@@ -3602,9 +3608,11 @@ const SuratJalan = () => {
               ?
             </Text>
             <Text fontSize="sm" color="gray.500" mt={2}>
-              Status surat jalan akan diubah menjadi BATAL. Pembatalan dapat
-              dilakukan kapan saja, termasuk setelah tiba, volume dikonfirmasi,
-              dibongkar, atau dipakai pada pengisian tanki.
+              Status surat jalan akan diubah menjadi BATAL. Seluruh data
+              produksi sumur pada surat jalan ini, termasuk hasil isi otomatis,
+              akan dihapus. Pembatalan dapat dilakukan kapan saja, termasuk
+              setelah tiba, volume dikonfirmasi, dibongkar, atau dipakai pada
+              pengisian tanki.
             </Text>
           </ModalBody>
           <ModalFooter

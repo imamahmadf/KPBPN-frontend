@@ -22,6 +22,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  ModalFooter,
   ModalCloseButton,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
@@ -214,6 +215,7 @@ function DetailSuratJalan({
   showExtendedSections = true,
   allowEditProduksiAnytime = false,
   showAutoFillProduksi = false,
+  showHapusProduksi = false,
 }) {
   const suratJalanId = match.params.id;
   const toast = useToast();
@@ -234,6 +236,8 @@ function DetailSuratJalan({
   const [isEditing, setIsEditing] = useState(false);
   const [editSnapshot, setEditSnapshot] = useState(null);
   const [previewFoto, setPreviewFoto] = useState(null);
+  const [isHapusProduksiOpen, setIsHapusProduksiOpen] = useState(false);
+  const [isDeletingProduksi, setIsDeletingProduksi] = useState(false);
 
   const openPreviewFoto = (src, title) => {
     setPreviewFoto({ src: getImageUrl(src), title: title || "Foto" });
@@ -654,6 +658,42 @@ function DetailSuratJalan({
     }
   };
 
+  const hapusProduksiSumur = async () => {
+    setIsDeletingProduksi(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/pengiriman/delete/produksi-sumur/${suratJalanId}`,
+      );
+      const deletedProduksi = Number(res.data?.deletedProduksi) || 0;
+
+      toast({
+        title: deletedProduksi > 0 ? "Berhasil" : "Tidak ada data",
+        description:
+          deletedProduksi > 0
+            ? `${deletedProduksi} data produksi sumur dihapus.`
+            : "Tidak ada data produksi sumur pada surat jalan ini.",
+        status: deletedProduksi > 0 ? "success" : "info",
+        duration: 4000,
+        isClosable: true,
+      });
+
+      setIsHapusProduksiOpen(false);
+      await Promise.all([fetchDetail(), fetchProduksiPanel()]);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal menghapus",
+        description:
+          err.response?.data?.error || "Gagal menghapus produksi sumur",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingProduksi(false);
+    }
+  };
+
   const konfirmasiList = data?.konfirmasiPenerimaans || [];
   const satuanSurat = data?.satuanVolume?.satuan || "Barrel";
   const canEditProduksi =
@@ -947,11 +987,25 @@ function DetailSuratJalan({
                     <Skeleton height="36px" />
                   </Stack>
                 ) : displayedSumurList.length === 0 ? (
-                  <EmptyText>
-                    {produksiPanel.sumurList.length === 0
-                      ? "Tidak ada data sumur minyak untuk mitra ini."
-                      : "Belum ada data produksi sumur untuk surat jalan ini."}
-                  </EmptyText>
+                  <Stack spacing={3}>
+                    {showHapusProduksi && canEditProduksi && (
+                      <Button
+                        variant="outline"
+                        colorScheme="red"
+                        size="sm"
+                        alignSelf="flex-start"
+                        onClick={() => setIsHapusProduksiOpen(true)}
+                        isDisabled={isDeletingProduksi}
+                      >
+                        Hapus Produksi
+                      </Button>
+                    )}
+                    <EmptyText>
+                      {produksiPanel.sumurList.length === 0
+                        ? "Tidak ada data sumur minyak untuk mitra ini."
+                        : "Belum ada data produksi sumur untuk surat jalan ini."}
+                    </EmptyText>
+                  </Stack>
                 ) : (
                   <>
                     <ProduksiStickyBar
@@ -978,11 +1032,14 @@ function DetailSuratJalan({
                       onCancel={cancelEditProduksi}
                       onSave={saveProduksiSumur}
                       onAutoFill={autoFillProduksiSumur}
+                      onDelete={() => setIsHapusProduksiOpen(true)}
                       showEditButton={canEditProduksi}
                       showSaveButton={canEditProduksi}
                       showAutoFillButton={
                         showAutoFillProduksi && isProduksiEditing
                       }
+                      showDeleteButton={showHapusProduksi && canEditProduksi}
+                      deleting={isDeletingProduksi}
                       primarySatuan="drum"
                     />
 
@@ -1458,6 +1515,58 @@ function DetailSuratJalan({
               />
             ) : null}
           </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isHapusProduksiOpen}
+        onClose={() => {
+          if (!isDeletingProduksi) setIsHapusProduksiOpen(false);
+        }}
+        isCentered
+        closeOnOverlayClick={!isDeletingProduksi}
+        closeOnEsc={!isDeletingProduksi}
+      >
+        <ModalOverlay />
+        <ModalContent
+          mx={4}
+          w="auto"
+          maxW={{ base: "calc(100vw - 2rem)", md: "md" }}
+        >
+          <ModalHeader pr={12} fontSize={{ base: "lg", md: "xl" }}>
+            Hapus Produksi
+          </ModalHeader>
+          <ModalCloseButton isDisabled={isDeletingProduksi} />
+          <ModalBody>
+            <Text>
+              Semua data produksi sumur pada surat jalan{" "}
+              <Text as="span" fontWeight="bold">
+                {data?.nomor || `#${suratJalanId}`}
+              </Text>{" "}
+              akan dihapus. Status surat jalan tidak berubah.
+            </Text>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={() => setIsHapusProduksiOpen(false)}
+              isDisabled={isDeletingProduksi}
+            >
+              Tutup
+            </Button>
+            <Button
+              colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
+              onClick={hapusProduksiSumur}
+              isLoading={isDeletingProduksi}
+            >
+              Hapus Produksi
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
     </LayoutKPBPN>

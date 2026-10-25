@@ -92,9 +92,12 @@ export const ProduksiStickyBar = ({
   onCancel,
   onSave,
   onAutoFill,
+  onDelete,
   showEditButton = true,
   showSaveButton = true,
   showAutoFillButton = false,
+  showDeleteButton = false,
+  deleting = false,
   primarySatuan,
 }) => {
   const isCompact = useBreakpointValue({ base: true, lg: false }) ?? true;
@@ -277,11 +280,25 @@ export const ProduksiStickyBar = ({
                 colorScheme="orange"
                 size="sm"
                 onClick={onAutoFill}
-                isDisabled={saving}
+                isDisabled={saving || deleting}
                 w={{ base: "full", sm: "auto" }}
                 flexShrink={0}
               >
                 Isi Otomatis
+              </Button>
+            )}
+            {showDeleteButton && (
+              <Button
+                variant="outline"
+                colorScheme="red"
+                size="sm"
+                onClick={onDelete}
+                isLoading={deleting}
+                isDisabled={saving || deleting}
+                w={{ base: "full", sm: "auto" }}
+                flexShrink={0}
+              >
+                Hapus Produksi
               </Button>
             )}
             {showSaveButton && (
