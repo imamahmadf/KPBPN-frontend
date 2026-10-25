@@ -33,7 +33,6 @@ import {
   Image,
   SimpleGrid,
   Divider,
-  Badge,
   useDisclosure,
   IconButton,
 } from "@chakra-ui/react";
@@ -122,6 +121,7 @@ const FileUploadField = ({
 const DaftarMitra = () => {
   const toast = useToast();
   const [dataMitra, setDataMitra] = useState([]);
+  const [dataSupir, setDataSupir] = useState([]);
   const [dataTransportir, setDataTransportir] = useState([]);
   const [dataJenisTransportir, setDataJenisTransportir] = useState([]);
   const [dataJenisMitra, setDataJenisMitra] = useState([]);
@@ -163,6 +163,7 @@ const DaftarMitra = () => {
     try {
       const res = await axios.get(`${API_BASE}/mitra/get`);
       setDataMitra(res.data.resultMitra || []);
+      setDataSupir(res.data.resultSupir || []);
       setDataTransportir(res.data.resultTransportir || []);
       setDataJenisTransportir(res.data.resultJenisTransportir || []);
       setDataJenisMitra(res.data.resultJenisMitra || []);
@@ -182,13 +183,6 @@ const DaftarMitra = () => {
   useEffect(() => {
     fetchDataMitra();
   }, []);
-
-  const allSupir = (dataMitra || []).flatMap((mitra) =>
-    (mitra.supirs || []).map((supir) => ({
-      ...supir,
-      mitraNama: mitra.nama,
-    })),
-  );
 
   const showPreview = (path) => {
     setPreviewFoto(getImageUrl(path));
@@ -334,7 +328,6 @@ const DaftarMitra = () => {
   const supirSchema = Yup.object({
     nama: Yup.string().required("Nama wajib diisi"),
     nik: Yup.string().required("NIK wajib diisi"),
-    mitraId: Yup.string().required("Mitra wajib dipilih"),
     ktp: Yup.mixed().nullable(),
     foto: Yup.mixed().nullable(),
   });
@@ -369,14 +362,13 @@ const DaftarMitra = () => {
                     <Th>NPWP</Th>
                     <Th>Kontak</Th>
                     <Th>Penanggung Jawab</Th>
-                    <Th>Jumlah Supir</Th>
                     <Th>Aksi</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
                   {dataMitra.length === 0 ? (
                     <Tr>
-                      <Td colSpan={10} textAlign="center" py={6}>
+                      <Td colSpan={9} textAlign="center" py={6}>
                         Belum ada data mitra
                       </Td>
                     </Tr>
@@ -391,11 +383,6 @@ const DaftarMitra = () => {
                         <Td>{item.npwp}</Td>
                         <Td>{item.kontak}</Td>
                         <Td>{item.penanggungJawab}</Td>
-                        <Td>
-                          <Badge colorScheme="orange">
-                            {(item.supirs || []).length} supir
-                          </Badge>
-                        </Td>
                         <Td>
                           <HStack spacing={1}>
                             <IconButton
@@ -528,11 +515,7 @@ const DaftarMitra = () => {
               <Heading size="md" color="kpbpn">
                 Supir
               </Heading>
-              <Button
-                variant="primary"
-                onClick={openAddSupir}
-                isDisabled={dataMitra.length === 0}
-              >
+              <Button variant="primary" onClick={openAddSupir}>
                 + Tambah Supir
               </Button>
             </HStack>
@@ -543,26 +526,24 @@ const DaftarMitra = () => {
                     <Th>No</Th>
                     <Th>Nama</Th>
                     <Th>NIK</Th>
-                    <Th>Mitra</Th>
                     <Th>KTP</Th>
                     <Th>Foto</Th>
                     <Th>Aksi</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {allSupir.length === 0 ? (
+                  {dataSupir.length === 0 ? (
                     <Tr>
-                      <Td colSpan={7} textAlign="center" py={6}>
+                      <Td colSpan={6} textAlign="center" py={6}>
                         Belum ada data supir
                       </Td>
                     </Tr>
                   ) : (
-                    allSupir.map((item, index) => (
+                    dataSupir.map((item, index) => (
                       <Tr key={item.id}>
                         <Td>{index + 1}</Td>
                         <Td>{item.nama}</Td>
                         <Td>{item.nik}</Td>
-                        <Td>{item.mitraNama}</Td>
                         <Td>
                           {item.ktp ? (
                             <Button
@@ -970,7 +951,6 @@ const DaftarMitra = () => {
             initialValues={{
               nama: editingSupir?.nama || "",
               nik: editingSupir?.nik || "",
-              mitraId: editingSupir?.mitraId?.toString() || "",
               ktp: null,
               foto: null,
               ktpPreview: editingSupir?.ktp
@@ -986,7 +966,6 @@ const DaftarMitra = () => {
                 const formData = new FormData();
                 formData.append("nama", values.nama);
                 formData.append("nik", values.nik);
-                formData.append("mitraId", values.mitraId);
                 if (values.ktp) formData.append("ktp", values.ktp);
                 if (values.foto) formData.append("foto", values.foto);
 
@@ -1035,23 +1014,6 @@ const DaftarMitra = () => {
                         onChange={(e) => setFieldValue("nik", e.target.value)}
                       />
                       <FormErrorMessage>{errors.nik}</FormErrorMessage>
-                    </FormControl>
-                    <FormControl isInvalid={touched.mitraId && errors.mitraId}>
-                      <FormLabel>Mitra</FormLabel>
-                      <Select
-                        placeholder="Pilih mitra"
-                        value={values.mitraId}
-                        onChange={(e) =>
-                          setFieldValue("mitraId", e.target.value)
-                        }
-                      >
-                        {dataMitra.map((mitra) => (
-                          <option key={mitra.id} value={mitra.id}>
-                            {mitra.kode} - {mitra.nama}
-                          </option>
-                        ))}
-                      </Select>
-                      <FormErrorMessage>{errors.mitraId}</FormErrorMessage>
                     </FormControl>
                     <FileUploadField
                       label="Foto KTP"

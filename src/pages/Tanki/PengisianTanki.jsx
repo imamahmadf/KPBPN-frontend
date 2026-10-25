@@ -264,9 +264,11 @@ const PengisianTanki = () => {
   const [tangkiFilterId, setTangkiFilterId] = useState("");
   const [statusBA, setStatusBA] = useState("");
   const [mitraInput, setMitraInput] = useState("");
+  const [supirInput, setSupirInput] = useState("");
   const [platInput, setPlatInput] = useState("");
   const [nomorSuratInput, setNomorSuratInput] = useState("");
   const [mitra, setMitra] = useState("");
+  const [supir, setSupir] = useState("");
   const [plat, setPlat] = useState("");
   const [nomorSurat, setNomorSurat] = useState("");
   const limit = 50;
@@ -277,6 +279,7 @@ const PengisianTanki = () => {
     Boolean(tangkiFilterId) ||
     Boolean(statusBA) ||
     Boolean(mitraInput) ||
+    Boolean(supirInput) ||
     Boolean(platInput) ||
     Boolean(nomorSuratInput);
 
@@ -297,9 +300,11 @@ const PengisianTanki = () => {
     setTangkiFilterId("");
     setStatusBA("");
     setMitraInput("");
+    setSupirInput("");
     setPlatInput("");
     setNomorSuratInput("");
     setMitra("");
+    setSupir("");
     setPlat("");
     setNomorSurat("");
     resetPageForFilter();
@@ -314,6 +319,7 @@ const PengisianTanki = () => {
       if (tangkiFilterId) params.tangkiId = tangkiFilterId;
       if (statusBA) params.statusBA = statusBA;
       if (mitra) params.mitra = mitra;
+      if (supir) params.supir = supir;
       if (plat) params.plat = plat;
       if (nomorSurat) params.nomorSurat = nomorSurat;
 
@@ -806,6 +812,16 @@ const PengisianTanki = () => {
   }, [mitraInput, mitra]);
 
   useEffect(() => {
+    const next = supirInput.trim();
+    if (next === supir) return undefined;
+    const timer = setTimeout(() => {
+      setSupir(next);
+      resetPageForFilter();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [supirInput, supir]);
+
+  useEffect(() => {
     const next = platInput.trim();
     if (next === plat) return undefined;
     const timer = setTimeout(() => {
@@ -834,6 +850,7 @@ const PengisianTanki = () => {
     tangkiFilterId,
     statusBA,
     mitra,
+    supir,
     plat,
     nomorSurat,
   ]);
@@ -1053,6 +1070,15 @@ const PengisianTanki = () => {
                   placeholder="Cari nama mitra"
                   value={mitraInput}
                   onChange={(e) => setMitraInput(e.target.value)}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize="sm">Supir</FormLabel>
+                <Input
+                  bg="white"
+                  placeholder="Cari nama supir"
+                  value={supirInput}
+                  onChange={(e) => setSupirInput(e.target.value)}
                 />
               </FormControl>
               <FormControl>

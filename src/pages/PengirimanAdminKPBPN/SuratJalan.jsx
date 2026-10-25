@@ -52,7 +52,9 @@ import { useSelector } from "react-redux";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
 import {
+  convertVolumeToLiter,
   formatVolumeNumber,
+  LITER_PER_BARREL,
   LITER_PER_DRUM,
   roundVolumeNumber,
 } from "../../lib/volumeSatuan";
@@ -95,6 +97,30 @@ const readBlobError = async (error, fallback) => {
 };
 
 const getImageUrl = (path) => (path ? `${API_BASE}${path}` : null);
+
+const isVolumeSamaTotalProduksi = (item) => {
+  const rows = item?.produksiSumurs || [];
+  if (!rows.length) return false;
+
+  const volume = Number(item?.volume);
+  if (!Number.isFinite(volume) || volume <= 0) return false;
+
+  const satuanSurat = item?.satuanVolume?.satuan || "Barrel";
+  const totalLiter = rows.reduce((sum, row) => {
+    const liter = convertVolumeToLiter(
+      row?.produksi,
+      row?.satuanVolume?.satuan || satuanSurat,
+    );
+    return sum + (liter || 0);
+  }, 0);
+  const volumeLiter = convertVolumeToLiter(volume, satuanSurat);
+  if (volumeLiter === null || totalLiter <= 0) return false;
+
+  return (
+    roundVolumeNumber(totalLiter / LITER_PER_BARREL, 3) ===
+    roundVolumeNumber(volumeLiter / LITER_PER_BARREL, 3)
+  );
+};
 
 const DECIMAL_INPUT_PATTERN = /^\d*[.,]?\d*$/;
 
@@ -620,20 +646,7 @@ const SuratJalan = () => {
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("DESC");
 
-  const allSupir = (dataSeed?.resultMitra || []).flatMap((m) =>
-    (m.supirs || []).map((s) => ({
-      ...s,
-      mitraNama: m.nama,
-    })),
-  );
-
-  const getSupirByMitra = (selectedMitraId) => {
-    if (!selectedMitraId) return [];
-    const mitraData = (dataSeed?.resultMitra || []).find(
-      (m) => String(m.id) === String(selectedMitraId),
-    );
-    return mitraData?.supirs || [];
-  };
+  const allSupir = dataSeed?.resultSupir || [];
 
   const initialValuesEdit = useMemo(() => {
     if (!editingSuratJalan) {
@@ -1795,7 +1808,7 @@ const SuratJalan = () => {
                 <Select2
                   options={allSupir.map((val) => ({
                     value: val.id,
-                    label: `${val.nama} (${val.mitraNama})`,
+                    label: val.nama || `Supir #${val.id}`,
                   }))}
                   placeholder="Pilih Supir"
                   onChange={(opt) => setSupirFilterId(opt?.value || 0)}
@@ -1975,6 +1988,22 @@ const SuratJalan = () => {
 
           <Divider mb={6} />
 
+          <HStack spacing={2} mb={4} color="gray.600">
+            <Box
+              w="14px"
+              h="14px"
+              borderRadius="sm"
+              bg="green.100"
+              border="1px solid"
+              borderColor="green.400"
+              flexShrink={0}
+            />
+            <Text fontSize="sm">
+              Warna hijau: volume surat jalan sudah sama dengan total produksi
+              sumur
+            </Text>
+          </HStack>
+
           <Box ref={dataListRef} scrollMarginTop={{ base: "72px", md: "88px" }}>
             {/* Tampilan kartu — mobile & tablet */}
             <Box display={{ base: "block", lg: "none" }}>
@@ -2000,15 +2029,24 @@ const SuratJalan = () => {
                 </Stack>
               ) : dataSuratJalan?.length > 0 ? (
                 <Stack spacing={4}>
-                  {dataSuratJalan.map((item, index) => (
+                  {dataSuratJalan.map((item, index) => {
+                    const volumeSesuaiProduksi = isVolumeSamaTotalProduksi(item);
+
+                    return (
                     <Box
                       key={item.id}
                       p={4}
                       borderRadius="lg"
                       border="1px solid"
-                      borderColor="gray.200"
-                      bg="white"
-                      boxShadow="sm"
+                      borderColor={
+                        volumeSesuaiProduksi ? "green.300" : "gray.200"
+                      }
+                      bg={volumeSesuaiProduksi ? "green.50" : "white"}
+                      boxShadow={
+                        volumeSesuaiProduksi
+                          ? "inset 4px 0 0 var(--chakra-colors-green-400)"
+                          : "sm"
+                      }
                     >
                       <HStack
                         justify="space-between"
@@ -2017,13 +2055,18 @@ const SuratJalan = () => {
                         flexWrap="wrap"
                         gap={2}
                       >
-                        <VStack align="start" spacing={0}>
+                        <VStack align="start" spacing={1}>
                           <Text fontSize="xs" color="gray.500">
                             No. {page * limit + index + 1}
                           </Text>
                           <Text fontWeight="bold" color="kpbpn" fontSize="sm">
                             {item.nomor || "-"}
                           </Text>
+                          {volumeSesuaiProduksi && (
+                            <Badge colorScheme="green" variant="subtle">
+                              Produksi sesuai
+                            </Badge>
+                          )}
                         </VStack>
                         <Badge
                           colorScheme={statusBadgeColor(
@@ -2063,7 +2106,8 @@ const SuratJalan = () => {
                       </SimpleGrid>
                       <Box mt={4}>{renderAksi(item, true)}</Box>
                     </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Box
@@ -2120,10 +2164,31 @@ const SuratJalan = () => {
                       </Tr>
                     ))
                   ) : dataSuratJalan?.length > 0 ? (
-                    dataSuratJalan.map((item, index) => (
-                      <Tr key={item.id}>
+                    dataSuratJalan.map((item, index) => {
+                      const volumeSesuaiProduksi =
+                        isVolumeSamaTotalProduksi(item);
+
+                      return (
+                      <Tr
+                        key={item.id}
+                        bg={volumeSesuaiProduksi ? "green.50" : undefined}
+                        boxShadow={
+                          volumeSesuaiProduksi
+                            ? "inset 4px 0 0 var(--chakra-colors-green-400)"
+                            : undefined
+                        }
+                      >
                         <Td fontWeight="medium">{page * limit + index + 1}</Td>
-                        <Td fontWeight="medium">{item.nomor || "-"}</Td>
+                        <Td fontWeight="medium">
+                          <VStack align="start" spacing={1}>
+                            <Text>{item.nomor || "-"}</Text>
+                            {volumeSesuaiProduksi && (
+                              <Badge colorScheme="green" variant="subtle">
+                                Produksi sesuai
+                              </Badge>
+                            )}
+                          </VStack>
+                        </Td>
                         <Td>{formatTanggal(item.tanggal)}</Td>
                         <Td>{item.mitra?.nama || "-"}</Td>
                         <Td>{item.transportir?.plat || "-"}</Td>
@@ -2149,7 +2214,8 @@ const SuratJalan = () => {
                         </Td>
                         <Td whiteSpace="nowrap">{renderAksi(item)}</Td>
                       </Tr>
-                    ))
+                      );
+                    })
                   ) : (
                     <Tr>
                       <Td colSpan={11} textAlign="center" py={10}>
@@ -2312,7 +2378,6 @@ const SuratJalan = () => {
                         }
                         onChange={(opt) => {
                           setFieldValue("mitraId", opt?.value || null);
-                          setFieldValue("supirId", null);
                         }}
                         {...selectStyles}
                       />
@@ -2489,24 +2554,18 @@ const SuratJalan = () => {
                     <FormControl isInvalid={touched.supirId && errors.supirId}>
                       <FormLabel>Supir</FormLabel>
                       <Select2
-                        options={getSupirByMitra(values.mitraId).map((val) => ({
+                        options={allSupir.map((val) => ({
                           value: val.id,
                           label: val.nama || `Supir #${val.id}`,
                         }))}
-                        placeholder={
-                          values.mitraId
-                            ? "Pilih Supir"
-                            : "Pilih mitra terlebih dahulu"
-                        }
-                        isDisabled={!values.mitraId}
+                        placeholder="Pilih Supir"
                         value={
                           values.supirId
                             ? {
                                 value: values.supirId,
                                 label:
-                                  getSupirByMitra(values.mitraId).find(
-                                    (s) => s.id === values.supirId,
-                                  )?.nama || `Supir #${values.supirId}`,
+                                  allSupir.find((s) => s.id === values.supirId)
+                                    ?.nama || `Supir #${values.supirId}`,
                               }
                             : null
                         }

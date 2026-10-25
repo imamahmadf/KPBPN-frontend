@@ -46,10 +46,39 @@ import { Link as RouterLink } from "react-router-dom";
 import { BsFileEarmarkWord, BsFileEarmarkPdf } from "react-icons/bs";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
 import VolumeMultiSatuan from "../../Componets/VolumeMultiSatuan";
+import {
+  convertVolumeToLiter,
+  LITER_PER_BARREL,
+  roundVolumeNumber,
+} from "../../lib/volumeSatuan";
 import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const ROLE_SUPER_ADMIN = 1;
+
+const isVolumeSamaTotalProduksi = (item) => {
+  const rows = item?.produksiSumurs || [];
+  if (!rows.length) return false;
+
+  const volume = Number(item?.volume);
+  if (!Number.isFinite(volume) || volume <= 0) return false;
+
+  const satuanSurat = item?.satuanVolume?.satuan || "Barrel";
+  const totalLiter = rows.reduce((sum, row) => {
+    const liter = convertVolumeToLiter(
+      row?.produksi,
+      row?.satuanVolume?.satuan || satuanSurat,
+    );
+    return sum + (liter || 0);
+  }, 0);
+  const volumeLiter = convertVolumeToLiter(volume, satuanSurat);
+  if (volumeLiter === null || totalLiter <= 0) return false;
+
+  return (
+    roundVolumeNumber(totalLiter / LITER_PER_BARREL, 3) ===
+    roundVolumeNumber(volumeLiter / LITER_PER_BARREL, 3)
+  );
+};
 
 const getDownloadFileName = (contentDisposition, fallback) => {
   if (!contentDisposition) return fallback;
@@ -269,23 +298,7 @@ const SuratJalanMitra = () => {
     [isSuperAdmin, mitraId],
   );
 
-  const allSupir = useMemo(() => {
-    const mitraList = dataSeed?.resultMitra || [];
-    if (isSuperAdmin) {
-      return mitraList.flatMap((m) =>
-        (m.supirs || []).map((s) => ({
-          ...s,
-          mitraNama: m.nama,
-        })),
-      );
-    }
-    if (!mitraId) return [];
-    const mitraData = mitraList.find((m) => String(m.id) === String(mitraId));
-    return (mitraData?.supirs || []).map((s) => ({
-      ...s,
-      mitraNama: mitraData?.nama || mitra?.nama,
-    }));
-  }, [dataSeed, isSuperAdmin, mitraId, mitra?.nama]);
+  const allSupir = dataSeed?.resultSupir || [];
 
   const formatTanggal = (d) =>
     d
@@ -446,14 +459,6 @@ const SuratJalanMitra = () => {
       return;
     }
     onTambahOpen();
-  };
-
-  const getSupirByMitra = (selectedMitraId) => {
-    if (!selectedMitraId) return [];
-    const mitraData = (dataSeed?.resultMitra || []).find(
-      (m) => String(m.id) === String(selectedMitraId),
-    );
-    return mitraData?.supirs || [];
   };
 
   const cetakSuratJalan = async (item, format = "pdf") => {
@@ -677,7 +682,7 @@ const SuratJalanMitra = () => {
                 <Select2
                   options={allSupir.map((val) => ({
                     value: val.id,
-                    label: `${val.nama} (${val.mitraNama})`,
+                    label: val.nama || `Supir #${val.id}`,
                   }))}
                   placeholder="Pilih Supir"
                   onChange={(opt) => setSupirFilterId(opt?.value || 0)}
@@ -845,6 +850,22 @@ const SuratJalanMitra = () => {
 
           <Divider mb={6} />
 
+          <HStack spacing={2} mb={4} color="gray.600">
+            <Box
+              w="14px"
+              h="14px"
+              borderRadius="sm"
+              bg="green.100"
+              border="1px solid"
+              borderColor="green.400"
+              flexShrink={0}
+            />
+            <Text fontSize="sm">
+              Warna hijau: volume surat jalan sudah sama dengan total produksi
+              sumur
+            </Text>
+          </HStack>
+
           <Box ref={dataListRef} scrollMarginTop={{ base: "72px", md: "88px" }}>
             {/* Tampilan kartu — mobile & tablet */}
             <Box display={{ base: "block", lg: "none" }}>
@@ -870,15 +891,24 @@ const SuratJalanMitra = () => {
                 </Stack>
               ) : dataSuratJalan?.length > 0 ? (
                 <Stack spacing={4}>
-                  {dataSuratJalan.map((item) => (
+                  {dataSuratJalan.map((item) => {
+                    const volumeSesuaiProduksi = isVolumeSamaTotalProduksi(item);
+
+                    return (
                     <Box
                       key={item.id}
                       p={4}
                       borderRadius="lg"
                       border="1px solid"
-                      borderColor="gray.200"
-                      bg="white"
-                      boxShadow="sm"
+                      borderColor={
+                        volumeSesuaiProduksi ? "green.300" : "gray.200"
+                      }
+                      bg={volumeSesuaiProduksi ? "green.50" : "white"}
+                      boxShadow={
+                        volumeSesuaiProduksi
+                          ? "inset 4px 0 0 var(--chakra-colors-green-400)"
+                          : "sm"
+                      }
                     >
                       <HStack
                         justify="space-between"
@@ -887,9 +917,16 @@ const SuratJalanMitra = () => {
                         flexWrap="wrap"
                         gap={2}
                       >
-                        <Text fontWeight="bold" color="kpbpn" fontSize="sm">
-                          {item.nomor || "-"}
-                        </Text>
+                        <VStack align="start" spacing={1}>
+                          <Text fontWeight="bold" color="kpbpn" fontSize="sm">
+                            {item.nomor || "-"}
+                          </Text>
+                          {volumeSesuaiProduksi && (
+                            <Badge colorScheme="green" variant="subtle">
+                              Produksi sesuai
+                            </Badge>
+                          )}
+                        </VStack>
                         <Badge colorScheme="blue" variant="subtle">
                           {item.statusSuratJalan?.status || "-"}
                         </Badge>
@@ -963,7 +1000,8 @@ const SuratJalanMitra = () => {
                         )}
                       </HStack>
                     </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Box
@@ -1021,9 +1059,30 @@ const SuratJalanMitra = () => {
                       </Tr>
                     ))
                   ) : dataSuratJalan?.length > 0 ? (
-                    dataSuratJalan.map((item) => (
-                      <Tr key={item.id}>
-                        <Td fontWeight="medium">{item.nomor || "-"}</Td>
+                    dataSuratJalan.map((item) => {
+                      const volumeSesuaiProduksi =
+                        isVolumeSamaTotalProduksi(item);
+
+                      return (
+                      <Tr
+                        key={item.id}
+                        bg={volumeSesuaiProduksi ? "green.50" : undefined}
+                        boxShadow={
+                          volumeSesuaiProduksi
+                            ? "inset 4px 0 0 var(--chakra-colors-green-400)"
+                            : undefined
+                        }
+                      >
+                        <Td fontWeight="medium">
+                          <VStack align="start" spacing={1}>
+                            <Text>{item.nomor || "-"}</Text>
+                            {volumeSesuaiProduksi && (
+                              <Badge colorScheme="green" variant="subtle">
+                                Produksi sesuai
+                              </Badge>
+                            )}
+                          </VStack>
+                        </Td>
                         <Td>{formatTanggal(item.tanggal)}</Td>
                         <Td>{item.mitra?.nama || "-"}</Td>
                         <Td>{item.transportir?.plat || "-"}</Td>
@@ -1083,7 +1142,8 @@ const SuratJalanMitra = () => {
                           </HStack>
                         </Td>
                       </Tr>
-                    ))
+                      );
+                    })
                   ) : (
                     <Tr>
                       <Td colSpan={12} textAlign="center" py={10}>
@@ -1225,7 +1285,6 @@ const SuratJalanMitra = () => {
                           }
                           onChange={(opt) => {
                             setFieldValue("mitraId", opt?.value || null);
-                            setFieldValue("supirId", null);
                           }}
                           {...selectStyles}
                         />
@@ -1407,24 +1466,18 @@ const SuratJalanMitra = () => {
                     <FormControl isInvalid={touched.supirId && errors.supirId}>
                       <FormLabel>Supir</FormLabel>
                       <Select2
-                        options={getSupirByMitra(values.mitraId).map((val) => ({
+                        options={allSupir.map((val) => ({
                           value: val.id,
                           label: val.nama || `Supir #${val.id}`,
                         }))}
-                        placeholder={
-                          values.mitraId
-                            ? "Pilih Supir"
-                            : "Pilih mitra terlebih dahulu"
-                        }
-                        isDisabled={!values.mitraId}
+                        placeholder="Pilih Supir"
                         value={
                           values.supirId
                             ? {
                                 value: values.supirId,
                                 label:
-                                  getSupirByMitra(values.mitraId).find(
-                                    (s) => s.id === values.supirId,
-                                  )?.nama || `Supir #${values.supirId}`,
+                                  allSupir.find((s) => s.id === values.supirId)
+                                    ?.nama || `Supir #${values.supirId}`,
                               }
                             : null
                         }

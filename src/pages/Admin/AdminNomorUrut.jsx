@@ -39,7 +39,7 @@ const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
 const getKeteranganSurat = (item) => {
   if (item.id === 1) {
-    return "Template format nomor surat jalan. Nomor urut mengikuti masing-masing mitra.";
+    return "Template format nomor surat jalan. Nomor urut mengikuti pasangan mitra dan kode asal minyak.";
   }
   if (item.id === 2) {
     return "Template format nomor BAST. Nomor urut BAST mengikuti masing-masing mitra.";
@@ -47,11 +47,15 @@ const getKeteranganSurat = (item) => {
   return "Template format nomor dokumen KPBPN.";
 };
 
+const gabungNomorAsal = (kodeAsal, nomorUrut) =>
+  `${String(kodeAsal || "").trim()}${String(nomorUrut).padStart(3, "0")}`;
+
 function AdminNomorUrut() {
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [dataNomorSurat, setDataNomorSurat] = useState([]);
   const [dataMitra, setDataMitra] = useState([]);
+  const [dataNomorUrutSuratJalan, setDataNomorUrutSuratJalan] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -63,6 +67,7 @@ function AdminNomorUrut() {
       const res = await axios.get(`${API_BASE}/nomor-surat-kpbpn/get`);
       setDataNomorSurat(res.data.resultNomorSurat || []);
       setDataMitra(res.data.resultMitra || []);
+      setDataNomorUrutSuratJalan(res.data.resultNomorUrutSuratJalan || []);
     } catch (err) {
       toast({
         title: "Gagal memuat data",
@@ -80,20 +85,23 @@ function AdminNomorUrut() {
     fetchData();
   }, []);
 
-  const openEdit = (item, jenis) => {
-    const isSuratJalan = jenis === "suratJalan";
+  const openEditBast = (item) => {
     setEditing({
       ...item,
-      jenis,
-      title: isSuratJalan
-        ? `Ubah Nomor Urut Surat Jalan ${item.nama}`
-        : `Ubah Nomor Urut BAST ${item.nama}`,
+      jenis: "bast",
+      title: `Ubah Nomor Urut BAST ${item.nama}`,
     });
-    setNomorUrutInput(
-      String(
-        isSuratJalan ? (item.nomorUrutSuratJalan ?? 0) : (item.nomorUrut ?? 0),
-      ),
-    );
+    setNomorUrutInput(String(item.nomorUrut ?? 0));
+    onOpen();
+  };
+
+  const openEditSuratJalan = (item) => {
+    setEditing({
+      ...item,
+      jenis: "suratJalan",
+      title: `Ubah Nomor Urut Surat Jalan ${item.mitraNama}`,
+    });
+    setNomorUrutInput(String(item.nomorUrut ?? 0));
     onOpen();
   };
 
@@ -106,6 +114,9 @@ function AdminNomorUrut() {
   const nomorBerikutnyaPreview = () => {
     const parsed = parseInt(nomorUrutInput, 10);
     if (Number.isNaN(parsed) || parsed < 0) return "-";
+    if (editing?.jenis === "suratJalan") {
+      return gabungNomorAsal(editing.asalNomor, parsed + 1);
+    }
     return parsed + 1;
   };
 
@@ -124,10 +135,17 @@ function AdminNomorUrut() {
 
     setIsSaving(true);
     try {
-      const res = await axios.post(
-        `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`,
-        { nomorUrut: parsed, jenis: editing.jenis },
-      );
+      const res =
+        editing.jenis === "suratJalan"
+          ? await axios.post(`${API_BASE}/nomor-surat-kpbpn/edit/surat-jalan`, {
+              mitraId: editing.mitraId,
+              asalMinyakId: editing.asalMinyakId,
+              nomorUrut: parsed,
+            })
+          : await axios.post(
+              `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`,
+              { nomorUrut: parsed, jenis: "bast" },
+            );
       toast({
         title: "Berhasil",
         description: res.data.message,
@@ -158,8 +176,9 @@ function AdminNomorUrut() {
             Nomor Urut Surat
           </Heading>
           <Text color="gray.600" mb={6}>
-            Atur nomor urut terakhir per mitra. Dokumen berikutnya akan memakai
-            nilai ini ditambah 1.
+            Nomor urut BAST mengikuti masing-masing mitra. Nomor urut surat
+            jalan mengikuti pasangan mitra dan kode asal minyak, jadi tiap
+            mitra punya urutan sendiri untuk setiap asal.
           </Text>
 
           {isLoading ? (
@@ -174,7 +193,10 @@ function AdminNomorUrut() {
                 </Heading>
                 <Text fontSize="sm" color="gray.600" mb={4}>
                   Template format nomor diambil dari tabel nomor surat KPBPN.
-                  Nomor urut surat jalan dan BAST mengikuti masing-masing mitra.
+                  Contoh surat jalan: 08001/KPBPN-SEN/LOG/X/2026, lalu
+                  08002 untuk asal yang sama, dan 09001 saat asal minyak
+                  berganti. Mitra lain memulai urutannya sendiri, misalnya
+                  08001/KPBPN-SSE/LOG/X/2026.
                 </Text>
                 <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
                   <Table size="sm">
@@ -215,11 +237,11 @@ function AdminNomorUrut() {
 
               <Box>
                 <Heading size="md" mb={2}>
-                  Nomor Urut per Mitra
+                  Nomor Urut BAST per Mitra
                 </Heading>
                 <Text fontSize="sm" color="gray.600" mb={4}>
-                  Setiap mitra memiliki counter sendiri untuk BAST dan surat
-                  jalan. Nomor berikutnya adalah nilai tersimpan + 1.
+                  Setiap mitra memiliki counter BAST sendiri. Nomor berikutnya
+                  adalah nilai tersimpan + 1.
                 </Text>
                 <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
                   <Table size="sm">
@@ -231,14 +253,12 @@ function AdminNomorUrut() {
                         <Th>Nama Mitra</Th>
                         <Th>BAST Terakhir</Th>
                         <Th>BAST Berikutnya</Th>
-                        <Th>Surat Jalan Terakhir</Th>
-                        <Th>Surat Jalan Berikutnya</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       {dataMitra.length === 0 ? (
                         <Tr>
-                          <Td colSpan={8} textAlign="center" py={6}>
+                          <Td colSpan={6} textAlign="center" py={6}>
                             Belum ada data mitra
                           </Td>
                         </Tr>
@@ -261,15 +281,63 @@ function AdminNomorUrut() {
                                   size="xs"
                                   variant="ghost"
                                   colorScheme="blue"
-                                  onClick={() => openEdit(item, "bast")}
+                                  onClick={() => openEditBast(item)}
                                 />
                               </HStack>
                             </Td>
                             <Td>{item.nomorBerikutnya}</Td>
+                          </Tr>
+                        ))
+                      )}
+                    </Tbody>
+                  </Table>
+                </Box>
+              </Box>
+
+              <Box>
+                <Heading size="md" mb={2}>
+                  Nomor Urut Surat Jalan per Asal Minyak
+                </Heading>
+                <Text fontSize="sm" color="gray.600" mb={4}>
+                  Dua digit depan adalah kode asal minyak. Tiga digit berikutnya
+                  adalah nomor urut milik mitra untuk asal tersebut. SEN asal
+                  08 dan SEN asal 09 dihitung terpisah, begitu juga SSE asal 08.
+                </Text>
+                <Box overflowX="auto" borderWidth="1px" borderRadius="lg">
+                  <Table size="sm">
+                    <Thead bg="gray.50">
+                      <Tr>
+                        <Th>No</Th>
+                        <Th>Mitra</Th>
+                        <Th>Kode Asal</Th>
+                        <Th>Asal Minyak</Th>
+                        <Th>Terakhir</Th>
+                        <Th>Berikutnya</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {dataNomorUrutSuratJalan.length === 0 ? (
+                        <Tr>
+                          <Td colSpan={6} textAlign="center" py={6}>
+                            Belum ada pasangan mitra dan asal minyak
+                          </Td>
+                        </Tr>
+                      ) : (
+                        dataNomorUrutSuratJalan.map((item, index) => (
+                          <Tr key={item.id}>
+                            <Td>{index + 1}</Td>
+                            <Td>
+                              <Text fontWeight="medium">{item.mitraNama}</Text>
+                              <Text fontSize="xs" color="gray.500">
+                                {item.mitraKode || "-"}
+                              </Text>
+                            </Td>
+                            <Td>{item.asalNomor || "-"}</Td>
+                            <Td>{item.asalNama || "-"}</Td>
                             <Td>
                               <HStack spacing={1}>
                                 <Text fontWeight="bold">
-                                  {item.nomorUrutSuratJalan ?? 0}
+                                  {item.nomorGabunganTerakhir}
                                 </Text>
                                 <IconButton
                                   aria-label="Ubah nomor urut surat jalan"
@@ -278,11 +346,11 @@ function AdminNomorUrut() {
                                   size="xs"
                                   variant="ghost"
                                   colorScheme="purple"
-                                  onClick={() => openEdit(item, "suratJalan")}
+                                  onClick={() => openEditSuratJalan(item)}
                                 />
                               </HStack>
                             </Td>
-                            <Td>{item.nomorBerikutnyaSuratJalan}</Td>
+                            <Td>{item.nomorGabunganBerikutnya}</Td>
                           </Tr>
                         ))
                       )}
@@ -303,7 +371,9 @@ function AdminNomorUrut() {
           <ModalBody>
             <Alert status="info" borderRadius="md" mb={4}>
               <AlertIcon />
-              Nomor dokumen berikutnya akan memakai nilai ini ditambah 1.
+              {editing?.jenis === "suratJalan"
+                ? `Urutan ini hanya untuk ${editing.mitraNama} pada asal ${editing.asalNomor || "-"} ${editing.asalNama || ""}. Dokumen berikutnya memakai nilai ini ditambah 1.`
+                : "Nomor dokumen berikutnya akan memakai nilai ini ditambah 1."}
             </Alert>
             <FormControl>
               <FormLabel>Nomor urut terakhir</FormLabel>

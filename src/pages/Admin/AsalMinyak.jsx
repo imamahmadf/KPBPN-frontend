@@ -4,6 +4,8 @@ import * as Yup from "yup";
 import axios from "axios";
 import ReactPaginate from "react-paginate";
 import {
+  Alert,
+  AlertIcon,
   Box,
   Button,
   FormControl,
@@ -41,6 +43,9 @@ import "../../Style/pagination.css";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
+const gabungNomorAsal = (kodeAsal, nomorUrut) =>
+  `${String(kodeAsal || "").trim()}${String(nomorUrut).padStart(3, "0")}`;
+
 const asalMinyakSchema = Yup.object({
   nomor: Yup.string().trim().required("Nomor wajib diisi"),
   asal: Yup.string().trim().required("Asal wajib diisi"),
@@ -63,6 +68,10 @@ function AsalMinyak() {
   const [editingAsal, setEditingAsal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [nomorUrutAsal, setNomorUrutAsal] = useState(null);
+  const [editingNomor, setEditingNomor] = useState(null);
+  const [nomorUrutInput, setNomorUrutInput] = useState("");
+  const [isSavingNomor, setIsSavingNomor] = useState(false);
 
   const {
     isOpen: isFormOpen,
@@ -73,6 +82,11 @@ function AsalMinyak() {
     isOpen: isDeleteOpen,
     onOpen: onDeleteOpen,
     onClose: onDeleteClose,
+  } = useDisclosure();
+  const {
+    isOpen: isNomorOpen,
+    onOpen: onNomorOpen,
+    onClose: onNomorClose,
   } = useDisclosure();
 
   const scrollToDataList = () => {
@@ -162,6 +176,66 @@ function AsalMinyak() {
     onDeleteClose();
   };
 
+  const openEditNomor = (asal, row) => {
+    setNomorUrutAsal(asal);
+    setEditingNomor(row);
+    setNomorUrutInput(String(row.nomorUrut ?? 0));
+    onNomorOpen();
+  };
+
+  const closeNomorModal = () => {
+    setNomorUrutAsal(null);
+    setEditingNomor(null);
+    setNomorUrutInput("");
+    onNomorClose();
+  };
+
+  const nomorBerikutnyaPreview = () => {
+    const parsed = parseInt(nomorUrutInput, 10);
+    if (Number.isNaN(parsed) || parsed < 0) return "-";
+    return gabungNomorAsal(nomorUrutAsal?.nomor, parsed + 1);
+  };
+
+  const handleSaveNomor = async () => {
+    const parsed = parseInt(nomorUrutInput, 10);
+    if (!nomorUrutAsal || !editingNomor) return;
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast({
+        title: "Nomor urut tidak valid",
+        description: "Masukkan angka 0 atau lebih",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSavingNomor(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/nomor-surat-kpbpn/edit/surat-jalan`,
+        {
+          mitraId: editingNomor.mitraId,
+          asalMinyakId: nomorUrutAsal.id,
+          nomorUrut: parsed,
+        },
+      );
+      toast({
+        title: "Berhasil",
+        description: res.data.message,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      closeNomorModal();
+      fetchDataAsalMinyak();
+    } catch (err) {
+      showError(err);
+    } finally {
+      setIsSavingNomor(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
 
@@ -192,12 +266,16 @@ function AsalMinyak() {
     <LayoutKPBPN>
       <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
         <Container variant="primary" p="30px" my="30px" minW="1000px">
-          <HStack justify="space-between" mb={6}>
+          <HStack justify="space-between" mb={2}>
             <Heading color="kpbpn">Asal Minyak</Heading>
             <Button variant="primary" onClick={openAddAsal}>
               + Tambah Asal Minyak
             </Button>
           </HStack>
+          <Text color="gray.600" mb={6}>
+            Nomor surat jalan berikutnya dihitung terpisah untuk setiap mitra
+            pada asal minyak ini.
+          </Text>
 
           <Box mb={6} p={4} borderWidth="1px" borderRadius="lg" bg="gray.50">
             <HStack spacing={4} flexWrap="wrap" align="flex-end">
@@ -233,13 +311,14 @@ function AsalMinyak() {
                       <Th>Nomor</Th>
                       <Th>Asal</Th>
                       <Th>Jumlah Surat Jalan</Th>
+                      <Th>Surat Jalan Berikutnya</Th>
                       <Th>Aksi</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {dataAsalMinyak.length === 0 ? (
                       <Tr>
-                        <Td colSpan={5} textAlign="center" py={6}>
+                        <Td colSpan={6} textAlign="center" py={6}>
                           Belum ada data asal minyak
                         </Td>
                       </Tr>
@@ -250,6 +329,38 @@ function AsalMinyak() {
                           <Td fontWeight="medium">{item.nomor || "-"}</Td>
                           <Td>{item.asal || "-"}</Td>
                           <Td>{item.suratJalans?.length ?? 0}</Td>
+                          <Td>
+                            {(item.nomorUrutMitra || []).length === 0 ? (
+                              <Text>-</Text>
+                            ) : (
+                              <VStack align="stretch" spacing={1}>
+                                {item.nomorUrutMitra.map((row) => (
+                                  <HStack
+                                    key={row.mitraId}
+                                    justify="space-between"
+                                    spacing={2}
+                                  >
+                                    <Text fontSize="sm">
+                                      <Text as="span" fontWeight="semibold">
+                                        {row.mitraKode || row.mitraNama}
+                                      </Text>
+                                      {" · "}
+                                      {row.nomorGabunganBerikutnya}
+                                    </Text>
+                                    <IconButton
+                                      aria-label={`Ubah nomor urut ${row.mitraNama}`}
+                                      title={`Ubah nomor urut ${row.mitraNama}`}
+                                      icon={<BsPencil />}
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme="purple"
+                                      onClick={() => openEditNomor(item, row)}
+                                    />
+                                  </HStack>
+                                ))}
+                              </VStack>
+                            )}
+                          </Td>
                           <Td>
                             <HStack spacing={1}>
                               <IconButton
@@ -412,6 +523,57 @@ function AsalMinyak() {
               </Form>
             )}
           </Formik>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={isNomorOpen} onClose={closeNomorModal} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            Nomor Urut {nomorUrutAsal?.nomor || ""} {nomorUrutAsal?.asal || ""}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Alert status="info" borderRadius="md" mb={4}>
+              <AlertIcon />
+              Urutan ini hanya untuk {editingNomor?.mitraNama || "mitra"} pada
+              asal {nomorUrutAsal?.nomor || "-"} {nomorUrutAsal?.asal || ""}.
+              Surat jalan berikutnya memakai nilai terakhir ditambah 1.
+            </Alert>
+            <Text fontSize="sm" color="gray.600" mb={3}>
+              Terakhir saat ini:{" "}
+              <Text as="span" fontWeight="bold">
+                {editingNomor?.nomorGabunganTerakhir || "-"}
+              </Text>
+            </Text>
+            <FormControl>
+              <FormLabel>Nomor urut terakhir</FormLabel>
+              <Input
+                type="number"
+                min={0}
+                value={nomorUrutInput}
+                onChange={(e) => setNomorUrutInput(e.target.value)}
+              />
+            </FormControl>
+            <Text fontSize="sm" color="gray.600" mt={3}>
+              Nomor berikutnya:{" "}
+              <Text as="span" fontWeight="bold">
+                {nomorBerikutnyaPreview()}
+              </Text>
+            </Text>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closeNomorModal}>
+              Batal
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSaveNomor}
+              isLoading={isSavingNomor}
+            >
+              Simpan
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
 
