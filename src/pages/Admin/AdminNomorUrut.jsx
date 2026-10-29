@@ -44,7 +44,36 @@ const getKeteranganSurat = (item) => {
   if (item.id === 2) {
     return "Template format nomor BAST. Nomor urut BAST mengikuti masing-masing mitra.";
   }
+  if (item.id === 3) {
+    return "Template nomor pengajuan barang dan jasa. NOMOR diganti nomor urut, BULAN diganti bulan romawi, TAHUN diganti tahun tanggal pengajuan.";
+  }
   return "Template format nomor dokumen KPBPN.";
+};
+
+const BULAN_ROMAWI = [
+  "I",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "VI",
+  "VII",
+  "VIII",
+  "IX",
+  "X",
+  "XI",
+  "XII",
+];
+
+const susunContohPengajuan = (pola, urut) => {
+  const sekarang = new Date();
+  return String(pola || "")
+    .split("NOMOR")
+    .join(String(urut).padStart(3, "0"))
+    .split("BULAN")
+    .join(BULAN_ROMAWI[sekarang.getMonth()])
+    .split("TAHUN")
+    .join(String(sekarang.getFullYear()));
 };
 
 const gabungNomorAsal = (kodeAsal, nomorUrut) =>
@@ -60,6 +89,7 @@ function AdminNomorUrut() {
   const [isSaving, setIsSaving] = useState(false);
   const [editing, setEditing] = useState(null);
   const [nomorUrutInput, setNomorUrutInput] = useState("");
+  const [formatInput, setFormatInput] = useState("");
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -105,9 +135,21 @@ function AdminNomorUrut() {
     onOpen();
   };
 
+  const openEditPengajuan = (item) => {
+    setEditing({
+      ...item,
+      jenis: "pengajuan",
+      title: "Ubah Nomor Pengajuan",
+    });
+    setNomorUrutInput(String(item.nomorUrut ?? 0));
+    setFormatInput(item.nomor || "");
+    onOpen();
+  };
+
   const closeEdit = () => {
     setEditing(null);
     setNomorUrutInput("");
+    setFormatInput("");
     onClose();
   };
 
@@ -116,6 +158,9 @@ function AdminNomorUrut() {
     if (Number.isNaN(parsed) || parsed < 0) return "-";
     if (editing?.jenis === "suratJalan") {
       return gabungNomorAsal(editing.asalNomor, parsed + 1);
+    }
+    if (editing?.jenis === "pengajuan") {
+      return susunContohPengajuan(formatInput, parsed + 1);
     }
     return parsed + 1;
   };
@@ -133,6 +178,17 @@ function AdminNomorUrut() {
       return;
     }
 
+    if (editing?.jenis === "pengajuan" && !formatInput.includes("NOMOR")) {
+      toast({
+        title: "Format nomor belum lengkap",
+        description: "Format wajib memuat kata NOMOR.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const res =
@@ -142,10 +198,15 @@ function AdminNomorUrut() {
               asalMinyakId: editing.asalMinyakId,
               nomorUrut: parsed,
             })
-          : await axios.post(
-              `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`,
-              { nomorUrut: parsed, jenis: "bast" },
-            );
+          : editing.jenis === "pengajuan"
+            ? await axios.post(
+                `${API_BASE}/nomor-surat-kpbpn/edit/surat/${editing.id}`,
+                { nomorUrut: parsed, nomor: formatInput.trim() },
+              )
+            : await axios.post(
+                `${API_BASE}/nomor-surat-kpbpn/edit/mitra/${editing.id}`,
+                { nomorUrut: parsed, jenis: "bast" },
+              );
       toast({
         title: "Berhasil",
         description: res.data.message,
@@ -177,8 +238,9 @@ function AdminNomorUrut() {
           </Heading>
           <Text color="gray.600" mb={6}>
             Nomor urut BAST mengikuti masing-masing mitra. Nomor urut surat
-            jalan mengikuti pasangan mitra dan kode asal minyak, jadi tiap
-            mitra punya urutan sendiri untuk setiap asal.
+            jalan mengikuti pasangan mitra dan kode asal minyak. Nomor
+            pengajuan memakai format dan nomor urut yang diatur pada baris
+            Pengajuan Barang & Jasa.
           </Text>
 
           {isLoading ? (
@@ -225,7 +287,28 @@ function AdminNomorUrut() {
                               </VStack>
                             </Td>
                             <Td>
-                              <Badge colorScheme="purple">{item.nomor}</Badge>
+                              <VStack align="start" spacing={1}>
+                                <HStack>
+                                  <Badge colorScheme="purple">{item.nomor}</Badge>
+                                  {item.id === 3 && (
+                                    <IconButton
+                                      aria-label="Ubah nomor pengajuan"
+                                      title="Ubah nomor pengajuan"
+                                      icon={<BsPencil />}
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme="orange"
+                                      onClick={() => openEditPengajuan(item)}
+                                    />
+                                  )}
+                                </HStack>
+                                {item.id === 3 && (
+                                  <Text fontSize="xs" color="gray.600">
+                                    Terakhir {item.nomorUrut ?? 0}. Berikutnya{" "}
+                                    {item.contohBerikutnya || "-"}
+                                  </Text>
+                                )}
+                              </VStack>
                             </Td>
                           </Tr>
                         ))
@@ -373,8 +456,24 @@ function AdminNomorUrut() {
               <AlertIcon />
               {editing?.jenis === "suratJalan"
                 ? `Urutan ini hanya untuk ${editing.mitraNama} pada asal ${editing.asalNomor || "-"} ${editing.asalNama || ""}. Dokumen berikutnya memakai nilai ini ditambah 1.`
-                : "Nomor dokumen berikutnya akan memakai nilai ini ditambah 1."}
+                : editing?.jenis === "pengajuan"
+                  ? "Nomor pengajuan berikutnya memakai urutan ini ditambah 1, lalu disusun sesuai format."
+                  : "Nomor dokumen berikutnya akan memakai nilai ini ditambah 1."}
             </Alert>
+            {editing?.jenis === "pengajuan" && (
+              <FormControl mb={4}>
+                <FormLabel>Format nomor</FormLabel>
+                <Input
+                  value={formatInput}
+                  onChange={(e) => setFormatInput(e.target.value)}
+                  placeholder="PBJ/NOMOR/BULAN/TAHUN"
+                />
+                <Text fontSize="xs" color="gray.500" mt={2}>
+                  Gunakan NOMOR untuk urutan, BULAN untuk bulan romawi, dan
+                  TAHUN untuk tahun tanggal pengajuan.
+                </Text>
+              </FormControl>
+            )}
             <FormControl>
               <FormLabel>Nomor urut terakhir</FormLabel>
               <Input

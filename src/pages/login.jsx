@@ -125,6 +125,12 @@ const Login = () => {
         !roleIds.includes(2)
       ) {
         history.push("/keuangan/icp");
+      } else if (
+        roleIds.some((roleId) => [6, 7, 8, 9].includes(roleId)) &&
+        !roleIds.includes(1) &&
+        !roleIds.includes(2)
+      ) {
+        history.push("/pengajuan/daftar");
       } else {
         history.push("/");
       }
@@ -159,18 +165,6 @@ const Login = () => {
 
     if (
       Array.isArray(currentRoles) &&
-      currentRoles.length === 1 &&
-      (currentRoles[0].roleKPBPNId === 9 || currentRoles[0].id === 9)
-    ) {
-      history.push("/pegawai/dashboard");
-    } else if (
-      Array.isArray(currentRoles) &&
-      currentRoles.length === 1 &&
-      (currentRoles[0].roleKPBPNId === 10 || currentRoles[0].id === 10)
-    ) {
-      history.push("/aset/dashboard");
-    } else if (
-      Array.isArray(currentRoles) &&
       currentRoles.some(
         (roleObj) => (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 5,
       ) &&
@@ -193,6 +187,20 @@ const Login = () => {
       )
     ) {
       history.push("/keuangan/icp");
+    } else if (
+      Array.isArray(currentRoles) &&
+      currentRoles.some((roleObj) =>
+        [6, 7, 8, 9].includes(
+          roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id,
+        ),
+      ) &&
+      !currentRoles.some(
+        (roleObj) =>
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 1 ||
+          (roleObj.roleKPBPNId ?? roleObj.roleId ?? roleObj.id) === 2,
+      )
+    ) {
+      history.push("/pengajuan/daftar");
     } else {
       history.push("/");
     }

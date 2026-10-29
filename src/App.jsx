@@ -54,6 +54,11 @@ import LaporanKeuangan from "./pages/Laporan/LaporanKeuangan.jsx";
 import LaporanProduksiSumur from "./pages/Laporan/LaporanProduksiSumur.jsx";
 import RiwayatTanki from "./pages/Tanki/RiwayatTanki.jsx";
 import KlasifikasiSumur from "./pages/Admin/KlasifikasiSumur.jsx";
+import DaftarPengajuan from "./pages/Pengajuan/DaftarPengajuan.jsx";
+import DaftarBarangJasa from "./pages/Pengajuan/DaftarBarangJasa.jsx";
+import DetailBarangJasa from "./pages/Pengajuan/DetailBarangJasa.jsx";
+import FormPengajuan from "./pages/Pengajuan/FormPengajuan.jsx";
+import DetailPengajuan from "./pages/Pengajuan/DetailPengajuan.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -70,7 +75,7 @@ function App() {
             exact
             roleRoute={[1, 2, 3, 5]}
           />
-
+ 
           <Route component={Login} path="/login" />
           <Route component={Register} path="/register" />
           <Route component={Unauthorized} path="/unauthorized" exact />
@@ -314,6 +319,42 @@ function App() {
             path="/admin/nomor-urut"
             exact
             roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={DaftarPengajuan}
+            path="/pengajuan/daftar"
+            exact
+            roleRoute={[1, 2, 4, 6, 7, 8, 9]}
+          />
+          <ProtectedRoute
+            component={DetailBarangJasa}
+            path="/pengajuan/barang-jasa/detail/:id"
+            exact
+            roleRoute={[1, 2, 4, 6, 7, 8, 9]}
+          />
+          <ProtectedRoute
+            component={DaftarBarangJasa}
+            path="/pengajuan/barang-jasa"
+            exact
+            roleRoute={[1, 2, 4, 6, 7, 8, 9]}
+          />
+          <ProtectedRoute
+            component={FormPengajuan}
+            path="/pengajuan/tambah"
+            exact
+            roleRoute={[1, 2, 4]}
+          />
+          <ProtectedRoute
+            component={FormPengajuan}
+            path="/pengajuan/edit/:id"
+            exact
+            roleRoute={[1, 2, 4]}
+          />
+          <ProtectedRoute
+            component={DetailPengajuan}
+            path="/pengajuan/detail/:id"
+            exact
+            roleRoute={[1, 2, 4, 6, 7, 8, 9]}
           />
 
           <ProtectedRoute

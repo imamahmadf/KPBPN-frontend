@@ -74,7 +74,7 @@ import { useColorModeValues } from "../Style/colorModeValues";
 import { FaBell } from "react-icons/fa";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
-import { BsStack, BsFileEarmarkText } from "react-icons/bs";
+import { BsStack, BsFileEarmarkText, BsCart4 } from "react-icons/bs";
 import { GiOilPump } from "react-icons/gi";
 
 const ROLE_KPBPN = {
@@ -83,6 +83,10 @@ const ROLE_KPBPN = {
   MITRA: 3,
   KEUANGAN: 4,
   PETUGAS_KEAMANAN: 5,
+  SUPERVISOR: 6,
+  GENERAL_AFFAIR: 7,
+  HR: 8,
+  GENERAL_MANAGER: 9,
 };
 
 const filterMenusByRole = (menus, userRoleIds) => {
@@ -264,6 +268,25 @@ const menuData = [
     items: [
       { label: "ICP", path: "/keuangan/icp" },
       { label: "Rekapitulasi", path: "/keuangan/rekapitulasi" },
+    ],
+  },
+  {
+    title: "Pengajuan",
+    icon: BsCart4,
+    group: "Pengajuan",
+    pathPrefix: "/pengajuan",
+    allowedRoles: [
+      ROLE_KPBPN.SUPER_ADMIN,
+      ROLE_KPBPN.ADMIN,
+      ROLE_KPBPN.KEUANGAN,
+      ROLE_KPBPN.SUPERVISOR,
+      ROLE_KPBPN.GENERAL_AFFAIR,
+      ROLE_KPBPN.HR,
+      ROLE_KPBPN.GENERAL_MANAGER,
+    ],
+    items: [
+      { label: "Barang & Jasa", path: "/pengajuan/daftar" },
+      { label: "Daftar Item", path: "/pengajuan/barang-jasa" },
     ],
   },
   {

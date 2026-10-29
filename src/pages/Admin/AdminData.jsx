@@ -32,6 +32,7 @@ function AdminData() {
   const suratJalanModal = useDisclosure();
   const pengisianModal = useDisclosure();
   const ujiLabModal = useDisclosure();
+  const pengajuanModal = useDisclosure();
 
   const [stats, setStats] = useState({
     totalSuratJalan: 0,
@@ -42,28 +43,37 @@ function AdminData() {
     totalBABongkarTerkait: 0,
     totalUjiLabK3S: 0,
     totalUjiLabDenganBA: 0,
+    totalPengajuan: 0,
+    totalItemPengajuan: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isDeletingSuratJalan, setIsDeletingSuratJalan] = useState(false);
   const [isDeletingPengisian, setIsDeletingPengisian] = useState(false);
   const [isDeletingUjiLab, setIsDeletingUjiLab] = useState(false);
+  const [isDeletingPengajuan, setIsDeletingPengajuan] = useState(false);
   const [confirmSuratJalan, setConfirmSuratJalan] = useState("");
   const [confirmPengisian, setConfirmPengisian] = useState("");
   const [confirmUjiLab, setConfirmUjiLab] = useState("");
+  const [confirmPengajuan, setConfirmPengajuan] = useState("");
 
   const fetchStats = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/pengiriman/admin/stats`);
+      const [suratRes, pengajuanRes] = await Promise.all([
+        axios.get(`${API_BASE}/pengiriman/admin/stats`),
+        axios.get(`${API_BASE}/pengajuan-barjas/admin/stats`),
+      ]);
       setStats({
-        totalSuratJalan: res.data.totalSuratJalan || 0,
-        totalKonfirmasi: res.data.totalKonfirmasi || 0,
-        totalProduksi: res.data.totalProduksi || 0,
-        totalPengisianTanki: res.data.totalPengisianTanki || 0,
-        totalPengisianDenganBA: res.data.totalPengisianDenganBA || 0,
-        totalBABongkarTerkait: res.data.totalBABongkarTerkait || 0,
-        totalUjiLabK3S: res.data.totalUjiLabK3S || 0,
-        totalUjiLabDenganBA: res.data.totalUjiLabDenganBA || 0,
+        totalSuratJalan: suratRes.data.totalSuratJalan || 0,
+        totalKonfirmasi: suratRes.data.totalKonfirmasi || 0,
+        totalProduksi: suratRes.data.totalProduksi || 0,
+        totalPengisianTanki: suratRes.data.totalPengisianTanki || 0,
+        totalPengisianDenganBA: suratRes.data.totalPengisianDenganBA || 0,
+        totalBABongkarTerkait: suratRes.data.totalBABongkarTerkait || 0,
+        totalUjiLabK3S: suratRes.data.totalUjiLabK3S || 0,
+        totalUjiLabDenganBA: suratRes.data.totalUjiLabDenganBA || 0,
+        totalPengajuan: pengajuanRes.data.totalPengajuan || 0,
+        totalItemPengajuan: pengajuanRes.data.totalItem || 0,
       });
     } catch (err) {
       toast({
@@ -95,6 +105,11 @@ function AdminData() {
   const closeUjiLabModal = () => {
     setConfirmUjiLab("");
     ujiLabModal.onClose();
+  };
+
+  const closePengajuanModal = () => {
+    setConfirmPengajuan("");
+    pengajuanModal.onClose();
   };
 
   const handleDeleteAllSuratJalan = async () => {
@@ -187,6 +202,34 @@ function AdminData() {
     }
   };
 
+  const handleDeleteAllPengajuan = async () => {
+    if (confirmPengajuan !== CONFIRM_TEXT) return;
+
+    setIsDeletingPengajuan(true);
+    try {
+      const res = await axios.post(`${API_BASE}/pengajuan-barjas/admin/delete-all`);
+      toast({
+        title: "Berhasil",
+        description: res.data.message,
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+      closePengajuanModal();
+      fetchStats();
+    } catch (err) {
+      toast({
+        title: "Gagal menghapus data",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingPengajuan(false);
+    }
+  };
+
   return (
     <LayoutKPBPN>
       <Box bgColor="secondary" pb="40px" px="30px" minH="90vh">
@@ -196,7 +239,8 @@ function AdminData() {
           </Heading>
           <Text color="gray.600" mb={6}>
             Halaman ini digunakan untuk menghapus seluruh data surat jalan,
-            pengisian tanki, atau uji lab K3S. Tindakan ini bersifat permanen.
+            pengisian tanki, uji lab K3S, atau pengajuan barang dan jasa.
+            Tindakan ini bersifat permanen.
           </Text>
 
           <VStack spacing={6} align="stretch">
@@ -314,6 +358,44 @@ function AdminData() {
                   isDisabled={isLoading || stats.totalUjiLabK3S === 0}
                 >
                   Hapus Semua Uji Lab K3S
+                </Button>
+              </HStack>
+            </Box>
+
+            <Box borderWidth="1px" borderRadius="lg" p={6}>
+              <Alert status="warning" borderRadius="md" mb={6}>
+                <AlertIcon />
+                Menghapus pengajuan juga menghapus item dan foto di dalamnya.
+                Stok yang masuk dari pengajuan ikut dikurangi. Daftar item
+                terdaftar tetap ada.
+              </Alert>
+              <HStack justify="space-between" align="flex-start" spacing={6}>
+                <Box>
+                  <Text fontWeight="bold" fontSize="lg" mb={2}>
+                    Pengajuan Barang & Jasa
+                  </Text>
+                  {isLoading ? (
+                    <Spinner size="sm" color="kpbpn" />
+                  ) : (
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="sm" color="gray.700">
+                        Jumlah pengajuan:{" "}
+                        <Text as="span" fontWeight="bold">
+                          {stats.totalPengajuan}
+                        </Text>
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Item terkait: {stats.totalItemPengajuan}
+                      </Text>
+                    </VStack>
+                  )}
+                </Box>
+                <Button
+                  colorScheme="red"
+                  onClick={pengajuanModal.onOpen}
+                  isDisabled={isLoading || stats.totalPengajuan === 0}
+                >
+                  Hapus Semua Pengajuan
                 </Button>
               </HStack>
             </Box>
@@ -453,6 +535,54 @@ function AdminData() {
               onClick={handleDeleteAllUjiLab}
               isLoading={isDeletingUjiLab}
               isDisabled={confirmUjiLab !== CONFIRM_TEXT}
+            >
+              Hapus Semua
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={pengajuanModal.isOpen}
+        onClose={closePengajuanModal}
+        size="md"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Konfirmasi Hapus Semua Pengajuan</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text mb={3}>
+              Anda akan menghapus{" "}
+              <Text as="span" fontWeight="bold">
+                {stats.totalPengajuan} pengajuan
+              </Text>{" "}
+              dan {stats.totalItemPengajuan} item di dalamnya, termasuk fotonya.
+              Stok yang berasal dari pengajuan ikut dikurangi. Tindakan ini
+              tidak dapat dibatalkan.
+            </Text>
+            <Text fontSize="sm" mb={2}>
+              Ketik{" "}
+              <Text as="span" fontWeight="bold">
+                {CONFIRM_TEXT}
+              </Text>{" "}
+              untuk konfirmasi.
+            </Text>
+            <Input
+              placeholder={CONFIRM_TEXT}
+              value={confirmPengajuan}
+              onChange={(e) => setConfirmPengajuan(e.target.value)}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closePengajuanModal}>
+              Batal
+            </Button>
+            <Button
+              colorScheme="red"
+              onClick={handleDeleteAllPengajuan}
+              isLoading={isDeletingPengajuan}
+              isDisabled={confirmPengajuan !== CONFIRM_TEXT}
             >
               Hapus Semua
             </Button>
