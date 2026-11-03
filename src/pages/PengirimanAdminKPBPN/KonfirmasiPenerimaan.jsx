@@ -185,6 +185,7 @@ const decimalFieldSchema = (label) =>
       return num !== null && num >= 0;
     });
 
+const STATUS_TIBA = 3;
 const STATUS_BONGKAR = 5;
 const STATUS_VOLUME = 6;
 
@@ -265,6 +266,18 @@ const bisaEditKonfirmasi = (item, isPetugasKeamanan) =>
   !isPetugasKeamanan &&
   [STATUS_VOLUME, STATUS_BONGKAR].includes(item?.suratJalan?.statusSuratJalanId);
 
+const bisaHapusKonfirmasi = (item, isPetugasKeamanan) =>
+  !isPetugasKeamanan &&
+  [STATUS_VOLUME, STATUS_BONGKAR, STATUS_TIBA].includes(
+    item?.suratJalan?.statusSuratJalanId,
+  );
+
+const bisaHapusTiba = (item, isPetugasKeamanan) =>
+  !isPetugasKeamanan &&
+  [STATUS_TIBA, STATUS_VOLUME, STATUS_BONGKAR].includes(
+    item?.suratJalan?.statusSuratJalanId,
+  );
+
 const FileUploadField = ({
   label,
   preview,
@@ -324,6 +337,11 @@ function KonfirmasiPenerimaan() {
     onOpen: onEditOpen,
     onClose: onEditClose,
   } = useDisclosure();
+  const {
+    isOpen: isDeleteOpen,
+    onOpen: onDeleteOpen,
+    onClose: onDeleteClose,
+  } = useDisclosure();
   const [rows, setRows] = useState([]);
   const [totalRows, setTotalRows] = useState(0);
   const [page, setPage] = useState(0);
@@ -333,6 +351,9 @@ function KonfirmasiPenerimaan() {
   const [isLoading, setIsLoading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteMode, setDeleteMode] = useState("konfirmasi");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const unduhBeritaAcara = async (item) => {
     try {
@@ -447,6 +468,98 @@ function KonfirmasiPenerimaan() {
   const closeEdit = () => {
     setEditing(null);
     onEditClose();
+  };
+
+  const openDelete = (item, mode = "konfirmasi") => {
+    const diizinkan =
+      mode === "tiba"
+        ? bisaHapusTiba(item, isPetugasKeamanan)
+        : bisaHapusKonfirmasi(item, isPetugasKeamanan);
+    if (!diizinkan) {
+      toast({
+        title: "Tidak dapat dihapus",
+        description: isPetugasKeamanan
+          ? "Petugas Keamanan tidak dapat menghapus data ini"
+          : mode === "tiba"
+            ? "Data kendaraan tiba hanya dapat dihapus saat status TIBA, VOLUME, atau BONGKAR"
+            : "Konfirmasi penerimaan hanya dapat dihapus saat status TIBA, VOLUME, atau BONGKAR",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+    setDeleteMode(mode);
+    setDeleteTarget(item);
+    onDeleteOpen();
+  };
+
+  const closeDelete = () => {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+    setDeleteMode("konfirmasi");
+    onDeleteClose();
+  };
+
+  const submitDelete = async () => {
+    const diizinkan =
+      deleteMode === "tiba"
+        ? bisaHapusTiba(deleteTarget, isPetugasKeamanan)
+        : bisaHapusKonfirmasi(deleteTarget, isPetugasKeamanan);
+    if (!diizinkan) return;
+    if (!deleteTarget?.id) return;
+
+    const hapusTiba = deleteMode === "tiba";
+    setIsDeleting(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/pengiriman/delete/konfirmasi/${deleteTarget.id}`,
+        { jenis: hapusTiba ? "tiba" : "konfirmasi" },
+      );
+      toast({
+        title: "Berhasil",
+        description:
+          res.data?.message ||
+          (hapusTiba
+            ? "Data kendaraan tiba berhasil dihapus"
+            : "Konfirmasi penerimaan berhasil dihapus"),
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+
+      if (selected?.id === deleteTarget.id) {
+        setSelected(null);
+        onClose();
+      }
+      if (editing?.id === deleteTarget.id) {
+        closeEdit();
+      }
+
+      const sisaDiHalaman = rows.length;
+      setDeleteTarget(null);
+      setDeleteMode("konfirmasi");
+      onDeleteClose();
+
+      if (hapusTiba && sisaDiHalaman === 1 && page > 0) {
+        setPage((prev) => prev - 1);
+      } else {
+        fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal menghapus",
+        description:
+          err.response?.data?.error ||
+          "Gagal menghapus konfirmasi penerimaan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const submitEdit = async (values, { setSubmitting }) => {
@@ -655,7 +768,7 @@ function KonfirmasiPenerimaan() {
                         {formatAngka(item.volumeAkhir)}
                       </Field>
                     </SimpleGrid>
-                    <HStack>
+                    <HStack flexWrap="wrap">
                       <Button size="sm" variant="outline" onClick={() => openDetail(item)}>
                         Detail
                       </Button>
@@ -667,6 +780,26 @@ function KonfirmasiPenerimaan() {
                           onClick={() => openEdit(item)}
                         >
                           Edit
+                        </Button>
+                      )}
+                      {bisaHapusKonfirmasi(item, isPetugasKeamanan) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="red"
+                          onClick={() => openDelete(item)}
+                        >
+                          Hapus Konfirmasi
+                        </Button>
+                      )}
+                      {bisaHapusTiba(item, isPetugasKeamanan) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="red"
+                          onClick={() => openDelete(item, "tiba")}
+                        >
+                          Hapus Tiba
                         </Button>
                       )}
                       {bisaUnduhBeritaAcara(item) && (
@@ -765,7 +898,7 @@ function KonfirmasiPenerimaan() {
                       <Td>{formatAngka(item.api)}</Td>
                       <Td>{formatAngka(item.BSNW)}</Td>
                       <Td>
-                        <HStack>
+                        <HStack flexWrap="wrap">
                           <Button
                             size="sm"
                             variant="outline"
@@ -781,6 +914,26 @@ function KonfirmasiPenerimaan() {
                               onClick={() => openEdit(item)}
                             >
                               Edit
+                            </Button>
+                          )}
+                          {bisaHapusKonfirmasi(item, isPetugasKeamanan) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="red"
+                              onClick={() => openDelete(item)}
+                            >
+                              Hapus Konfirmasi
+                            </Button>
+                          )}
+                          {bisaHapusTiba(item, isPetugasKeamanan) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="red"
+                              onClick={() => openDelete(item, "tiba")}
+                            >
+                              Hapus Tiba
                             </Button>
                           )}
                           {bisaUnduhBeritaAcara(item) && (
@@ -940,6 +1093,24 @@ function KonfirmasiPenerimaan() {
                 onClick={() => unduhBeritaAcara(selected)}
               >
                 Unduh Berita Acara
+              </Button>
+            )}
+            {bisaHapusKonfirmasi(selected, isPetugasKeamanan) && selected && (
+              <Button
+                variant="outline"
+                colorScheme="red"
+                onClick={() => openDelete(selected)}
+              >
+                Hapus Konfirmasi
+              </Button>
+            )}
+            {bisaHapusTiba(selected, isPetugasKeamanan) && selected && (
+              <Button
+                variant="outline"
+                colorScheme="red"
+                onClick={() => openDelete(selected, "tiba")}
+              >
+                Hapus Tiba
               </Button>
             )}
             <Button variant="primary" onClick={onClose}>
@@ -1188,6 +1359,66 @@ function KonfirmasiPenerimaan() {
               );
             }}
           </Formik>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isDeleteOpen}
+        onClose={closeDelete}
+        isCentered
+        closeOnOverlayClick={!isDeleting}
+        closeOnEsc={!isDeleting}
+      >
+        <ModalOverlay />
+        <ModalContent mx={4} maxW={{ base: "calc(100vw - 2rem)", md: "md" }}>
+          <ModalHeader pr={12}>
+            {deleteMode === "tiba"
+              ? "Hapus Data Kendaraan Tiba"
+              : "Hapus Konfirmasi Penerimaan"}
+          </ModalHeader>
+          <ModalCloseButton isDisabled={isDeleting} />
+          <ModalBody>
+            <Text>
+              Apakah Anda yakin ingin menghapus{" "}
+              {deleteMode === "tiba"
+                ? "data kendaraan tiba"
+                : "konfirmasi penerimaan"}{" "}
+              <Text as="span" fontWeight="bold">
+                {deleteTarget?.nomor || `#${deleteTarget?.id || "-"}`}
+              </Text>{" "}
+              untuk surat jalan{" "}
+              <Text as="span" fontWeight="bold">
+                {deleteTarget?.suratJalan?.nomor || "-"}
+              </Text>
+              ?
+            </Text>
+            <Text fontSize="sm" color="gray.500" mt={2}>
+              {deleteMode === "tiba"
+                ? "Jam kedatangan, foto kedatangan, dan data konfirmasi yang masih ada ikut dihapus. Status surat jalan dikembalikan ke KIRIM. Data yang sudah dipakai pada pengisian tanki tidak dapat dihapus."
+                : "Nomor, volume, data lab, dan foto lab dihapus. Jam kedatangan dan foto kedatangan tetap disimpan. Status surat jalan dikembalikan ke TIBA. Data yang sudah dipakai pada pengisian tanki tidak dapat dihapus."}
+            </Text>
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={closeDelete}
+              isDisabled={isDeleting}
+            >
+              Batal
+            </Button>
+            <Button
+              colorScheme="red"
+              w={{ base: "full", sm: "auto" }}
+              onClick={submitDelete}
+              isLoading={isDeleting}
+            >
+              {deleteMode === "tiba" ? "Hapus Tiba" : "Hapus Konfirmasi"}
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
     </LayoutKPBPN>

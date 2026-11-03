@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import {
+  Alert,
+  AlertDescription,
+  AlertIcon,
   Badge,
   Box,
   Button,
@@ -298,6 +301,7 @@ function DetailBAK3S({ match }) {
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sumurTidakValid, setSumurTidakValid] = useState([]);
   const [produksiPanel, setProduksiPanel] = useState({
     loading: false,
     saving: false,
@@ -421,6 +425,7 @@ function DetailBAK3S({ match }) {
         sumberReferensi,
         usedSumberDefault,
       }));
+      setSumurTidakValid([]);
       setIsEditing(existingProduksi.length === 0);
       setEditSnapshot(null);
     } catch (err) {
@@ -450,6 +455,36 @@ function DetailBAK3S({ match }) {
         [sumurMinyakId]: value,
       },
     }));
+    if (!(parseProduksiNumber(value) > 0)) {
+      setSumurTidakValid((prev) =>
+        prev.filter((item) => item.id !== Number(sumurMinyakId)),
+      );
+    }
+  };
+
+  const labelSumurTidakValid = (item) => {
+    const nama = item?.nama || `Sumur #${item?.id}`;
+    return item?.nomor ? `${nama} (${item.nomor})` : nama;
+  };
+
+  const kosongkanSumurTidakValid = () => {
+    const invalidIds = new Set(sumurTidakValid.map((item) => Number(item.id)));
+    setProduksiPanel((prev) => {
+      const inputs = { ...prev.inputs };
+      Object.keys(inputs).forEach((key) => {
+        if (invalidIds.has(Number(key))) inputs[key] = "";
+      });
+      return { ...prev, inputs };
+    });
+    setSumurTidakValid([]);
+    toast({
+      title: "Produksi sumur tidak valid dikosongkan",
+      description:
+        "Hanya produksi sumur yang ditolak yang dikosongkan. Produksi sumur lain, satuan, dan data BAK3S tidak diubah. Simpan kembali setelah nilai ini sesuai.",
+      status: "info",
+      duration: 6000,
+      isClosable: true,
+    });
   };
 
   const handleSatuanChange = (e) => {
@@ -569,6 +604,7 @@ function DetailBAK3S({ match }) {
     }
     setIsEditing(false);
     setEditSnapshot(null);
+    setSumurTidakValid([]);
   };
 
   const autoFillProduksiSumur = () => {
@@ -697,14 +733,27 @@ function DetailBAK3S({ match }) {
       await Promise.all([fetchDetail(), fetchProduksiPanel()]);
       setIsEditing(false);
       setEditSnapshot(null);
+      setSumurTidakValid([]);
     } catch (err) {
       console.error(err);
+      const tidakValid = Array.isArray(err.response?.data?.sumurTidakValid)
+        ? err.response.data.sumurTidakValid
+            .map((item) => ({
+              id: Number(item?.id),
+              nama: item?.nama || null,
+              nomor: item?.nomor || null,
+            }))
+            .filter((item) => Number.isInteger(item.id) && item.id > 0)
+        : [];
+      setSumurTidakValid(tidakValid);
+      const namaSumur = tidakValid.map(labelSumurTidakValid).join(", ");
       toast({
         title: "Gagal menyimpan",
-        description:
-          err.response?.data?.error || "Gagal menyimpan produksi sumur",
+        description: tidakValid.length
+          ? `${err.response?.data?.error}. Kosongkan produksi: ${namaSumur}. Data lain tidak perlu diubah.`
+          : err.response?.data?.error || "Gagal menyimpan produksi sumur",
         status: "error",
-        duration: 5000,
+        duration: 7000,
         isClosable: true,
       });
     } finally {
@@ -1573,6 +1622,30 @@ function DetailBAK3S({ match }) {
                       </Text>
                     )}
 
+                    {sumurTidakValid.length > 0 && (
+                      <Alert status="error" borderRadius="md" mb={3} alignItems="flex-start">
+                        <AlertIcon />
+                        <Box flex="1">
+                          <AlertDescription fontSize="sm">
+                            Sumur berikut tidak valid untuk mitra terkait:{" "}
+                            {sumurTidakValid.map(labelSumurTidakValid).join(", ")}
+                            . Kosongkan produksinya, lalu simpan kembali. Produksi
+                            sumur lain, satuan, surat jalan, dan data BAK3S tidak
+                            diubah.
+                          </AlertDescription>
+                          <Button
+                            mt={3}
+                            size="sm"
+                            colorScheme="red"
+                            variant="outline"
+                            onClick={kosongkanSumurTidakValid}
+                          >
+                            Kosongkan sumur tidak valid
+                          </Button>
+                        </Box>
+                      </Alert>
+                    )}
+
                     <ProduksiSumurList
                       sumurList={produksiPanel.sumurList}
                       inputs={produksiPanel.inputs}
@@ -1583,6 +1656,7 @@ function DetailBAK3S({ match }) {
                       showSumberColumn
                       sumberInputs={produksiPanel.defaultProduksi}
                       sumberReferensi={produksiPanel.sumberReferensi}
+                      invalidSumurIds={sumurTidakValid.map((item) => item.id)}
                     />
                   </>
                 )}

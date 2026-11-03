@@ -354,9 +354,12 @@ export const ProduksiSumurList = ({
   sumberColumnLabel = "Produksi Surat Jalan",
   produksiColumnLabel,
   primarySatuan,
+  invalidSumurIds = [],
 }) => {
   const k3sColumnLabel =
     produksiColumnLabel || `Produksi BAK3S (${produksiSatuanLabel})`;
+  const invalidSet = new Set(invalidSumurIds.map((id) => Number(id)));
+  const isInvalidSumur = (sumur) => invalidSet.has(Number(sumur.id));
 
   const renderProduksiValue = (sumur, compact) => {
     if (isEditing) {
@@ -402,19 +405,26 @@ export const ProduksiSumurList = ({
             p={3}
             borderWidth="1px"
             borderRadius="md"
-            bg="white"
+            borderColor={isInvalidSumur(sumur) ? "red.300" : "gray.200"}
+            bg={isInvalidSumur(sumur) ? "red.50" : "white"}
             minW={0}
           >
             <HStack justify="space-between" mb={3} align="start" spacing={3}>
-              <Text
-                fontWeight="bold"
-                color="kpbpn"
-                fontSize="sm"
-                wordBreak="break-word"
-                minW={0}
-              >
-                {sumur.nama || "-"}
-              </Text>
+              <Box minW={0}>
+                <Text
+                  fontWeight="bold"
+                  color="kpbpn"
+                  fontSize="sm"
+                  wordBreak="break-word"
+                >
+                  {sumur.nama || "-"}
+                </Text>
+                {isInvalidSumur(sumur) && (
+                  <Text fontSize="xs" color="red.600">
+                    Tidak valid untuk mitra terkait
+                  </Text>
+                )}
+              </Box>
               <Text fontSize="xs" color="gray.500" flexShrink={0}>
                 No. {index + 1}
               </Text>
@@ -487,7 +497,7 @@ export const ProduksiSumurList = ({
           </Thead>
           <Tbody>
             {sumurList.map((sumur, index) => (
-              <Tr key={sumur.id}>
+              <Tr key={sumur.id} bg={isInvalidSumur(sumur) ? "red.50" : undefined}>
                 <Td>{index + 1}</Td>
                 {showMitraColumn && (
                   <Td>
@@ -496,6 +506,11 @@ export const ProduksiSumurList = ({
                 )}
                 <Td>
                   <Text noOfLines={2}>{sumur.nama || "-"}</Text>
+                  {isInvalidSumur(sumur) && (
+                    <Text fontSize="xs" color="red.600">
+                      Tidak valid untuk mitra terkait
+                    </Text>
+                  )}
                 </Td>
                 <Td>{sumur.nomor || "-"}</Td>
                 {showSumberColumn && (
