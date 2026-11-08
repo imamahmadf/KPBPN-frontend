@@ -404,6 +404,86 @@ const selectStyles = {
   },
 };
 
+const filterSelectStyles = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : undefined,
+  styles: {
+    menuPortal: (base) => ({ ...base, zIndex: 2000 }),
+  },
+  chakraStyles: {
+    container: (provided) => ({
+      ...provided,
+      width: "100%",
+    }),
+    control: (provided) => ({
+      ...provided,
+      bg: "white",
+      border: "1px solid",
+      borderColor: "gray.200",
+      borderRadius: "md",
+      minH: "44px",
+      h: "44px",
+      boxShadow: "none",
+      fontSize: "sm",
+      _hover: { borderColor: "kpbpn" },
+    }),
+    valueContainer: (provided) => ({
+      ...provided,
+      px: 3,
+    }),
+    placeholder: (provided) => ({
+      ...provided,
+      color: "gray.400",
+      fontSize: "sm",
+    }),
+    singleValue: (provided) => ({
+      ...provided,
+      fontSize: "sm",
+      color: "gray.800",
+    }),
+    dropdownIndicator: (provided) => ({
+      ...provided,
+      bg: "transparent",
+      color: "gray.500",
+      px: 2,
+    }),
+    clearIndicator: (provided) => ({
+      ...provided,
+      color: "gray.400",
+      px: 1,
+    }),
+    indicatorSeparator: (provided) => ({
+      ...provided,
+      display: "none",
+    }),
+    menuList: (provided) => ({
+      ...provided,
+      py: 1,
+    }),
+    option: (provided, state) => ({
+      ...provided,
+      fontSize: "sm",
+      bg: state.isSelected ? "kpbpn" : state.isFocused ? "orange.50" : "white",
+      color: state.isSelected ? "white" : "gray.800",
+    }),
+  },
+};
+
+const filterInputProps = {
+  bg: "white",
+  h: "44px",
+  borderColor: "gray.200",
+  borderRadius: "md",
+  fontSize: "sm",
+  _hover: { borderColor: "kpbpn" },
+  _focusVisible: {
+    borderColor: "kpbpn",
+    boxShadow: "0 0 0 1px var(--chakra-colors-kpbpn)",
+  },
+};
+
+const selectedFilterOption = (options, id) =>
+  options.find((option) => option.value === id) || null;
+
 const fullModalContentProps = {
   mx: { base: 0, md: 4 },
   my: { base: 0, md: "auto" },
@@ -554,6 +634,129 @@ const formatAsalMinyakLabel = (val) => {
   return val.asal || val.nomor || `Asal #${val.id}`;
 };
 
+const KENDARAAN_OPERASIONAL_GROUPS = [
+  {
+    key: "dalamPerjalanan",
+    title: "Dalam Perjalanan",
+    hint: "Status KIRIM",
+    color: "blue",
+  },
+  {
+    key: "tiba",
+    title: "Tiba",
+    hint: "Status TIBA",
+    color: "green",
+  },
+  {
+    key: "bongkar",
+    title: "Bongkar",
+    hint: "Belum ada pengisian tangki",
+    color: "orange",
+  },
+];
+
+const KendaraanOperasionalBoard = ({ data, isLoading }) => (
+  <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={4} mb={6}>
+    {KENDARAAN_OPERASIONAL_GROUPS.map((group) => {
+      const items = data?.[group.key] || [];
+
+      return (
+        <Box
+          key={group.key}
+          border="1px solid"
+          borderColor={`${group.color}.200`}
+          borderRadius="lg"
+          bg="white"
+          overflow="hidden"
+        >
+          <Flex
+            px={4}
+            py={3}
+            bg={`${group.color}.50`}
+            align="center"
+            justify="space-between"
+            gap={3}
+          >
+            <Box>
+              <Text fontWeight="bold" color={`${group.color}.700`}>
+                {group.title}
+              </Text>
+              <Text fontSize="xs" color="gray.600">
+                {group.hint}
+              </Text>
+            </Box>
+            <Badge
+              colorScheme={group.color}
+              borderRadius="full"
+              px={2.5}
+              py={0.5}
+            >
+              {isLoading ? "…" : items.length}
+            </Badge>
+          </Flex>
+          <Box maxH="280px" overflowY="auto" px={3} py={3}>
+            {isLoading ? (
+              <Stack spacing={3}>
+                <Skeleton height="64px" borderRadius="md" />
+                <Skeleton height="64px" borderRadius="md" />
+              </Stack>
+            ) : items.length === 0 ? (
+              <Text fontSize="sm" color="gray.500" py={6} textAlign="center">
+                Tidak ada kendaraan
+              </Text>
+            ) : (
+              <Stack spacing={2}>
+                {items.map((item) => (
+                  <Box
+                    key={item.id}
+                    as={RouterLink}
+                    to={`/pengiriman-kpbpn/detail-surat-jalan/${item.id}`}
+                    display="block"
+                    p={3}
+                    borderRadius="md"
+                    border="1px solid"
+                    borderColor="gray.100"
+                    _hover={{
+                      bg: `${group.color}.50`,
+                      borderColor: `${group.color}.200`,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Flex justify="space-between" align="start" gap={2}>
+                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                        {item.plat || "Tanpa plat"}
+                      </Text>
+                      <Text
+                        fontSize="xs"
+                        color="gray.500"
+                        textAlign="right"
+                        flexShrink={0}
+                      >
+                        {item.nomor || "-"}
+                      </Text>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.600" mt={1}>
+                      {[item.supir, item.mitra].filter(Boolean).join(" · ") ||
+                        "-"}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      {item.stasiun || "-"}
+                      {" · "}
+                      {item.volume != null
+                        ? `${formatVolumeNumber(item.volume)} ${item.satuan || "Barrel"}`
+                        : "-"}
+                    </Text>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        </Box>
+      );
+    })}
+  </SimpleGrid>
+);
+
 const MobileField = ({ label, children }) => (
   <Box>
     <Text
@@ -627,6 +830,12 @@ const SuratJalan = () => {
   const [konfirmasiMode, setKonfirmasiMode] = useState("tiba");
 
   const [dataSuratJalan, setDataSuratJalan] = useState([]);
+  const [kendaraanOperasional, setKendaraanOperasional] = useState({
+    dalamPerjalanan: [],
+    tiba: [],
+    bongkar: [],
+  });
+  const [loadingKendaraan, setLoadingKendaraan] = useState(false);
   const [dataSeed, setDataSeed] = useState(null);
   const [page, setPage] = useState(0);
   const [limit] = useState(50);
@@ -647,6 +856,72 @@ const SuratJalan = () => {
   const [sortOrder, setSortOrder] = useState("DESC");
 
   const allSupir = dataSeed?.resultSupir || [];
+  const mitraOptions = useMemo(
+    () =>
+      (dataSeed?.resultMitra || []).map((val) => ({
+        value: val.id,
+        label: val.nama || `Mitra #${val.id}`,
+      })),
+    [dataSeed],
+  );
+  const transportirOptions = useMemo(
+    () =>
+      (dataSeed?.resultTransportir || []).map((val) => ({
+        value: val.id,
+        label: val.plat || `Transportir #${val.id}`,
+      })),
+    [dataSeed],
+  );
+  const supirOptions = useMemo(
+    () =>
+      allSupir.map((val) => ({
+        value: val.id,
+        label: val.nama || `Supir #${val.id}`,
+      })),
+    [allSupir],
+  );
+  const stasiunOptions = useMemo(
+    () =>
+      (dataSeed?.resultStasiunPengumpulMinyak || []).map((val) => ({
+        value: val.id,
+        label: val.nama,
+      })),
+    [dataSeed],
+  );
+  const statusOptions = useMemo(
+    () =>
+      (dataSeed?.resultStatusSuratJalan || []).map((val) => ({
+        value: val.id,
+        label: val.status || `Status #${val.id}`,
+      })),
+    [dataSeed],
+  );
+  const sortByOptions = [
+    { value: "id", label: "Index" },
+    { value: "tanggal", label: "Tanggal" },
+    { value: "nomor", label: "Nomor" },
+    { value: "volume", label: "Volume" },
+  ];
+  const sortOrderOptions =
+    sortBy === "volume"
+      ? [
+          { value: "DESC", label: "Volume Terbesar" },
+          { value: "ASC", label: "Volume Terkecil" },
+        ]
+      : sortBy === "nomor"
+        ? [
+            { value: "ASC", label: "Nomor A-Z" },
+            { value: "DESC", label: "Nomor Z-A" },
+          ]
+        : sortBy === "tanggal"
+          ? [
+              { value: "DESC", label: "Tanggal Terbaru" },
+              { value: "ASC", label: "Tanggal Terlama" },
+            ]
+          : [
+              { value: "DESC", label: "Index Terbesar" },
+              { value: "ASC", label: "Index Terkecil" },
+            ];
 
   const initialValuesEdit = useMemo(() => {
     if (!editingSuratJalan) {
@@ -756,8 +1031,34 @@ const SuratJalan = () => {
     }
   };
 
+  const fetchKendaraanOperasional = async () => {
+    setLoadingKendaraan(true);
+    try {
+      const res = await axios.get(
+        `${API_BASE}/pengiriman/get/kendaraan-operasional`,
+      );
+      setKendaraanOperasional({
+        dalamPerjalanan: res.data.dalamPerjalanan || [],
+        tiba: res.data.tiba || [],
+        bongkar: res.data.bongkar || [],
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error!",
+        description: "Gagal memuat informasi kendaraan",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingKendaraan(false);
+    }
+  };
+
   const fetchDataSuratJalan = async () => {
     setIsLoading(true);
+    fetchKendaraanOperasional();
     try {
       const res = await axios.get(`${API_BASE}/pengiriman/get`, {
         params: {
@@ -1772,224 +2073,172 @@ const SuratJalan = () => {
 
           <Divider mb={6} />
 
-          <Box mb={6}>
-            <Heading size="md" mb={4} color="kpbpn">
-              Filter Pencarian
-            </Heading>
-            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Mitra
-                </FormLabel>
-                <Select2
-                  options={(dataSeed?.resultMitra || []).map((val) => ({
-                    value: val.id,
-                    label: val.nama || `Mitra #${val.id}`,
-                  }))}
-                  placeholder="Pilih Mitra"
-                  onChange={(opt) => setMitraFilterId(opt?.value || 0)}
-                  {...selectStyles}
-                />
-              </FormControl>
+          <KendaraanOperasionalBoard
+            data={kendaraanOperasional}
+            isLoading={loadingKendaraan}
+          />
 
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Transportir
-                </FormLabel>
-                <Select2
-                  options={(dataSeed?.resultTransportir || []).map((val) => ({
-                    value: val.id,
-                    label: val.plat || `Transportir #${val.id}`,
-                  }))}
-                  placeholder="Pilih Transportir"
-                  onChange={(opt) => setTransportirFilterId(opt?.value || 0)}
-                  {...selectStyles}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Supir
-                </FormLabel>
-                <Select2
-                  options={allSupir.map((val) => ({
-                    value: val.id,
-                    label: val.nama || `Supir #${val.id}`,
-                  }))}
-                  placeholder="Pilih Supir"
-                  onChange={(opt) => setSupirFilterId(opt?.value || 0)}
-                  {...selectStyles}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Stasiun Pengumpul Minyak
-                </FormLabel>
-                <Select2
-                  options={(dataSeed?.resultStasiunPengumpulMinyak || []).map(
-                    (val) => ({
-                      value: val.id,
-                      label: val.nama,
-                    }),
-                  )}
-                  placeholder="Pilih Stasiun"
-                  onChange={(opt) =>
-                    setStasiunPengumpulMinyakFilterId(opt?.value || 0)
-                  }
-                  {...selectStyles}
-                />
-              </FormControl>
-              {/* 
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Asal Minyak
-                </FormLabel>
-                <Select2
-                  options={(dataSeed?.resultAsalMinyak || []).map((val) => ({
-                    value: val.id,
-                    label: formatAsalMinyakLabel(val),
-                  }))}
-                  placeholder="Pilih Asal Minyak"
-                  onChange={(opt) => setAsalMinyakFilterId(opt?.value || 0)}
-                  {...selectStyles}
-                />
-              </FormControl> */}
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Status Surat Jalan
-                </FormLabel>
-                <Select2
-                  options={(dataSeed?.resultStatusSuratJalan || []).map(
-                    (val) => ({
-                      value: val.id,
-                      label: val.status || `Status #${val.id}`,
-                    }),
-                  )}
-                  placeholder="Pilih Status"
-                  onChange={(opt) =>
-                    setStatusSuratJalanFilterId(opt?.value || 0)
-                  }
-                  {...selectStyles}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Tanggal Awal
-                </FormLabel>
-                <Input
-                  bgColor="terang"
-                  height="50px"
-                  type="date"
-                  value={tanggalAwal}
-                  onChange={(e) => setTanggalAwal(e.target.value)}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Tanggal Akhir
-                </FormLabel>
-                <Input
-                  bgColor="terang"
-                  height="50px"
-                  type="date"
-                  value={tanggalAkhir}
-                  onChange={(e) => setTanggalAkhir(e.target.value)}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Urutkan Berdasarkan
-                </FormLabel>
-                <Select2
-                  options={[
-                    { value: "id", label: "Index" },
-                    { value: "tanggal", label: "Tanggal" },
-                    { value: "nomor", label: "Nomor" },
-                    { value: "volume", label: "Volume" },
-                  ]}
-                  value={{
-                    value: sortBy,
-                    label:
-                      sortBy === "nomor"
-                        ? "Nomor"
-                        : sortBy === "volume"
-                          ? "Volume"
-                          : sortBy === "tanggal"
-                            ? "Tanggal"
-                            : "Index",
-                  }}
-                  onChange={(opt) => setSortBy(opt?.value || "id")}
-                  {...selectStyles}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="medium">
-                  Urutan
-                </FormLabel>
-                <Select2
-                  options={
-                    sortBy === "volume"
-                      ? [
-                          { value: "DESC", label: "Volume Terbesar" },
-                          { value: "ASC", label: "Volume Terkecil" },
-                        ]
-                      : sortBy === "nomor"
-                        ? [
-                            { value: "ASC", label: "Nomor A-Z" },
-                            { value: "DESC", label: "Nomor Z-A" },
-                          ]
-                        : sortBy === "tanggal"
-                          ? [
-                              { value: "DESC", label: "Tanggal Terbaru" },
-                              { value: "ASC", label: "Tanggal Terlama" },
-                            ]
-                          : [
-                              { value: "DESC", label: "Index Terbesar" },
-                              { value: "ASC", label: "Index Terkecil" },
-                            ]
-                  }
-                  value={{
-                    value: sortOrder,
-                    label:
-                      sortBy === "volume"
-                        ? sortOrder === "ASC"
-                          ? "Volume Terkecil"
-                          : "Volume Terbesar"
-                        : sortBy === "nomor"
-                          ? sortOrder === "ASC"
-                            ? "Nomor A-Z"
-                            : "Nomor Z-A"
-                          : sortBy === "tanggal"
-                            ? sortOrder === "ASC"
-                              ? "Tanggal Terlama"
-                              : "Tanggal Terbaru"
-                            : sortOrder === "ASC"
-                              ? "Index Terkecil"
-                              : "Index Terbesar",
-                  }}
-                  onChange={(opt) => setSortOrder(opt?.value || "DESC")}
-                  {...selectStyles}
-                />
-              </FormControl>
-            </SimpleGrid>
-
-            {hasActiveFilter && (
+          <Box
+            mb={6}
+            p={{ base: 4, md: 5 }}
+            border="1px solid"
+            borderColor="gray.200"
+            borderRadius="lg"
+            bg="gray.50"
+          >
+            <Flex
+              align={{ base: "stretch", sm: "center" }}
+              justify="space-between"
+              direction={{ base: "column", sm: "row" }}
+              gap={3}
+              mb={4}
+            >
+              <Heading size="sm" color="kpbpn">
+                Filter Pencarian
+              </Heading>
               <Button
-                mt={4}
                 size="sm"
-                variant="ghost"
+                variant="outline"
                 colorScheme="red"
                 onClick={resetFilter}
+                isDisabled={!hasActiveFilter}
+                alignSelf={{ base: "stretch", sm: "center" }}
               >
                 Reset Filter
               </Button>
-            )}
+            </Flex>
+            <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={4}>
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Mitra
+                </FormLabel>
+                <Select2
+                  options={mitraOptions}
+                  placeholder="Semua mitra"
+                  isClearable
+                  value={selectedFilterOption(mitraOptions, mitraFilterId)}
+                  onChange={(opt) => setMitraFilterId(opt?.value || 0)}
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Transportir
+                </FormLabel>
+                <Select2
+                  options={transportirOptions}
+                  placeholder="Semua transportir"
+                  isClearable
+                  value={selectedFilterOption(
+                    transportirOptions,
+                    transportirFilterId,
+                  )}
+                  onChange={(opt) => setTransportirFilterId(opt?.value || 0)}
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Supir
+                </FormLabel>
+                <Select2
+                  options={supirOptions}
+                  placeholder="Semua supir"
+                  isClearable
+                  value={selectedFilterOption(supirOptions, supirFilterId)}
+                  onChange={(opt) => setSupirFilterId(opt?.value || 0)}
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Stasiun Pengumpul Minyak
+                </FormLabel>
+                <Select2
+                  options={stasiunOptions}
+                  placeholder="Semua stasiun"
+                  isClearable
+                  value={selectedFilterOption(
+                    stasiunOptions,
+                    stasiunPengumpulMinyakFilterId,
+                  )}
+                  onChange={(opt) =>
+                    setStasiunPengumpulMinyakFilterId(opt?.value || 0)
+                  }
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Status Surat Jalan
+                </FormLabel>
+                <Select2
+                  options={statusOptions}
+                  placeholder="Semua status"
+                  isClearable
+                  value={selectedFilterOption(
+                    statusOptions,
+                    statusSuratJalanFilterId,
+                  )}
+                  onChange={(opt) =>
+                    setStatusSuratJalanFilterId(opt?.value || 0)
+                  }
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Tanggal Awal
+                </FormLabel>
+                <Input
+                  type="date"
+                  value={tanggalAwal}
+                  onChange={(e) => setTanggalAwal(e.target.value)}
+                  {...filterInputProps}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Tanggal Akhir
+                </FormLabel>
+                <Input
+                  type="date"
+                  value={tanggalAkhir}
+                  onChange={(e) => setTanggalAkhir(e.target.value)}
+                  {...filterInputProps}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Urutkan Berdasarkan
+                </FormLabel>
+                <Select2
+                  options={sortByOptions}
+                  value={selectedFilterOption(sortByOptions, sortBy)}
+                  onChange={(opt) => setSortBy(opt?.value || "id")}
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="medium" mb={1.5}>
+                  Urutan
+                </FormLabel>
+                <Select2
+                  options={sortOrderOptions}
+                  value={selectedFilterOption(sortOrderOptions, sortOrder)}
+                  onChange={(opt) => setSortOrder(opt?.value || "DESC")}
+                  {...filterSelectStyles}
+                />
+              </FormControl>
+            </SimpleGrid>
           </Box>
 
           <Divider mb={6} />

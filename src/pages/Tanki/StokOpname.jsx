@@ -616,8 +616,8 @@ const StokOpname = () => {
   const [totalStok, setTotalStok] = useState(0);
   const [totalBSNWGabunganMasuk, setTotalBSNWGabunganMasuk] = useState(null);
 
-  const [tanggalAwal, setTanggalAwal] = useState(getDefaultStartDate);
-  const [tanggalAkhir, setTanggalAkhir] = useState(getDefaultEndDate);
+  const [tanggalAwal, setTanggalAwal] = useState("");
+  const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [tangkiFilterId, setTangkiFilterId] = useState("");
   const [exportStartDate, setExportStartDate] = useState(getDefaultStartDate);
   const [exportEndDate, setExportEndDate] = useState(getDefaultEndDate);
@@ -627,8 +627,8 @@ const StokOpname = () => {
     Boolean(tanggalAwal) || Boolean(tanggalAkhir) || Boolean(tangkiFilterId);
 
   const resetFilter = () => {
-    setTanggalAwal(getDefaultStartDate());
-    setTanggalAkhir(getDefaultEndDate());
+    setTanggalAwal("");
+    setTanggalAkhir("");
     setTangkiFilterId("");
   };
 

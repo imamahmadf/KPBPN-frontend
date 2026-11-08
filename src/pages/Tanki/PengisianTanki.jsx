@@ -242,6 +242,7 @@ const PengisianTanki = () => {
   const [dataPengisian, setDataPengisian] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingCetak, setLoadingCetak] = useState({});
+  const [previewBAST, setPreviewBAST] = useState(null);
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(0);
   const [totalRows, setTotalRows] = useState(0);
@@ -539,31 +540,64 @@ const PengisianTanki = () => {
     }
   };
 
-  const cetakBAST = async (item) => {
-    setLoadingCetak((prev) => ({ ...prev, [item.id]: true }));
+  const bacaPesanErrorBAST = async (err) => {
+    let message = "Gagal menyiapkan dokumen BAST";
+    if (err.response?.data instanceof Blob) {
+      try {
+        const text = await err.response.data.text();
+        const parsed = JSON.parse(text);
+        message = parsed.message || message;
+      } catch {
+        // gunakan pesan default
+      }
+    } else if (err.response?.data?.message) {
+      message = err.response.data.message;
+    }
+    return message;
+  };
+
+  const buatFileBAST = (data, item, format) => {
+    const isDocx = format === "docx";
+    const mime = isDocx
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "application/pdf";
+    const blob = new Blob([data], { type: mime });
+    const fileName = `BAST_${item.tanki?.kode || item.id}_${Date.now()}.${
+      isDocx ? "docx" : "pdf"
+    }`;
+    return { blob, fileName, isDocx };
+  };
+
+  const unduhBlob = (blob, fileName) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const mintaBAST = async (item, format) => {
+    const res = await axios.post(
+      `${API_BASE}/tanki/cetak/bast`,
+      { id: item.id, format },
+      { responseType: "blob" },
+    );
+    return buatFileBAST(res.data, item, format);
+  };
+
+  const cetakBAST = async (item, format) => {
+    setLoadingCetak((prev) => ({ ...prev, [item.id]: format }));
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/tanki/cetak/bast`,
-        { id: item.id },
-        { responseType: "blob" },
-      );
-
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `BAST_${item.tanki?.kode || item.id}_${Date.now()}.docx`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      const { blob, fileName, isDocx } = await mintaBAST(item, format);
+      unduhBlob(blob, fileName);
 
       toast({
         title: "Berhasil",
-        description: "Dokumen BAST berhasil diunduh",
+        description: `Dokumen BAST ${isDocx ? "Word" : "PDF"} berhasil diunduh`,
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -572,22 +606,9 @@ const PengisianTanki = () => {
       fetchDataPengisianTanki();
     } catch (err) {
       console.error(err);
-      let message = "Gagal mencetak dokumen BAST";
-      if (err.response?.data instanceof Blob) {
-        try {
-          const text = await err.response.data.text();
-          const parsed = JSON.parse(text);
-          message = parsed.message || message;
-        } catch {
-          // gunakan pesan default
-        }
-      } else if (err.response?.data?.message) {
-        message = err.response.data.message;
-      }
-
       toast({
         title: "Gagal",
-        description: message,
+        description: await bacaPesanErrorBAST(err),
         status: "error",
         duration: 4000,
         isClosable: true,
@@ -595,6 +616,38 @@ const PengisianTanki = () => {
     } finally {
       setLoadingCetak((prev) => ({ ...prev, [item.id]: false }));
     }
+  };
+
+  const lihatBAST = async (item) => {
+    setLoadingCetak((prev) => ({ ...prev, [item.id]: "preview" }));
+
+    try {
+      const { blob, fileName } = await mintaBAST(item, "pdf");
+      const url = window.URL.createObjectURL(blob);
+      setPreviewBAST((prev) => {
+        if (prev?.url) window.URL.revokeObjectURL(prev.url);
+        return { url, blob, fileName, item };
+      });
+      fetchDataPengisianTanki();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description: await bacaPesanErrorBAST(err),
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingCetak((prev) => ({ ...prev, [item.id]: false }));
+    }
+  };
+
+  const tutupPreviewBAST = () => {
+    setPreviewBAST((prev) => {
+      if (prev?.url) window.URL.revokeObjectURL(prev.url);
+      return null;
+    });
   };
 
   const fetchProduksiForPengisian = async (item) => {
@@ -859,7 +912,8 @@ const PengisianTanki = () => {
 
   const renderAksiButtons = (item, fullWidth = false) => {
     const isProduksiExpanded = expandedProduksiId === item.id;
-    const isCetakLoading = Boolean(loadingCetak[item.id]);
+    const cetakMode = loadingCetak[item.id];
+    const isCetakLoading = Boolean(cetakMode);
 
     const actions = [
       {
@@ -873,10 +927,26 @@ const PengisianTanki = () => {
         onClick: () => handleOpenEdit(item),
       },
       {
-        key: "cetak",
-        label: isCetakLoading ? "Mencetak BAST..." : "Cetak BAST",
+        key: "lihat",
+        label: cetakMode === "preview" ? "Membuka PDF..." : "Lihat PDF",
         onClick: () => {
-          if (!isCetakLoading) cetakBAST(item);
+          if (!isCetakLoading) lihatBAST(item);
+        },
+        isDisabled: isCetakLoading,
+      },
+      {
+        key: "pdf",
+        label: cetakMode === "pdf" ? "Mengunduh PDF..." : "Unduh PDF",
+        onClick: () => {
+          if (!isCetakLoading) cetakBAST(item, "pdf");
+        },
+        isDisabled: isCetakLoading,
+      },
+      {
+        key: "word",
+        label: cetakMode === "docx" ? "Mengunduh Word..." : "Unduh Word",
+        onClick: () => {
+          if (!isCetakLoading) cetakBAST(item, "docx");
         },
         isDisabled: isCetakLoading,
       },
@@ -899,7 +969,7 @@ const PengisianTanki = () => {
           rightIcon={<BsChevronDown />}
           w={fullWidth ? "full" : "auto"}
           isLoading={isCetakLoading}
-          loadingText="Mencetak"
+          loadingText="Menyiapkan"
         >
           Aksi
         </MenuButton>
@@ -1800,6 +1870,69 @@ const PengisianTanki = () => {
               isDisabled={isLoadingEditForm}
             >
               Simpan Perubahan
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(previewBAST)}
+        onClose={tutupPreviewBAST}
+        size="6xl"
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />
+        <ModalContent h={{ base: "100dvh", md: "88vh" }} my={{ base: 0, md: 8 }}>
+          <ModalHeader pr={12}>Pratinjau BAST</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody display="flex" flex="1" flexDir="column" minH={0} overflow="hidden">
+            {previewBAST?.url && (
+              <Box
+                as="iframe"
+                title="Pratinjau BAST"
+                src={previewBAST.url}
+                flex="1"
+                w="full"
+                minH={{ base: "60vh", md: "0" }}
+                borderWidth="1px"
+                borderRadius="md"
+              />
+            )}
+          </ModalBody>
+          <ModalFooter
+            flexDir={{ base: "column-reverse", sm: "row" }}
+            gap={2}
+            px={{ base: 4, md: 6 }}
+          >
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={tutupPreviewBAST}
+            >
+              Tutup
+            </Button>
+            <Button
+              variant="outline"
+              w={{ base: "full", sm: "auto" }}
+              onClick={() => {
+                if (!previewBAST?.item) return;
+                cetakBAST(previewBAST.item, "docx");
+              }}
+              isLoading={
+                previewBAST?.item && loadingCetak[previewBAST.item.id] === "docx"
+              }
+            >
+              Unduh Word
+            </Button>
+            <Button
+              variant="primary"
+              w={{ base: "full", sm: "auto" }}
+              onClick={() => {
+                if (!previewBAST) return;
+                unduhBlob(previewBAST.blob, previewBAST.fileName);
+              }}
+            >
+              Unduh PDF
             </Button>
           </ModalFooter>
         </ModalContent>

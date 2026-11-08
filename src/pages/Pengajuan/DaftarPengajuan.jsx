@@ -30,9 +30,12 @@ import {
   formatRupiah,
   formatTanggal,
   statusColor,
+  ambilDokumenPengajuan,
   unduhDokumenPengajuan,
+  unduhBlobDokumen,
   bacaErrorUnduhan,
 } from "../../lib/pengajuanBarjas";
+import ModalPratinjauPengajuan from "./ModalPratinjauPengajuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 
@@ -51,6 +54,7 @@ function DaftarPengajuan() {
   const [jenis, setJenis] = useState("");
   const [statusId, setStatusId] = useState("");
   const [loadingCetak, setLoadingCetak] = useState({});
+  const [previewPdf, setPreviewPdf] = useState(null);
 
   useEffect(() => {
     axios
@@ -105,8 +109,43 @@ function DaftarPengajuan() {
     setPage(0);
   };
 
-  const cetak = async (event, item, format) => {
+  const tutupPreview = () => {
+    setPreviewPdf((prev) => {
+      if (prev?.url) window.URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  };
+
+  const lihatPdf = async (event, item) => {
     event.stopPropagation();
+    const key = `${item.id}_preview`;
+    setLoadingCetak((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, fileName } = await ambilDokumenPengajuan(
+        item.id,
+        "pdf",
+        item.nomor,
+      );
+      const url = window.URL.createObjectURL(blob);
+      setPreviewPdf((prev) => {
+        if (prev?.url) window.URL.revokeObjectURL(prev.url);
+        return { url, blob, fileName, item };
+      });
+    } catch (err) {
+      toast({
+        title: "Gagal membuka PDF",
+        description: await bacaErrorUnduhan(err),
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingCetak((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const cetak = async (event, item, format) => {
+    event?.stopPropagation();
     const key = `${item.id}_${format}`;
     setLoadingCetak((prev) => ({ ...prev, [key]: true }));
     try {
@@ -266,6 +305,15 @@ function DaftarPengajuan() {
                           <Button
                             size="xs"
                             variant="outline"
+                            colorScheme="orange"
+                            isLoading={loadingCetak[`${item.id}_preview`]}
+                            onClick={(event) => lihatPdf(event, item)}
+                          >
+                            Lihat
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="outline"
                             isLoading={loadingCetak[`${item.id}_pdf`]}
                             onClick={(event) => cetak(event, item, "pdf")}
                           >
@@ -314,6 +362,24 @@ function DaftarPengajuan() {
           </Flex>
         </Container>
       </Box>
+
+      <ModalPratinjauPengajuan
+        preview={previewPdf}
+        onClose={tutupPreview}
+        onUnduhPdf={() => {
+          if (!previewPdf) return;
+          unduhBlobDokumen(previewPdf.blob, previewPdf.fileName);
+        }}
+        onUnduhWord={() => {
+          if (!previewPdf?.item) return;
+          cetak(null, previewPdf.item, "docx");
+        }}
+        isLoadingWord={
+          previewPdf?.item
+            ? Boolean(loadingCetak[`${previewPdf.item.id}_docx`])
+            : false
+        }
+      />
     </LayoutKPBPN>
   );
 }

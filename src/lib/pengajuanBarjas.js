@@ -74,7 +74,7 @@ const getDownloadFileName = (contentDisposition, fallback) => {
   return plainName?.[1]?.trim() || fallback;
 };
 
-export async function unduhDokumenPengajuan(id, format = "pdf", nomor) {
+export async function ambilDokumenPengajuan(id, format = "pdf", nomor) {
   const res = await axios.get(`${API_BASE}/pengajuan-barjas/cetak/${id}`, {
     params: { format },
     responseType: "blob",
@@ -84,18 +84,29 @@ export async function unduhDokumenPengajuan(id, format = "pdf", nomor) {
   const mime = isDocx
     ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     : "application/pdf";
-  const url = window.URL.createObjectURL(new Blob([res.data], { type: mime }));
-  const link = document.createElement("a");
+  const blob = new Blob([res.data], { type: mime });
   const fallback = `pengajuan_${nomor || id}.${isDocx ? "docx" : "pdf"}`;
+  return {
+    blob,
+    fileName: getDownloadFileName(res.headers?.["content-disposition"], fallback),
+    isDocx,
+  };
+}
+
+export function unduhBlobDokumen(blob, fileName) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
   link.href = url;
-  link.setAttribute(
-    "download",
-    getDownloadFileName(res.headers?.["content-disposition"], fallback),
-  );
+  link.setAttribute("download", fileName);
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+}
+
+export async function unduhDokumenPengajuan(id, format = "pdf", nomor) {
+  const { blob, fileName } = await ambilDokumenPengajuan(id, format, nomor);
+  unduhBlobDokumen(blob, fileName);
 }
 
 export async function bacaErrorUnduhan(err) {

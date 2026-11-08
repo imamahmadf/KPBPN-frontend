@@ -45,6 +45,7 @@ import DetailSuratJalan from "./pages/SuratJalan/DetailSuratJalan.jsx";
 import DetailSuratJalanMitra from "./pages/PengirimanMitraKPBPN/DetailSuratJalanMitra.jsx";
 import QRCodeSumur from "./pages/QRCodeSumur.jsx";
 import QRCodeSuratJalan from "./pages/QRCodeSuratJalan.jsx";
+import QRCodePengajuan from "./pages/Pengajuan/QRCodePengajuan.jsx";
 import LaporanPetugasKeamanan from "./pages/Laporan/LaporanPetugasKeamanan.jsx";
 import LaporanBAST from "./pages/Laporan/LaporanBAST.jsx";
 import LaporanSuratJalan from "./pages/Laporan/LaporanSuratJalan.jsx";
@@ -371,6 +372,7 @@ function App() {
           />
           <Route component={QRCodeSumur} path="/qr-sumur/:kode" />
           <Route component={QRCodeSuratJalan} path="/qr-surat-jalan/:kode" />
+          <Route component={QRCodePengajuan} path="/qr-pengajuan/:kode" />
           <Route component={verifikasi} path="/verifikasi/:id" />
           <Route component={DeveloperProfile} path="/developer-profile" />
           <Route component={Home} path="/" />

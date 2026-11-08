@@ -21,6 +21,7 @@ import {
   ModalOverlay,
   Select,
   SimpleGrid,
+  Spinner,
   Stack,
   Table,
   Tbody,
@@ -42,9 +43,12 @@ import {
   formatTanggal,
   getFotoUrl,
   statusColor,
+  ambilDokumenPengajuan,
   unduhDokumenPengajuan,
+  unduhBlobDokumen,
   bacaErrorUnduhan,
 } from "../../lib/pengajuanBarjas";
+import ModalPratinjauPengajuan from "./ModalPratinjauPengajuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
 const ROLE_PENGAJUAN = {
@@ -53,6 +57,7 @@ const ROLE_PENGAJUAN = {
   GENERAL_MANAGER: 9,
 };
 const ROLE_PENGUBAH = [1, 2, 4];
+const STATUS_BARCODE = ["Disetujui", "Diproses", "Selesai"];
 
 const Info = ({ label, children }) => (
   <Box>
@@ -91,6 +96,9 @@ function DetailPengajuan({ match }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [daftarItemId, setDaftarItemId] = useState(null);
   const [loadingCetak, setLoadingCetak] = useState({});
+  const [previewPdf, setPreviewPdf] = useState(null);
+  const [barcode, setBarcode] = useState(null);
+  const [loadingBarcode, setLoadingBarcode] = useState(false);
 
   const muat = async () => {
     const [detailRes, seedRes] = await Promise.all([
@@ -127,6 +135,34 @@ function DetailPengajuan({ match }) {
       });
     });
   }, [pengajuanId]);
+
+  const statusNama = data?.statusPengajuanKpbpn?.nama;
+  const barcodeAktif = STATUS_BARCODE.includes(statusNama);
+
+  useEffect(() => {
+    if (!barcodeAktif) {
+      setBarcode(null);
+      return undefined;
+    }
+
+    let batal = false;
+    setLoadingBarcode(true);
+    axios
+      .get(`${API_BASE}/pengajuan-barjas/qrcode/${pengajuanId}`)
+      .then((res) => {
+        if (!batal) setBarcode(res.data);
+      })
+      .catch(() => {
+        if (!batal) setBarcode(null);
+      })
+      .finally(() => {
+        if (!batal) setLoadingBarcode(false);
+      });
+
+    return () => {
+      batal = true;
+    };
+  }, [barcodeAktif, pengajuanId, statusNama]);
 
   const statusTerpilih = statusOptions.find(
     (status) => String(status.id) === String(statusId),
@@ -340,6 +376,14 @@ function DetailPengajuan({ match }) {
     }
   };
 
+  const unduhBarcode = () => {
+    if (!barcode?.qrCode) return;
+    const link = document.createElement("a");
+    link.href = barcode.qrCode;
+    link.download = barcode.fileName || "barcode-pengajuan.png";
+    link.click();
+  };
+
   const cetak = async (format) => {
     setLoadingCetak((prev) => ({ ...prev, [format]: true }));
     try {
@@ -364,6 +408,39 @@ function DetailPengajuan({ match }) {
     }
   };
 
+  const lihatPdf = async () => {
+    setLoadingCetak((prev) => ({ ...prev, preview: true }));
+    try {
+      const { blob, fileName } = await ambilDokumenPengajuan(
+        pengajuanId,
+        "pdf",
+        data?.nomor,
+      );
+      const url = window.URL.createObjectURL(blob);
+      setPreviewPdf((prev) => {
+        if (prev?.url) window.URL.revokeObjectURL(prev.url);
+        return { url, blob, fileName };
+      });
+    } catch (err) {
+      toast({
+        title: "Gagal membuka PDF",
+        description: await bacaErrorUnduhan(err),
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingCetak((prev) => ({ ...prev, preview: false }));
+    }
+  };
+
+  const tutupPreview = () => {
+    setPreviewPdf((prev) => {
+      if (prev?.url) window.URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  };
+
   return (
     <LayoutKPBPN>
       <Box py={{ base: 4, md: 8 }}>
@@ -386,6 +463,14 @@ function DetailPengajuan({ match }) {
               </Button>
               {data && (
                 <>
+                  <Button
+                    variant="outline"
+                    colorScheme="orange"
+                    isLoading={loadingCetak.preview}
+                    onClick={lihatPdf}
+                  >
+                    Lihat PDF
+                  </Button>
                   <Button
                     variant="outline"
                     colorScheme="orange"
@@ -525,6 +610,42 @@ function DetailPengajuan({ match }) {
                 </SimpleGrid>
               </Box>
 
+              {barcodeAktif && (
+                <Box bg="white" borderWidth="1px" borderRadius="md" p={{ base: 3, md: 5 }}>
+                  <Heading size="sm" mb={1}>
+                    QR Code
+                  </Heading>
+                  <Text fontSize="sm" color="gray.500" mb={4}>
+                    QR Code dibuat saat pengajuan disetujui. Pindai untuk
+                    memeriksa keaslian. Kode yang sama tercetak pada PDF dan
+                    Word selama status Disetujui, Diproses, atau Selesai.
+                  </Text>
+                  {loadingBarcode ? (
+                    <Spinner size="sm" />
+                  ) : barcode?.qrCode ? (
+                    <Stack spacing={3} align="flex-start">
+                      <Image
+                        src={barcode.qrCode}
+                        alt="QR Code pengajuan"
+                        boxSize="180px"
+                        borderWidth="1px"
+                        borderRadius="md"
+                      />
+                      <Text fontSize="sm" color="gray.600">
+                        Kode: {barcode.kode}
+                      </Text>
+                      <Button size="sm" variant="outline" onClick={unduhBarcode}>
+                        Unduh QR Code
+                      </Button>
+                    </Stack>
+                  ) : (
+                    <Text fontSize="sm" color="gray.500">
+                      QR Code belum dapat ditampilkan.
+                    </Text>
+                  )}
+                </Box>
+              )}
+
               {bolehStatus && (
                 <Box bg="white" borderWidth="1px" borderRadius="md" p={{ base: 3, md: 5 }}>
                   <Heading size="sm" mb={4}>
@@ -564,8 +685,9 @@ function DetailPengajuan({ match }) {
                   </Button>
                   <Text fontSize="sm" color="gray.500" mt={3}>
                     Status Disetujui, Diproses, dan Selesai memasukkan barang ke
-                    stok. Mengembalikan status menarik stok itu selama barangnya
-                    belum terpakai.
+                    stok dan menampilkan QR Code pada dokumen. Mengembalikan
+                    status menarik stok itu selama barangnya belum terpakai,
+                    dan QR Code tidak lagi berlaku.
                   </Text>
                 </Box>
               )}
@@ -725,6 +847,17 @@ function DetailPengajuan({ match }) {
           )}
         </Container>
       </Box>
+
+      <ModalPratinjauPengajuan
+        preview={previewPdf}
+        onClose={tutupPreview}
+        onUnduhPdf={() => {
+          if (!previewPdf) return;
+          unduhBlobDokumen(previewPdf.blob, previewPdf.fileName);
+        }}
+        onUnduhWord={() => cetak("docx")}
+        isLoadingWord={loadingCetak.docx}
+      />
 
       <Modal isOpen={isOpen} onClose={onClose} isCentered>
         <ModalOverlay />
