@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Link, useHistory } from "react-router-dom";
+import { useSelector } from "react-redux";
 import ReactPaginate from "react-paginate";
 import {
   Badge,
@@ -25,6 +26,7 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import LayoutKPBPN from "../../Componets/KPBPN/LayoutKPBPN";
+import { selectRoleIds } from "../../Redux/Reducers/auth";
 import "../../Style/pagination.css";
 import {
   formatRupiah,
@@ -38,10 +40,15 @@ import {
 import ModalPratinjauPengajuan from "./ModalPratinjauPengajuan";
 
 const API_BASE = import.meta.env.VITE_REACT_APP_API_BASE_URL;
+const ROLE_BUAT_PENGAJUAN = [1, 2];
 
 function DaftarPengajuan() {
   const toast = useToast();
   const history = useHistory();
+  const roleIds = (useSelector(selectRoleIds) || []).map(Number);
+  const bolehBuatPengajuan = roleIds.some((id) =>
+    ROLE_BUAT_PENGAJUAN.includes(id),
+  );
   const [rows, setRows] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
   const [page, setPage] = useState(0);
@@ -188,14 +195,16 @@ function DaftarPengajuan() {
                 pembelian.
               </Text>
             </Box>
-            <Button
-              as={Link}
-              to="/pengajuan/tambah"
-              colorScheme="orange"
-              alignSelf={{ base: "stretch", md: "center" }}
-            >
-              Buat Pengajuan
-            </Button>
+            {bolehBuatPengajuan && (
+              <Button
+                as={Link}
+                to="/pengajuan/tambah"
+                colorScheme="orange"
+                alignSelf={{ base: "stretch", md: "center" }}
+              >
+                Buat Pengajuan
+              </Button>
+            )}
           </Flex>
 
           <Box

@@ -56,7 +56,7 @@ const ROLE_PENGAJUAN = {
   GENERAL_AFFAIR: 7,
   GENERAL_MANAGER: 9,
 };
-const ROLE_PENGUBAH = [1, 2, 4];
+const ROLE_PENGUBAH = [1, 2];
 const ROLE_HARGA = [4, 7];
 const ROLE_STATUS_ITEM = [1, 2, 4, 7];
 const STATUS_BARCODE = ["Disetujui", "Diproses", "Selesai"];

@@ -56,6 +56,7 @@ import LaporanProduksiSumur from "./pages/Laporan/LaporanProduksiSumur.jsx";
 import RiwayatTanki from "./pages/Tanki/RiwayatTanki.jsx";
 import KlasifikasiSumur from "./pages/Admin/KlasifikasiSumur.jsx";
 import DaftarPengajuan from "./pages/Pengajuan/DaftarPengajuan.jsx";
+import DaftarItemPembelian from "./pages/Pengajuan/DaftarItemPembelian.jsx";
 import DaftarBarangJasa from "./pages/Pengajuan/DaftarBarangJasa.jsx";
 import DetailBarangJasa from "./pages/Pengajuan/DetailBarangJasa.jsx";
 import FormPengajuan from "./pages/Pengajuan/FormPengajuan.jsx";
@@ -335,6 +336,12 @@ function App() {
             roleRoute={[1, 2, 4, 6, 7, 8, 9]}
           />
           <ProtectedRoute
+            component={DaftarItemPembelian}
+            path="/pengajuan/item-pembelian"
+            exact
+            roleRoute={[1, 2, 4, 6, 7, 8, 9]}
+          />
+          <ProtectedRoute
             component={DetailBarangJasa}
             path="/pengajuan/barang-jasa/detail/:id"
             exact
@@ -350,13 +357,13 @@ function App() {
             component={FormPengajuan}
             path="/pengajuan/tambah"
             exact
-            roleRoute={[1, 2, 4]}
+            roleRoute={[1, 2]}
           />
           <ProtectedRoute
             component={FormPengajuan}
             path="/pengajuan/edit/:id"
             exact
-            roleRoute={[1, 2, 4]}
+            roleRoute={[1, 2]}
           />
           <ProtectedRoute
             component={DetailPengajuan}
