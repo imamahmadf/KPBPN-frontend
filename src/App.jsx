@@ -330,7 +330,7 @@ function App() {
             roleRoute={[6, 9]}
           />
           <ProtectedRoute
-            component={DaftarPedingajuan}
+            component={DaftarPengajuan}
             path="/pengajuan/daftar"
             exact
             roleRoute={[1, 2, 4, 6, 7, 8, 9]}
