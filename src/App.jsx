@@ -77,7 +77,7 @@ function App() {
             exact
             roleRoute={[1, 2, 3, 5]}
           />
- 
+
           <Route component={Login} path="/login" />
           <Route component={Register} path="/register" />
           <Route component={Unauthorized} path="/unauthorized" exact />
@@ -329,7 +329,7 @@ function App() {
             roleRoute={[6, 9]}
           />
           <ProtectedRoute
-            component={DaftarPengajuan}
+            component={DaftarPedingajuan}
             path="/pengajuan/daftar"
             exact
             roleRoute={[1, 2, 4, 6, 7, 8, 9]}
