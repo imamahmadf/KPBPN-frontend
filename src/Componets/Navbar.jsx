@@ -286,6 +286,11 @@ const menuData = [
     ],
     items: [
       { label: "Barang & Jasa", path: "/pengajuan/daftar" },
+      {
+        label: "Persetujuan",
+        path: "/pengajuan/persetujuan",
+        allowedRoles: [ROLE_KPBPN.SUPERVISOR, ROLE_KPBPN.GENERAL_MANAGER],
+      },
       { label: "Daftar Item", path: "/pengajuan/barang-jasa" },
     ],
   },

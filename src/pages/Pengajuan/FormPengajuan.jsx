@@ -42,16 +42,30 @@ function FormPengajuan({ match }) {
     lokasi: "",
     keperluan: "",
     catatan: "",
+    mengetahuiId: "",
+    menyetujuiId: "",
   });
   const [items, setItems] = useState([buatItemKosong()]);
   const [katalog, setKatalog] = useState([]);
   const [katalogTerbuka, setKatalogTerbuka] = useState(null);
+  const [supervisorOptions, setSupervisorOptions] = useState([]);
+  const [managerOptions, setManagerOptions] = useState([]);
 
   useEffect(() => {
     axios
       .get(`${API_BASE}/pengajuan-barjas/barang-jasa`, { params: { ringkas: 1 } })
       .then((res) => setKatalog(res.data.result || []))
       .catch(() => setKatalog([]));
+    axios
+      .get(`${API_BASE}/pengajuan-barjas/seed`)
+      .then((res) => {
+        setSupervisorOptions(res.data.supervisor || []);
+        setManagerOptions(res.data.generalManager || []);
+      })
+      .catch(() => {
+        setSupervisorOptions([]);
+        setManagerOptions([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -74,6 +88,8 @@ function FormPengajuan({ match }) {
           lokasi: data.lokasi || "",
           keperluan: data.keperluan || "",
           catatan: data.catatan || "",
+          mengetahuiId: data.mengetahuiId ? String(data.mengetahuiId) : "",
+          menyetujuiId: data.menyetujuiId ? String(data.menyetujuiId) : "",
         });
         const loaded = (data.itemPengajuanBarjasKpbpns || []).map((item) => ({
           ...buatItemKosong(),
@@ -134,6 +150,14 @@ function FormPengajuan({ match }) {
           if (master && (!item.satuan || item.satuan === "unit")) {
             next.satuan = master.satuan || "unit";
           }
+          if (
+            master &&
+            (item.estimasiHarga === "" || item.estimasiHarga == null) &&
+            master.estimasiTerbaru != null &&
+            master.estimasiTerbaru !== ""
+          ) {
+            next.estimasiHarga = String(master.estimasiTerbaru);
+          }
         }
         return next;
       }),
@@ -152,6 +176,10 @@ function FormPengajuan({ match }) {
           nama: master.nama,
           satuan: master.satuan || "unit",
           spesifikasi: master.spesifikasi || "",
+          estimasiHarga:
+            master.estimasiTerbaru != null && master.estimasiTerbaru !== ""
+              ? String(master.estimasiTerbaru)
+              : item.estimasiHarga,
         };
       }),
     );
@@ -192,6 +220,45 @@ function FormPengajuan({ match }) {
       });
       return;
     }
+    if (!form.mengetahuiId) {
+      toast({
+        title: "Mengetahui wajib diisi",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    if (!form.menyetujuiId) {
+      toast({
+        title: "Menyetujui wajib diisi",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    const itemAktif = items.filter(
+      (item) =>
+        item.nama.trim() ||
+        String(item.jumlah).trim() ||
+        item.spesifikasi.trim() ||
+        item.keterangan.trim(),
+    );
+    const tanpaEstimasi = itemAktif.find((item) => {
+      const angka = Number(String(item.estimasiHarga).replace(/[^\d]/g, ""));
+      return !Number.isFinite(angka) || angka <= 0;
+    });
+    if (tanpaEstimasi) {
+      toast({
+        title: "Estimasi harga wajib diisi",
+        description: "Isi estimasi harga satuan untuk setiap item.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     if (!user?.id) {
       toast({
         title: "Data pengguna tidak ditemukan",
@@ -213,6 +280,7 @@ function FormPengajuan({ match }) {
         jumlah: item.jumlah,
         satuan: item.satuan,
         keterangan: item.keterangan,
+        estimasiHarga: item.estimasiHarga,
         barangJasaKpbpnId: item.barangJasaKpbpnId,
         foto: item.foto,
         hapusFoto: item.hapusFoto,
@@ -323,6 +391,44 @@ function FormPengajuan({ match }) {
                       onChange={(e) => updateForm("lokasi", e.target.value)}
                       placeholder="Contoh: kantor KPBPN, stasiun pengumpul"
                     />
+                  </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>Mengetahui</FormLabel>
+                    <Select
+                      placeholder="Pilih supervisor"
+                      value={form.mengetahuiId}
+                      onChange={(e) => updateForm("mengetahuiId", e.target.value)}
+                    >
+                      {supervisorOptions.map((pengguna) => (
+                        <option key={pengguna.id} value={pengguna.id}>
+                          {pengguna.nama}
+                        </option>
+                      ))}
+                    </Select>
+                    {!supervisorOptions.length && (
+                      <Text fontSize="sm" color="gray.500" mt={1}>
+                        Belum ada user dengan role Supervisor.
+                      </Text>
+                    )}
+                  </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>Menyetujui</FormLabel>
+                    <Select
+                      placeholder="Pilih general manager"
+                      value={form.menyetujuiId}
+                      onChange={(e) => updateForm("menyetujuiId", e.target.value)}
+                    >
+                      {managerOptions.map((pengguna) => (
+                        <option key={pengguna.id} value={pengguna.id}>
+                          {pengguna.nama}
+                        </option>
+                      ))}
+                    </Select>
+                    {!managerOptions.length && (
+                      <Text fontSize="sm" color="gray.500" mt={1}>
+                        Belum ada user dengan role General Manager.
+                      </Text>
+                    )}
                   </FormControl>
                   <FormControl isRequired gridColumn={{ md: "1 / -1" }}>
                     <FormLabel>Keperluan</FormLabel>
@@ -464,19 +570,6 @@ function FormPengajuan({ match }) {
                             ? "Terhubung ke item terdaftar. Jumlahnya ikut terlacak."
                             : "Ketik untuk item baru, atau pilih saran di atas untuk item yang sudah terdaftar."}
                         </Text>
-                        {masterTerpilih && (
-                          <Text fontSize="sm" color="gray.700" mt={1}>
-                            {item.id
-                              ? `Estimasi pada pengajuan ini ${formatRupiah(item.estimasiHarga)}. Estimasi terakhir ${
-                                  adaEstimasiTerakhir
-                                    ? formatRupiah(masterTerpilih.estimasiTerbaru)
-                                    : "belum ada"
-                                }.`
-                              : adaEstimasiTerakhir
-                                ? `Estimasi terakhir ${formatRupiah(masterTerpilih.estimasiTerbaru)}. Harga ini dipakai pada pengajuan baru, pengajuan lama tetap menyimpan harganya sendiri.`
-                                : "Item ini belum punya estimasi harga. General Affair dapat mengisinya setelah pengajuan disimpan."}
-                          </Text>
-                        )}
                       </FormControl>
                       <FormControl>
                         <FormLabel>Spesifikasi</FormLabel>
@@ -510,15 +603,25 @@ function FormPengajuan({ match }) {
                           placeholder="unit, liter, hari"
                         />
                       </FormControl>
-                      <Text
-                        fontSize="sm"
-                        color="gray.600"
-                        gridColumn={{ md: "1 / -1" }}
-                      >
-                        {masterTerpilih
-                          ? "General Affair tetap dapat mengubah estimasi dari halaman detail."
-                          : "Estimasi harga muncul jika item sudah pernah diestimasi. General Affair mengisi harga untuk item yang belum punya estimasi."}
-                      </Text>
+                      <FormControl isRequired>
+                        <FormLabel>Estimasi harga satuan</FormLabel>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={item.estimasiHarga}
+                          onChange={(e) =>
+                            updateItem(item.key, "estimasiHarga", e.target.value)
+                          }
+                          placeholder="Harga per satuan"
+                        />
+                        {adaEstimasiTerakhir && (
+                          <Text fontSize="sm" color="gray.500" mt={1}>
+                            Estimasi terakhir {formatRupiah(masterTerpilih.estimasiTerbaru)}.
+                            Nilai ini bisa diubah untuk pengajuan ini.
+                          </Text>
+                        )}
+                      </FormControl>
                       <FormControl gridColumn={{ md: "1 / -1" }}>
                         <FormLabel>Keterangan</FormLabel>
                         <Textarea

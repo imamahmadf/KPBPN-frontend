@@ -60,6 +60,7 @@ import DaftarBarangJasa from "./pages/Pengajuan/DaftarBarangJasa.jsx";
 import DetailBarangJasa from "./pages/Pengajuan/DetailBarangJasa.jsx";
 import FormPengajuan from "./pages/Pengajuan/FormPengajuan.jsx";
 import DetailPengajuan from "./pages/Pengajuan/DetailPengajuan.jsx";
+import PersetujuanPengajuan from "./pages/Pengajuan/PersetujuanPengajuan.jsx";
 function App() {
   const dispatch = useDispatch();
 
@@ -320,6 +321,12 @@ function App() {
             path="/admin/nomor-urut"
             exact
             roleRoute={[1, 2]}
+          />
+          <ProtectedRoute
+            component={PersetujuanPengajuan}
+            path="/pengajuan/persetujuan"
+            exact
+            roleRoute={[6, 9]}
           />
           <ProtectedRoute
             component={DaftarPengajuan}

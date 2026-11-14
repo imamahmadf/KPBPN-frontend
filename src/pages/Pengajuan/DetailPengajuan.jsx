@@ -57,7 +57,10 @@ const ROLE_PENGAJUAN = {
   GENERAL_MANAGER: 9,
 };
 const ROLE_PENGUBAH = [1, 2, 4];
+const ROLE_HARGA = [4, 7];
+const ROLE_STATUS_ITEM = [1, 2, 4, 7];
 const STATUS_BARCODE = ["Disetujui", "Diproses", "Selesai"];
+const STATUS_SIAP_BELI = STATUS_BARCODE;
 
 const Info = ({ label, children }) => (
   <Box>
@@ -93,6 +96,7 @@ function DetailPengajuan({ match }) {
   const [isSavingMenyetujui, setIsSavingMenyetujui] = useState(false);
   const [isSavingHarga, setIsSavingHarga] = useState(false);
   const [isSavingEstimasi, setIsSavingEstimasi] = useState(false);
+  const [menyimpanItemId, setMenyimpanItemId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [daftarItemId, setDaftarItemId] = useState(null);
   const [loadingCetak, setLoadingCetak] = useState({});
@@ -138,6 +142,10 @@ function DetailPengajuan({ match }) {
 
   const statusNama = data?.statusPengajuanKpbpn?.nama;
   const barcodeAktif = STATUS_BARCODE.includes(statusNama);
+  const siapBeli = STATUS_SIAP_BELI.includes(statusNama);
+  const bolehHarga = siapBeli && roleIds.some((id) => ROLE_HARGA.includes(id));
+  const bolehStatusItem =
+    siapBeli && roleIds.some((id) => ROLE_STATUS_ITEM.includes(id));
 
   useEffect(() => {
     if (!barcodeAktif) {
@@ -304,6 +312,12 @@ function DetailPengajuan({ match }) {
         },
       );
       setData(res.data.result);
+      const nextHarga = {};
+      (res.data.result?.itemPengajuanBarjasKpbpns || []).forEach((item) => {
+        nextHarga[item.id] = item.hargaAktual ?? "";
+      });
+      setHarga(nextHarga);
+      setStatusId(String(res.data.result?.statusPengajuanKpbpnId || ""));
       toast({
         title: "Berhasil",
         description: res.data.message,
@@ -321,6 +335,46 @@ function DetailPengajuan({ match }) {
       });
     } finally {
       setIsSavingHarga(false);
+    }
+  };
+
+  const ubahStatusItem = async (item, statusBeli) => {
+    if (statusBeli === item.statusBeli) return;
+    if (statusBeli === "dibeli" && (item.hargaAktual == null || item.hargaAktual === "")) {
+      toast({
+        title: "Harga aktual belum diisi",
+        description: "Simpan harga aktual item ini sebelum menandai sudah dibeli.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+    setMenyimpanItemId(item.id);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/pengajuan-barjas/status-item/${pengajuanId}`,
+        { itemId: item.id, statusBeli },
+      );
+      setData(res.data.result);
+      setStatusId(String(res.data.result?.statusPengajuanKpbpnId || ""));
+      toast({
+        title: "Berhasil",
+        description: res.data.message,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err) {
+      toast({
+        title: "Gagal mengubah status item",
+        description: err.response?.data?.error || err.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setMenyimpanItemId(null);
     }
   };
 
@@ -585,6 +639,17 @@ function DetailPengajuan({ match }) {
                     <Info label="Menyetujui">{data.menyetujui?.nama || "-"}</Info>
                   )}
                   <Info label="Lokasi penggunaan">{data.lokasi}</Info>
+                  {data.statusPengajuanKpbpn?.nama === "Diajukan" && (
+                    <Box gridColumn={{ md: "1 / -1" }}>
+                      <Info label="Persetujuan">
+                        {`Mengetahui ${
+                          data.waktuSetujuMengetahui ? "sudah" : "belum"
+                        } menyetujui. Menyetujui ${
+                          data.waktuSetujuMenyetujui ? "sudah" : "belum"
+                        } menyetujui. Status menjadi Disetujui setelah keduanya menyetujui.`}
+                      </Info>
+                    </Box>
+                  )}
                   {data.jenis === "barang" &&
                     ["Disetujui", "Diproses", "Selesai"].includes(
                       data.statusPengajuanKpbpn?.nama,
@@ -685,9 +750,9 @@ function DetailPengajuan({ match }) {
                   </Button>
                   <Text fontSize="sm" color="gray.500" mt={3}>
                     Status Disetujui, Diproses, dan Selesai memasukkan barang ke
-                    stok dan menampilkan QR Code pada dokumen. Mengembalikan
-                    status menarik stok itu selama barangnya belum terpakai,
-                    dan QR Code tidak lagi berlaku.
+                    stok dan menampilkan QR Code pada dokumen. Status pembelian
+                    per item juga mengubah pengajuan menjadi Diproses atau
+                    Selesai.
                   </Text>
                 </Box>
               )}
@@ -696,8 +761,9 @@ function DetailPengajuan({ match }) {
                 <Box p={{ base: 3, md: 5 }} pb={0}>
                   <Heading size="sm">Daftar item</Heading>
                   <Text fontSize="sm" color="gray.500" mt={1}>
-                    Estimasi harga diisi oleh General Affair. Harga aktual diisi
-                    setelah pembelian atau kesepakatan harga.
+                    Estimasi diisi saat pengajuan dibuat. Setelah disetujui,
+                    General Affair atau Keuangan mengisi harga aktual. Setelah
+                    harga tersimpan, tandai tiap item sudah dibeli atau belum.
                   </Text>
                 </Box>
                 <Table size="sm" mt={3}>
@@ -709,6 +775,7 @@ function DetailPengajuan({ match }) {
                       <Th>Foto</Th>
                       <Th isNumeric>Estimasi</Th>
                       <Th>Harga aktual</Th>
+                      <Th>Pembelian</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -773,7 +840,7 @@ function DetailPengajuan({ match }) {
                           )}
                         </Td>
                         <Td>
-                          {bolehMengubahData ? (
+                          {bolehHarga ? (
                             <Input
                               size="sm"
                               inputMode="numeric"
@@ -787,7 +854,45 @@ function DetailPengajuan({ match }) {
                               placeholder="Harga satuan"
                             />
                           ) : (
-                            formatRupiah(item.hargaAktual)
+                            <Stack spacing={1}>
+                              <Text>{formatRupiah(item.hargaAktual)}</Text>
+                              {!siapBeli && (
+                                <Text fontSize="xs" color="gray.500">
+                                  Diisi setelah disetujui
+                                </Text>
+                              )}
+                            </Stack>
+                          )}
+                        </Td>
+                        <Td>
+                          {bolehStatusItem ? (
+                            <Stack spacing={1}>
+                              <Select
+                                size="sm"
+                                value={item.statusBeli === "dibeli" ? "dibeli" : "belum"}
+                                isDisabled={menyimpanItemId === item.id}
+                                onChange={(e) => ubahStatusItem(item, e.target.value)}
+                              >
+                                <option value="belum">Belum dibeli</option>
+                                <option
+                                  value="dibeli"
+                                  disabled={
+                                    item.hargaAktual == null || item.hargaAktual === ""
+                                  }
+                                >
+                                  Sudah dibeli
+                                </option>
+                              </Select>
+                              {(item.hargaAktual == null || item.hargaAktual === "") && (
+                                <Text fontSize="xs" color="gray.500">
+                                  Simpan harga aktual dulu
+                                </Text>
+                              )}
+                            </Stack>
+                          ) : (
+                            <Badge colorScheme={item.statusBeli === "dibeli" ? "green" : "gray"}>
+                              {item.statusBeli === "dibeli" ? "Sudah dibeli" : "Belum dibeli"}
+                            </Badge>
                           )}
                         </Td>
                       </Tr>
@@ -830,7 +935,7 @@ function DetailPengajuan({ match }) {
                         Simpan Estimasi
                       </Button>
                     )}
-                    {bolehMengubahData && (
+                    {bolehHarga && (
                       <Button
                         colorScheme="orange"
                         variant="outline"
